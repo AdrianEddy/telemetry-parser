@@ -1,0 +1,15 @@
+[package]
+name = "gyro2bb"
+version = "0.1.0"
+authors = ["Adrian <adrian.eddy@gmail.com>"]
+edition = "2018"
+
+[[bin]]
+name = "gyro2bb"
+path = "gyro2bb.rs"
+
+[dependencies]
+argh = "*"
+telemetry-parser = { version = "*", path = "../../" }
+serde = { version = "*", features = ["derive"] }
+serde_json = { version = "*", features = ["preserve_order"] }

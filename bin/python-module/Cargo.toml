@@ -1,0 +1,17 @@
+[package]
+name = "telemetry-parser-py"
+version = "0.1.0"
+authors = ["Adrian <adrian.eddy@gmail.com>"]
+edition = "2018"
+
+[lib]
+name = "telemetry_parser"
+path = "python-module.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+telemetry-parser = { version = "*", path = "../../" }
+pyo3 = { version = "*", features = ["extension-module"]}
+pythonize = "*"
+serde = { version = "*", features = ["derive"] }
+serde_json = { version = "*", features = ["preserve_order"] }

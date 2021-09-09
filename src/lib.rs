@@ -18,18 +18,19 @@ macro_rules! impl_formats {
             pub samples: Option<Vec<SampleInfo>>
         }
         impl Input {
-            pub fn from_stream<T: Read + Seek>(stream: &mut T, size: usize) -> Option<Input> {
+            pub fn from_stream<T: Read + Seek>(stream: &mut T, size: usize) -> Result<Input> {
                 if let Ok(buf) = util::read_beginning_and_end(stream, 1024*1024) { // 1 MB
                     $(
                         if let Some(mut x) = <$class>::detect(&buf) {
-                            return Some(Input {
+                            return Ok(Input {
                                 samples: x.parse(stream, size).ok(),
                                 inner: SupportedFormats::$name(x)
                             });
                         }
                     )*
+                    return Err(Error::new(ErrorKind::Other, "Unsupported file format"));
                 }
-                None
+                Err(Error::new(ErrorKind::Other, "Unable to read the source file"))
             }
             pub fn camera_type(&self) -> String {
                 match &self.inner {

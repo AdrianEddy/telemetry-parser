@@ -99,6 +99,108 @@ pub fn read_beginning_and_end<T: Read + Seek>(stream: &mut T, size: usize) -> Re
     Ok(all)
 }
 
+#[derive(Default, serde::Serialize)]
+pub struct IMUData {
+    pub timestamp: f64,
+    pub gyro: Vector3<f64>,
+    pub accl: Vector3<f64>
+}
+
+// TODO: interpolate if gyro and accel have different rates
+pub fn normalized_imu(samples: &Vec<SampleInfo>, orientation: Option<String>) -> Result<Vec<IMUData>> {
+    let mut timestamp = 0f64;
+
+    let mut final_data = Vec::<IMUData>::with_capacity(10000);
+    let mut data_index = 0;
+
+    for info in samples {
+        if info.tag_map.is_none() { continue; }
+
+        let grouped_tag_map = info.tag_map.as_ref().unwrap();
+
+        // Insta360
+        let first_frame_ts = crate::try_block!(f64, {
+            (grouped_tag_map.get(&GroupId::Default)?.get_t(TagId::Metadata) as Option<&serde_json::Value>)?
+                .as_object()?
+                .get("first_frame_timestamp")?
+                .as_i64()? as f64 / 1000.0
+        }).unwrap_or_default();
+
+        for (group, map) in grouped_tag_map {
+            if group == &GroupId::Gyroscope || group == &GroupId::Accelerometer {
+                let raw2unit = crate::try_block!(f64, {
+                    match &map.get(&TagId::Scale)?.value {
+                        TagValue::i16(v) => *v.get() as f64,
+                        TagValue::f32(v) => *v.get() as f64,
+                        _ => 1.0
+                    }
+                }).unwrap_or(1.0);
+
+                let unit2deg = crate::try_block!(f64, {
+                    match (map.get_t(TagId::Unit) as Option<&String>)?.as_str() {
+                        "rad/s" => 180.0 / std::f64::consts::PI, // rad to deg
+                        _ => 1.0
+                    }
+                }).unwrap_or(1.0);
+
+                let mut io = match map.get_t(TagId::Orientation) as Option<&String> {
+                    Some(v) => v.clone(),
+                    None => "XYZ".into()
+                };
+                if let Some(imuo) = &orientation {
+                    io = imuo.clone();
+                }
+                let io = io.as_bytes();
+
+                if let Some(taginfo) = map.get(&TagId::Data) {
+                    match &taginfo.value {
+                        // Sony and GoPro
+                        TagValue::Vec_Vector3_i16(arr) => {
+                            let arr = arr.get();
+                            let reading_duration = info.duration_ms / arr.len() as f64;
+        
+                            let mut j = 0;
+                            for v in arr {
+                                if final_data.len() <= data_index + j {
+                                    final_data.resize_with(data_index + j + 1, Default::default);
+                                    final_data[data_index + j].timestamp = timestamp;
+                                    timestamp += reading_duration;
+                                }
+                                let itm = v.clone().into_scaled(&raw2unit, &unit2deg).orient(io);
+                                     if group == &GroupId::Gyroscope     { final_data[data_index + j].gyro = itm; }
+                                else if group == &GroupId::Accelerometer { final_data[data_index + j].accl = itm; }
+                                
+                                j += 1;
+                            }
+                        }, 
+                        // Insta360
+                        TagValue::Vec_TimeVector3_f64(arr) => {
+                            let mut j = 0;
+                            for v in arr.get() {
+                                if v.t < first_frame_ts { continue; } // Skip gyro readings before actual first frame
+                                if final_data.len() <= data_index + j {
+                                    final_data.resize_with(data_index + j + 1, Default::default);
+                                    final_data[data_index + j].timestamp = (v.t - first_frame_ts) * 1000.0;
+                                }
+                                let itm = v.clone().into_scaled(&raw2unit, &unit2deg).orient(io);
+                                     if group == &GroupId::Gyroscope     { final_data[data_index + j].gyro = itm; }
+                                else if group == &GroupId::Accelerometer { final_data[data_index + j].accl = itm; }
+
+                                j += 1;
+                            }
+                        },
+                        _ => ()
+                    }
+                }
+            }
+        }
+        data_index = final_data.len();
+    }
+
+    Ok(final_data)
+}
+
+
 #[macro_export]
 macro_rules! try_block {
     ($type:ty, $body:block) => {
