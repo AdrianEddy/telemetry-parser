@@ -66,17 +66,16 @@ jobs:
           path: dist/gyro2bb*
 
   github_release:
-    name: Create GitHub Release
+    name: Create GitHub release
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Setup | Artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v2
 
-      - name: Build | Publish
+      - name: Publish
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: gyro2bb*
-          body_path: RELEASE.md
+          files: *
 
