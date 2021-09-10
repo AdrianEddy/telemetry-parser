@@ -76,10 +76,10 @@ jobs:
           name: gyro2bb
    
       - run: ls -l
-      
+
       - name: Publish
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-         files: gyro2bb/*
+         files: ./*
 
