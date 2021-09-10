@@ -4,7 +4,6 @@ build-backend = "maturin"
 
 [project]
 name = "telemetry-parser"
-version = "0.1.0"
 requires-python = ">=3.6"
 license = { text = "MPL-2.0" }
 authors = [{ name = "Adrian", email = "adrian.eddy@gmail.com" }]
