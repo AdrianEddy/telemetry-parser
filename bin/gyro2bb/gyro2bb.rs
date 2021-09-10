@@ -3,7 +3,7 @@ use argh::FromArgs;
 
 use telemetry_parser::*;
 
-/** gyro2bb v0.1.3
+/** gyro2bb v0.1.4
 Author: Adrian <adrian.eddy@gmail.com>
 
 Extract gyro data from Sony, GoPro and Insta360 cameras to betaflight blackbox csv log
