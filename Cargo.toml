@@ -3,6 +3,8 @@ name = "telemetry-parser"
 version = "0.1.0"
 authors = ["Adrian <adrian.eddy@gmail.com>"]
 edition = "2018"
+license = "MPL-2.0"
+repository = "https://github.com/AdrianEddy/telemetry-parser"
 
 [dependencies]
 mp4parse = { version = "*", git = "https://github.com/mozilla/mp4parse-rust.git", features = ["meta-xml", "unstable-api"] }

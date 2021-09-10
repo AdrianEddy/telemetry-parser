@@ -29,10 +29,10 @@ fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Result<mp
             let mut len = (&all[pos-4..]).read_u32::<BigEndian>()? as u64;
             if len == 1 { // Large box
                 len = (&all[pos+4..]).read_u64::<BigEndian>()? - how_much_less;
-                &all[pos+4..pos+12].copy_from_slice(&len.to_be_bytes());
+                all[pos+4..pos+12].copy_from_slice(&len.to_be_bytes());
             } else {
                 len -= how_much_less;
-                &all[pos-4..pos].copy_from_slice(&(len as u32).to_be_bytes());
+                all[pos-4..pos].copy_from_slice(&(len as u32).to_be_bytes());
             }
             let mut c = std::io::Cursor::new(&all);
             return mp4parse::read_mp4(&mut c);
@@ -102,8 +102,8 @@ pub fn read_beginning_and_end<T: Read + Seek>(stream: &mut T, size: usize) -> Re
 #[derive(Default, serde::Serialize)]
 pub struct IMUData {
     pub timestamp: f64,
-    pub gyro: Vector3<f64>,
-    pub accl: Vector3<f64>
+    pub gyro: [f64; 3],
+    pub accl: [f64; 3]
 }
 
 // TODO: interpolate if gyro and accel have different rates
@@ -167,8 +167,8 @@ pub fn normalized_imu(samples: &Vec<SampleInfo>, orientation: Option<String>) ->
                                     timestamp += reading_duration;
                                 }
                                 let itm = v.clone().into_scaled(&raw2unit, &unit2deg).orient(io);
-                                     if group == &GroupId::Gyroscope     { final_data[data_index + j].gyro = itm; }
-                                else if group == &GroupId::Accelerometer { final_data[data_index + j].accl = itm; }
+                                     if group == &GroupId::Gyroscope     { final_data[data_index + j].gyro = [ itm.x, itm.y, itm.z ]; }
+                                else if group == &GroupId::Accelerometer { final_data[data_index + j].accl = [ itm.x, itm.y, itm.z ]; }
                                 
                                 j += 1;
                             }
@@ -183,8 +183,8 @@ pub fn normalized_imu(samples: &Vec<SampleInfo>, orientation: Option<String>) ->
                                     final_data[data_index + j].timestamp = (v.t - first_frame_ts) * 1000.0;
                                 }
                                 let itm = v.clone().into_scaled(&raw2unit, &unit2deg).orient(io);
-                                     if group == &GroupId::Gyroscope     { final_data[data_index + j].gyro = itm; }
-                                else if group == &GroupId::Accelerometer { final_data[data_index + j].accl = itm; }
+                                     if group == &GroupId::Gyroscope     { final_data[data_index + j].gyro = [ itm.x, itm.y, itm.z ]; }
+                                else if group == &GroupId::Accelerometer { final_data[data_index + j].accl = [ itm.x, itm.y, itm.z ]; }
 
                                 j += 1;
                             }

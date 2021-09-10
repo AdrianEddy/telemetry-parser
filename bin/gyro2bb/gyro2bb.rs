@@ -2,7 +2,6 @@ use std::time::Instant;
 use argh::FromArgs;
 
 use telemetry_parser::*;
-use telemetry_parser::tags_impl::*;
 
 /** gyro2bb v0.1.0
 Author: Adrian <adrian.eddy@gmail.com>
@@ -34,7 +33,6 @@ fn main() {
     let input = Input::from_stream(&mut stream, filesize).unwrap();
 
     let mut i = 0;
-    let mut timestamp = 0f64;
     println!("Detected camera: {} {}", input.camera_type(), input.camera_model().unwrap_or(&"".into()));
 
     let samples = input.samples.as_ref().unwrap();
@@ -59,8 +57,8 @@ fn main() {
     csv.push('\n');
     for v in imu_data {
         csv.push_str(&format!("{},{:.0},{},{},{},{},{},{}\n", i, (v.timestamp * 1000.0).round(), 
-            -v.gyro.z, v.gyro.y, v.gyro.x,
-            -v.accl.z, v.accl.y, v.accl.x
+            -v.gyro[2], v.gyro[1], v.gyro[0],
+            -v.accl[2], v.accl[1], v.accl[0]
         ));
         i += 1;
     }

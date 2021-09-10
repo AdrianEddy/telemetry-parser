@@ -1,3 +1,18 @@
 [build-system]
 requires = ["maturin>=0.10,<0.11"]
 build-backend = "maturin"
+
+[project]
+name = "telemetry-parser"
+version = "0.1.0"
+requires-python = ">=3.6"
+license = { text = "MPL-2.0" }
+authors = [{ name = "Adrian", email = "adrian.eddy@gmail.com" }]
+classifiers = [
+    "Topic :: Utilities",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+
+[project.urls]
+homepage = "https://github.com/AdrianEddy/telemetry-parser"
