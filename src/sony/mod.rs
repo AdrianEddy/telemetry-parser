@@ -1,4 +1,5 @@
-pub mod rtmd_tags;
+mod rtmd_tags;
+mod mxf;
 
 #[cfg(feature="sony-xml")]
 pub mod xml_metadata;
@@ -17,23 +18,25 @@ pub struct Sony {
 }
 impl Sony {
     pub fn detect(buffer: &[u8]) -> Option<Self> {
-        if let Some(p1) = memmem::find(&buffer, b"manufacturer=\"Sony\"") {
+        if let Some(p1) = memmem::find(buffer, b"manufacturer=\"Sony\"") {
             return Some(Self {
-                model: crate::try_block!(String, {
-                    let p2 = memmem::find(&buffer[p1..], b"modelName=\"")?;
-                    let e = memchr::memchr(b'"', &buffer[p1+p2+11..])?;
-                    String::from_utf8_lossy(&buffer[p1+p2+11..p1+p2+11+e]).into_owned()
-                }),
-                ..Default::default()
+                model: util::find_between(&buffer[p1..p1+1024], b"modelName=\"", b'"')
             });
         }
         None
     }
 
     pub fn parse<T: Read + Seek>(&mut self, stream: &mut T, size: usize) -> Result<Vec<SampleInfo>> {
+        let mut header = [0u8; 4];
+        stream.read_exact(&mut header)?;
+        stream.seek(SeekFrom::Start(0))?;
+        if header == [0x06, 0x0E, 0x2B, 0x34] { // MXF header
+            return mxf::parse(stream, size);
+        }
+
         let mut samples = Vec::new();
         util::get_metadata_track_samples(stream, size, |mut info: SampleInfo, data: &[u8]| {
-            if Self::detect_metadata(&data) {
+            if Self::detect_metadata(data) {
                 if let Ok(map) = Sony::parse_metadata(&data[0x1C..]) {
                     info.tag_map = Some(map);
                     samples.push(info);
@@ -69,7 +72,7 @@ impl Sony {
             let len = slice.read_u16::<BigEndian>()? as usize;
             let pos = slice.position() as usize;
             if pos + len > datalen {
-                //eprintln!("Tag: {:02x}, len: {}, Available: {:x?}", tag, len, datalen - pos);
+                eprintln!("Tag: {:02x}, len: {}, Available: {}", tag, len, datalen - pos);
                 //println!("{}", crate::util::to_hex(&data[pos-4..]));
                 break;
             }
@@ -84,7 +87,7 @@ impl Sony {
                 }
                 continue;
             }
-            let mut tag_info = get_tag(tag, &tag_data);
+            let mut tag_info = get_tag(tag, tag_data);
             tag_info.native_id = Some(tag as u32);
 
             let group_map = map.entry(tag_info.group.clone()).or_insert_with(TagMap::new);

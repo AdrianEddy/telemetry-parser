@@ -2,6 +2,3 @@ target/
 .vscode/
 dev/
 .env*/
-gyro2bb.exe
-gyro2bb-linux64
-gyro2bb-mac64

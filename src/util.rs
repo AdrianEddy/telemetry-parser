@@ -1,6 +1,7 @@
 use std::io::*;
 use crate::tags_impl::*;
 use byteorder::{ReadBytesExt, BigEndian};
+use memchr::memmem;
 
 pub fn to_hex(data: &[u8]) -> String {
     let mut ret = String::with_capacity(data.len() * 3);
@@ -107,7 +108,7 @@ pub struct IMUData {
 }
 
 // TODO: interpolate if gyro and accel have different rates
-pub fn normalized_imu(samples: &Vec<SampleInfo>, orientation: Option<String>) -> Result<Vec<IMUData>> {
+pub fn normalized_imu(samples: &[SampleInfo], orientation: Option<String>) -> Result<Vec<IMUData>> {
     let mut timestamp = 0f64;
 
     let mut final_data = Vec::<IMUData>::with_capacity(10000);
@@ -159,8 +160,7 @@ pub fn normalized_imu(samples: &Vec<SampleInfo>, orientation: Option<String>) ->
                             let arr = arr.get();
                             let reading_duration = info.duration_ms / arr.len() as f64;
         
-                            let mut j = 0;
-                            for v in arr {
+                            for (j, v) in arr.iter().enumerate() {
                                 if final_data.len() <= data_index + j {
                                     final_data.resize_with(data_index + j + 1, Default::default);
                                     final_data[data_index + j].timestamp = timestamp;
@@ -169,14 +169,11 @@ pub fn normalized_imu(samples: &Vec<SampleInfo>, orientation: Option<String>) ->
                                 let itm = v.clone().into_scaled(&raw2unit, &unit2deg).orient(io);
                                      if group == &GroupId::Gyroscope     { final_data[data_index + j].gyro = [ itm.x, itm.y, itm.z ]; }
                                 else if group == &GroupId::Accelerometer { final_data[data_index + j].accl = [ itm.x, itm.y, itm.z ]; }
-                                
-                                j += 1;
                             }
                         }, 
                         // Insta360
                         TagValue::Vec_TimeVector3_f64(arr) => {
-                            let mut j = 0;
-                            for v in arr.get() {
+                            for (j, v) in arr.get().iter().enumerate() {
                                 if v.t < first_frame_ts { continue; } // Skip gyro readings before actual first frame
                                 if final_data.len() <= data_index + j {
                                     final_data.resize_with(data_index + j + 1, Default::default);
@@ -185,8 +182,6 @@ pub fn normalized_imu(samples: &Vec<SampleInfo>, orientation: Option<String>) ->
                                 let itm = v.clone().into_scaled(&raw2unit, &unit2deg).orient(io);
                                      if group == &GroupId::Gyroscope     { final_data[data_index + j].gyro = [ itm.x, itm.y, itm.z ]; }
                                 else if group == &GroupId::Accelerometer { final_data[data_index + j].accl = [ itm.x, itm.y, itm.z ]; }
-
-                                j += 1;
                             }
                         },
                         _ => ()
@@ -196,10 +191,18 @@ pub fn normalized_imu(samples: &Vec<SampleInfo>, orientation: Option<String>) ->
         }
         data_index = final_data.len();
     }
-
     Ok(final_data)
 }
 
+pub fn find_between_with_offset(buffer: &[u8], from: &[u8], to: u8, offset: i32) -> Option<String> {
+    let pos = memmem::find(buffer, from)?;
+    let end = memchr::memchr(to, &buffer[pos+from.len()..])?;
+    Some(String::from_utf8_lossy(&buffer[(pos as i32 + from.len() as i32 + offset) as usize..pos+from.len()+end]).into())
+}
+
+pub fn find_between(buffer: &[u8], from: &[u8], to: u8) -> Option<String> {
+    find_between_with_offset(buffer, from, to, 0)
+}
 
 #[macro_export]
 macro_rules! try_block {

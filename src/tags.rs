@@ -87,6 +87,7 @@ declare_types! {
 
     Vec_Quaternioni16: Vec<Quaternion<i16>>,
     Vec_TimeScalar_f64: Vec<TimeScalar<f64>>,
+    Vec_TimeScalar_i64: Vec<TimeScalar<i64>>,
     Vec_GpsData: Vec<GpsData>,
 
     Json:                serde_json::Value,
@@ -107,4 +108,7 @@ declare_types! {
     Vec_f64: Vec<f64>, Vec_Vec_f64: Vec<Vec<f64>>, Vec_Vector3_f64: Vec<Vector3<f64>>, Vec_TimeVector3_f64: Vec<TimeVector3<f64>>, 
     Vec_i64: Vec<i64>, Vec_Vec_i64: Vec<Vec<i64>>, Vec_Vector3_i64: Vec<Vector3<i64>>, Vec_TimeVector3_i64: Vec<TimeVector3<i64>>, 
     Vec_u64: Vec<u64>, Vec_Vec_u64: Vec<Vec<u64>>, Vec_Vector3_u64: Vec<Vector3<u64>>, Vec_TimeVector3_u64: Vec<TimeVector3<u64>>, 
+
+    Vec_TimeArray4_f64: Vec<TimeArray4<f64>>, 
+    Vec_TimeArray2_f64: Vec<TimeArray2<f64>>, 
 }

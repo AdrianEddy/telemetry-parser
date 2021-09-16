@@ -50,7 +50,7 @@ fn main() {
         }
     }
 
-    let imu_data = util::normalized_imu(&samples, opts.imuo).unwrap();
+    let imu_data = util::normalized_imu(samples, opts.imuo).unwrap();
 
     let mut csv = String::with_capacity(2*1024*1024);
     csv.push_str(r#""loopIteration","time","gyroADC[0]","gyroADC[1]","gyroADC[2]","accSmooth[0]","accSmooth[1]","accSmooth[2]""#);

@@ -169,9 +169,9 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         0x8110 => tag!(Colors, KneePoint, "Camera Knee Point",                                    f32,  "{:.2}",  |d| Ok(d.read_u16::<BigEndian>()? as f32 / 10.0), tag_data),
         0x8111 => tag!(Colors, KneeSlope, "Camera Knee Slope",                                    f32,  "{:.2}",  |d| read_rational(d), tag_data),
         0x8112 => tag!(Colors, LuminanceDynamicRange, "Camera Luminance Dynamic Range",           f32,  "{:.2}",  |d| Ok(d.read_u16::<BigEndian>()? as f32 / 10.0), tag_data),
-        0x8113 => tag!(Default, TagId::Custom("SettingFileURI".into()), "Camera Setting File URI",       String, |v| v.to_string(), |d| read_utf8(d), tag_data),
+        0x8113 => tag!(Default, TagId::Custom("SettingFileURI".into()), "Camera Setting File URI",String, |v| v.to_string(), |d| read_utf8(d), tag_data),
         0x8114 => tag!(Default, CameraAttributes, "Camera Attributes",                            String, |v| v.to_string(), |d| read_utf8(d), tag_data),
-        0x8115 => tag!(Exposure, TagId::Custom("ISOValue2".into()), "Exposure Index of Photo Meter",     u16, "{}",      |d| d.read_u16::<BigEndian>(), tag_data),
+        0x8115 => tag!(Exposure, TagId::Custom("ISOValue2".into()), "Exposure Index of Photo Meter", u16, "{}",   |d| d.read_u16::<BigEndian>(), tag_data),
         
         0x8116 => tag!(Colors, TagId::Custom("GammaforCDL".into()), "Gamma for CDL", u8, |v| { match v {
             0 => "Same as Capture Gamma".into(),
@@ -182,8 +182,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             _ => format!("{}", v)
         } }, |d| d.read_u8(), tag_data),
 
-        0x8117 => tag!(Colors, TagId::Custom("ASCCDLValue".into()), "ASC CDL V1.2", String, |v| v.to_string(), |d| {
-            // TODO: Make separate type instead of string
+        0x8117 => tag!(Colors, TagId::Custom("ASCCDLValue".into()), "ASC CDL V1.2", Json, |v| v.to_string(), |d| {
             let count = d.read_u32::<BigEndian>()?;
             let length = d.read_u32::<BigEndian>()?;
             if count != 10 || length != 2 { return Err(Error::new(ErrorKind::Other, "Invalid")); }
@@ -192,11 +191,15 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             let pr = read_f16_corrected(d)?; let pg = read_f16_corrected(d)?; let pb = read_f16_corrected(d)?;
 
             let sat = read_f16_corrected(d)?;
-            Ok(format!("sR={:.1} sG={:.1} sB={:.1}\noR={:.1} oG={:.1} oB={:.1}\npR={:.1} pG={:.1} pB={:.1}\nsat={:.1}", sr, sg, sb, or, og, ob, pr, pg, pb, sat))
+            Ok(serde_json::json!({
+                "slope":  { "r": sr, "g": sg, "b": sb},
+                "offset": { "r": or, "g": og, "b": ob},
+                "power":  { "r": pr, "g": pg, "b": pb},
+                "saturation": sat
+            }))
         }, tag_data),
 
-        0x8118 => tag!(Colors, ColorMatrix, "Color matrix", String, |v| v.to_string(), |d| {
-            // TODO: Make separate type instead of string
+        0x8118 => tag!(Colors, ColorMatrix, "Color matrix", Json, |v| v.to_string(), |d| {
             let count  = d.read_u32::<BigEndian>()?;
             let length = d.read_u32::<BigEndian>()?;
             if count != 9 || length != 8 {
@@ -214,11 +217,112 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             let rb = d.read_u32::<BigEndian>()? as f32 / d.read_u32::<BigEndian>()? as f32;
             let gb = d.read_u32::<BigEndian>()? as f32 / d.read_u32::<BigEndian>()? as f32;
             let bb = d.read_u32::<BigEndian>()? as f32 / d.read_u32::<BigEndian>()? as f32;
-            Ok(format!("RR={:.3} GR={:.3} BR={:.3}\nRG={:.3} GG={:.3} BG={:.3}\nRB={:.3} GB={:.3} BB={:.3}", rr, gr, br, rg, gg, bg, rb, gb, bb))
+            Ok(serde_json::json!({
+                "RR": rr, "GR": gr, "BR": br,
+                "RG": rg, "GG": gg, "BG": bg,
+                "RB": rb, "GB": gb, "BB": bb
+            }))
         }, tag_data),
 
         // -------------- UserDefinedAcquisitionMetadata --------------
         0xe000 => tag!(Default, GroupIdentifier, "UDAM Set Identifier", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
+        
+        0xe101 => tag!(Default, TagId::Custom("EffectiveMarkerCoverage".into()),         "Effective marker coverage",       u32x2, |v| format!("{} x {}", v.0, v.1), |d| Ok((d.read_u32::<BigEndian>()?, d.read_u32::<BigEndian>()?)), tag_data),
+        0xe102 => tag!(Default, TagId::Custom("EffectiveMarkerAspectRatio".into()),      "Effective marker aspect ratio",   u32x2, |v| format!("{} x {}", v.0, v.1), |d| Ok((d.read_u32::<BigEndian>()?, d.read_u32::<BigEndian>()?)), tag_data),
+        0xe103 => tag!(Default, TagId::Custom("CameraProcessDiscriminationCode".into()), "Camera process discrimination code", u16,|v| { match v {
+            0x0101 => "F65 RAW Mode released in December 2011".into(),
+            0x0102 => "F65 HD Mode released in April 2012".into(),
+            0x0103 => "F65 RAW High Frame Rate Mode released in July 2012".into(),
+            _ => format!("0x{:04x}", v)
+        } }, |d| d.read_u16::<BigEndian>(), tag_data),
+        0xe104 => tag!(Default, TagId::Custom("RotaryShutterMode".into()),               "Rotary shutter mode",             bool,   "{}", |d| Ok(d.read_u8()? != 0), tag_data), 
+        0xe105 => tag!(Default, TagId::Custom("RawBlackCodeValue".into()),               "RawBlack code value",             u16,    "{}", |d| d.read_u16::<BigEndian>(), tag_data), 
+        0xe106 => tag!(Default, TagId::Custom("RawGrayCodeValue".into()),                "RawGray code value",              u16,    "{}", |d| d.read_u16::<BigEndian>(), tag_data), 
+        0xe107 => tag!(Default, TagId::Custom("RawWhiteCodeValue".into()),               "RawWhite code value",             u16,    "{}", |d| d.read_u16::<BigEndian>(), tag_data), 
+        0xe109 => tag!(Default, TagId::Custom("MonitoringDescriptions".into()),          "Monitoring descriptions",         String, "{}", |d| read_utf8(d), tag_data), 
+        0xe10B => tag!(Default, TagId::Custom("MonitoringBaseCurve".into()),             "Monitoring base curve",           Uuid, |v| { match v.3 {
+            0x01010000 => "BT.470"                    .into(),
+            0x01020000 => "BT.709"                    .into(),
+            0x01030000 => "SMPTE ST 240"              .into(),
+            0x01040000 => "SMPTE ST 274"              .into(),
+            0x01050000 => "BT.1361"                   .into(),
+            0x01060000 => "SceneLinear"               .into(),
+            0x01080000 => "Rec709-xvYCC"              .into(),
+            0x010b0000 => "Rec2100-HLG"               .into(),
+            0x01010101 => "DVW-709 Like"              .into(),
+            0x01010102 => "E10/E30STD for J EK"       .into(),
+            0x01010103 => "E10/E30STD for UC"         .into(),
+            0x01010106 => "BBC Initial50"             .into(),
+            0x01010107 => "SD CamCorder STD"          .into(),
+            0x01010108 => "BVW-400 Like"              .into(),
+            0x01010109 => "Ikegami"                   .into(),
+            0x0101017F => "reproduced unknown label"  .into(),
+            0x01010201 => "HG3250G36"                 .into(),
+            0x01010202 => "HG4600G30"                 .into(),
+            0x01010203 => "HG3259G40"                 .into(),
+            0x01010204 => "HG4609G33"                 .into(),
+            0x01010205 => "HG8000G36"                 .into(),
+            0x01010206 => "HG8000G30"                 .into(),
+            0x01010207 => "HG8009G40"                 .into(),
+            0x01010208 => "HG8009G33"                 .into(),
+            0x01010301 => "CINE1 of EX1/EX3"          .into(),
+            0x01010302 => "CINE2 of EX1/EX3"          .into(),
+            0x01010303 => "CINE3 of EX1/EX3"          .into(),
+            0x01010304 => "CINE4 of EX1/EX3"          .into(),
+            0x01010305 => "Kodak 5248 film like"      .into(),
+            0x01010306 => "Kodak 5245 film like"      .into(),
+            0x01010307 => "Kodak 5293 film like"      .into(),
+            0x01010308 => "Kodak 5296 film like"      .into(),
+            0x01010309 => "Average of Film of MSW-900".into(),
+            0x01010401 => "User defined curve1"       .into(),
+            0x01010402 => "User defined curve2"       .into(),
+            0x01010403 => "User defined curve3"       .into(),
+            0x01010404 => "User defined curve4"       .into(),
+            0x01010405 => "User defined curve5"       .into(),
+            0x01010406 => "User defined curve6"       .into(),
+            0x01010407 => "User defined curve7"       .into(),
+            0x01010408 => "User defined curve8"       .into(),
+            0x01010501 => "S-Log"                     .into(),
+            0x01010502 => "FS-Log"                    .into(),
+            0x01010503 => "R709 180%"                 .into(),
+            0x01010504 => "R709 800%"                 .into(),
+            0x01010506 => "Cine-Log"                  .into(),
+            0x01010507 => "ASC-CDL"                   .into(),
+            0x01010508 => "S-Log2"                    .into(),
+            0x01010602 => "Still"                     .into(),
+            0x01010604 => "S-Log3"                    .into(),
+            0x01010605 => "S-Log3-Cine"               .into(),
+            _ => format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3)
+        } }, |d| read_uuid(d), tag_data),
+        /*0xe201 => tag!(Default, TagId::Custom("CookeProtocol_BinaryMetadata".into()),    "CookeProtocol_BinaryMetadata",    Json, "{:?}", |d| {
+            // TODO: Implement parsing of this type
+            // https://github.com/MediaArea/MediaInfoLib/blob/master/Source/MediaInfo/Multiple/File_Mxf.cpp#L12584 - UserDefinedAcquisitionMetadata_Sony_E201
+            "FocusDistance",
+            "ApertureValue",
+            "ApertureScale",
+            "EffectiveFocaleLength",
+            "HyperfocalDistance",
+            "NearFocusDistance",
+            "FarFocusDistance",
+            "HorizontalFieldOfView",
+            "EntrancePupilPosition",
+            "NormalizedZoomValue",
+            "LensSerialNumber",
+        }, tag_data), */
+        0xe202 => tag!(Default, TagId::Custom("CookeProtocol_UserMetadata".into()),    "CookeProtocol_UserMetadata",      String, "{}", |d| read_utf8(d), tag_data), 
+        0xe203 => tag!(Default, TagId::Custom("CookeProtocol_CalibrationType".into()), "CookeProtocol_CalibrationType",   u8, |v| { match v {
+            0 => "mm".into(),
+            1 => "in".into(),
+            _ => format!("{}", v)
+        } }, |d| d.read_u8(), tag_data),
+        0xe108 => tag!(Default, TagId::Custom("Unknown_e108".into()), "Unknown_e108", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
+        0xe10d => tag!(Default, TagId::Custom("Unknown_e10d".into()), "Unknown_e10d", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
+        0xe10e => tag!(Default, TagId::Custom("Unknown_e10e".into()), "Unknown_e10e", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
+        0xe10f => tag!(Default, TagId::Custom("Unknown_e10f".into()), "Unknown_e10f", u32x2, |v| format!("{} x {}", v.0, v.1), |d| Ok((d.read_u32::<BigEndian>()?, d.read_u32::<BigEndian>()?)), tag_data),
+        
+        0xe111 => tag!(Default, TagId::Custom("Unknown_e111".into()), "Unknown_e111", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
+        0xe112 => tag!(Default, TagId::Custom("Unknown_e112".into()), "Unknown_e112", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
+        0xe113 => tag!(Default, TagId::Custom("Unknown_e113".into()), "Unknown_e113", String, "{}", |d| read_utf8(d), tag_data),
 
         // -------------- Sony's proprietary --------------
         0xe300 => tag!(Default, StabilizationEnabled, "Stabilization", u8, "{}", |d| d.read_u8(), tag_data),
@@ -243,23 +347,22 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             Ok(chrono::NaiveDate::from_ymd((yy1 * 100.0 + yy2) as i32, mm, dd).and_hms(h, m, s).timestamp() as u64)
         }, tag_data),
 
-
         // Possible values: zFar, zNear, aspect, temporal_position, temporal_rotation
         ////////////////////////////////////////// ImagerControlInformation (IBIS) //////////////////////////////////////////
-        0xe400 => tag!(IBIS, Unknown(tag as u32), "IBIS position/rotation 3xi32", String, |v| v.to_string(), |d| {
+        0xe400 => tag!(IBIS, Unknown(tag as u32), "IBIS position/rotation 3xi32", Vector3_i32, "{:?}", |d| {
             let x = d.read_i32::<BigEndian>()?;
             let y = d.read_i32::<BigEndian>()?;
             let z = d.read_i32::<BigEndian>()?;
-            Ok(format!("{} {} {}", x, y, z))
+            Ok(Vector3 { x, y, z })
         }, tag_data),
         0xe401 => tag!(IBIS, Unknown(tag as u32), "IBIS position/rotation u8", u8, "{}", |d| d.read_u8(), tag_data),
         0xe402 => tag!(IBIS, Unknown(tag as u32), "IBIS position/rotation i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
         0xe403 => tag!(IBIS, Unknown(tag as u32), "IBIS position/rotation u8", u8, "{}", |d| d.read_u8(), tag_data),
-        0xe404 => tag!(IBIS, Unknown(tag as u32), "IBIS Position/Rotation 3xi16", String, |v| v.to_string(), |d| {
+        0xe404 => tag!(IBIS, Unknown(tag as u32), "IBIS Position/Rotation 3xi16", Vector3_i16, "{:?}", |d| {
             let x = d.read_i16::<BigEndian>()?;
             let y = d.read_i16::<BigEndian>()?;
             let z = d.read_i16::<BigEndian>()?;
-            Ok(format!("{} {} {}", x, y, z))
+            Ok(Vector3 { x, y, z })
         }, tag_data),
         0xe405 => tag!(IBIS, Unknown(tag as u32), "IBIS 2xi16", String, |v| v.to_string(), |d| {
             let x = d.read_i16::<BigEndian>()?;
@@ -365,22 +468,27 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
 
         ////////////////////////////////////////// DistortionCorrection //////////////////////////////////////////
         0xe420 => tag!(GroupId::Custom("LensDistortion".into()), Enabled, "LensDistortion bool", bool, "{}", |d| Ok(d.read_u8()? != 0), tag_data),
-        0xe421 => tag!(GroupId::Custom("LensDistortion".into()), Data,    "LensDistortion Table", String, |v| v.to_string(), |d| {
+        0xe421 => tag!(GroupId::Custom("LensDistortion".into()), Data,    "LensDistortion Table", Json, |v| v.to_string(), |d| {
             let aa = d.read_u32::<BigEndian>()?; // confirmed u32
             let bb = d.read_u32::<BigEndian>()?; // confirmed u32
 
             let cc = d.read_u8()?; // confirmed u8
-            let dd = d.read_f32::<BigEndian>()?; // confirmed u32
+            let dd = d.read_f32::<BigEndian>()?; // confirmed f32
             let elem_count = d.read_u32::<BigEndian>()?;
             let _elem_size = d.read_u32::<BigEndian>()?;
             let mut ret = Vec::with_capacity(elem_count as usize); // &XAVC::base_Array<unsigned short>
             for _ in 0..elem_count {
                 ret.push(d.read_u16::<BigEndian>()?); // confirmed u16
             }
-            Ok(format!("{:?} {} {} {:?}", (aa, bb), cc, dd, ret))
+            Ok(serde_json::json!({
+                "unk1": [aa, bb],
+                "unk2": cc,
+                "unk3": dd,
+                "unk4": ret
+            }))
         }, tag_data),
         0xe422 => tag!(GroupId::Custom("FocalPlaneDistortion".into()), Enabled, "FocalPlaneDistortion bool", bool, "{}", |d| Ok(d.read_u8()? != 0), tag_data),
-        0xe423 => tag!(GroupId::Custom("FocalPlaneDistortion".into()), Data,    "FocalPlaneDistortion Table", String, |v| v.into(), |d| {
+        0xe423 => tag!(GroupId::Custom("FocalPlaneDistortion".into()), Data,    "FocalPlaneDistortion Table", Json, |v| v.to_string(), |d| {
             let aa = d.read_i32::<BigEndian>()?;
             let bb = d.read_i16::<BigEndian>()?;
             let cc = d.read_i16::<BigEndian>()?;
@@ -393,10 +501,15 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
                     d.read_i16::<BigEndian>()?, // y
                 ));
             }
-            Ok(format!("{} {} {} {:?}", aa, bb, cc, ret))
+            Ok(serde_json::json!({
+                "unk1": aa,
+                "unk2": bb,
+                "unk3": cc,
+                "unk4": ret
+            }))
         }, tag_data),
         0xe424 => tag!(GroupId::Custom("MeshCorrection".into()), Enabled, "MeshCorrection::Mesh bool", bool, "{}", |d| Ok(d.read_u8()? != 0), tag_data),
-        0xe42f => tag!(GroupId::Custom("MeshCorrection".into()), Data,    "MeshCorrection::Mesh", String, |v| v.to_string(), |x| {
+        0xe42f => tag!(GroupId::Custom("MeshCorrection".into()), Data,    "MeshCorrection::Mesh", Json, |v| v.to_string(), |x| {
             let aa = x.read_i16::<BigEndian>()?; // confirmed i16
             
             let bb = x.read_u32::<BigEndian>()?; // confirmed i32
@@ -415,7 +528,13 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             let f3 = x.read_u8()?;
             let f4 = x.read_u8()?;
 
-            Ok(format!("{}, {:?}, {:?}\nXs: {:?}\nYs: {:?}\nSize: {} {} {} {}", aa, (bb, cc), (dd, ee), xs, ys, f1, f2, f3, f4))
+            Ok(serde_json::json!({
+                "unk1": aa,
+                "unk2": [bb, cc],
+                "size": [dd, ee],
+                "points": xs.into_iter().zip(ys).collect::<Vec<_>>(),
+                "unk3": [f1, f2, f3, f4]
+            }))
         }, tag_data),
         ////////////////////////////////////////// DistortionCorrection //////////////////////////////////////////
 

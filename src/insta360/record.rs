@@ -30,7 +30,7 @@ mod RecordFormat {
     pub const Json     : u8 = 2;
 }
 
-fn insert_tag(map: &mut GroupedTagMap, tag: TagDescription, ) {
+fn insert_tag(map: &mut GroupedTagMap, tag: TagDescription) {
     let group_map = map.entry(tag.group.clone()).or_insert_with(TagMap::new);
     group_map.insert(tag.id.clone(), tag);
 }

@@ -1,5 +1,16 @@
 # telemetry-parser-py
 `telemetry-parser` python module
+Library to parse real-time metadata embedded in video files or telemetry from other sources.
+
+Work in progress, the code is already working but I plan to add much more input and output formats.
+
+# Supported formats:
+- [x] Sony (RX0 II, a7s III, RX100 VII, ZV1, a7c, a7r IV, a6600, a9 II, a1, FX3, ZV-E10, FX6)
+- [x] GoPro (All models with gyro metadata, starting with HERO 5)
+- [x] Insta360 (OneR, SMO 4k, GO2)
+- [ ] TODO Betaflight blackbox (CSV and Binary)
+- [ ] TODO Runcam CSV
+- [ ] TODO DJI flight logs (*.dat, *.txt)
 
 # Example usage:
 ```python
@@ -20,8 +31,8 @@ print('Normalized IMU', tp.normalized_imu())
 ```
 
 # Building
-1. Setup virtual env: `python -m venv .env ; source .env/bin/activate ; pip install maturin`
+1. Setup virtual env: `python -m venv .env ; source .env/bin/activate`
 2. Install maturin: `pip install maturin`
 2. Build python wheels: `maturin build --release`
 3. Resulting wheels will be in `target/wheels/` directory
-4. Install using pip: `pip install telemetry_parser_py-0.1.0-cp39-none-win_amd64.wh`
+4. Install using pip: `pip install telemetry_parser_py-0.1.0-cp39-none-win_amd64.whl`

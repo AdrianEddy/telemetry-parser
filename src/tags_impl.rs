@@ -209,6 +209,9 @@ impl<T> ValueType<T> {
             (self.parse_fn.expect("value not parsed"))(&mut tag_slice).unwrap()
         })
     }
+    pub fn get_mut(&mut self) -> &mut T {
+        self.parsed_value.get_mut().unwrap()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -256,6 +259,16 @@ impl<T: std::convert::Into<f64>> TimeVector3<T> {
     }
 }
 #[derive(Debug, Clone, Serialize, Default)]
+pub struct TimeArray4<T> {
+    pub t: f64,
+    pub v: [T; 4]
+}
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct TimeArray2<T> {
+    pub t: f64,
+    pub v: [T; 2]
+}
+#[derive(Debug, Clone, Serialize, Default)]
 pub struct TimeScalar<T> {
     pub t: f64,
     pub v: T
@@ -280,16 +293,16 @@ pub struct GpsData {
 
 #[macro_export]
 macro_rules! tag {
-    ($group:expr, $id:expr, $name:literal, $type:ident, $format:literal, $body:expr, $tag_data:expr) => {
+    ($group:expr, $id:expr, $name:expr, $type:ident, $format:literal, $body:expr, $tag_data:expr) => {
         TagDescription { group: $group, id: $id, description: $name.to_owned(), value: TagValue::$type(ValueType::new($body, |v| format!($format, v), $tag_data.to_vec())), native_id: None }
     };
-    ($group:expr, $id:expr, $name:literal, $type:ident, $format:expr, $body:expr, $tag_data:expr) => {
+    ($group:expr, $id:expr, $name:expr, $type:ident, $format:expr, $body:expr, $tag_data:expr) => {
         TagDescription { group: $group, id: $id, description: $name.to_owned(), value: TagValue::$type(ValueType::new($body, $format, $tag_data.to_vec())), native_id: None }
     };
-    (parsed $group:expr, $id:expr, $name:literal, $type:ident, $format:expr, $val:expr, $tag_data:expr) => {
+    (parsed $group:expr, $id:expr, $name:expr, $type:ident, $format:expr, $val:expr, $tag_data:expr) => {
         TagDescription { group: $group, id: $id, description: $name.to_owned(), value: TagValue::$type(ValueType::new_parsed($format, $val, $tag_data.to_vec())), native_id: None }
     };
-    ($group:expr, $id:expr, $name:literal, $tag_data:expr) => {
+    ($group:expr, $id:expr, $name:expr, $tag_data:expr) => {
         TagDescription { group: $group, id: $id, description: $name.to_owned(), value: TagValue::Unknown(ValueType::new(|_| Ok(()), |_| "".into(), $tag_data.to_vec())), native_id: None }
     };
 }
