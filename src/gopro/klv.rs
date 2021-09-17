@@ -3,6 +3,9 @@ use byteorder::{ReadBytesExt, BigEndian};
 
 use crate::tags_impl::*;
 
+// TODO: Support TICK
+// TODO: Support custom types
+
 #[derive(Default)]
 pub struct KLV {
     pub key: [u8; 4],
@@ -63,7 +66,10 @@ impl KLV {
                             }
                         }
                     },)*
-                    b'c' => TagValue::String(ValueType::new(|d| Self::parse_string(d),   |v| v.into(), tag_data.to_vec())),
+                    b'c' => match self.repeat {
+                        1 => TagValue::String    (ValueType::new(|d| Self::parse_string(d), |v| v.into(), tag_data.to_vec())),
+                        _ => TagValue::Vec_String(ValueType::new(|d| Self::parse_strings(d), |v| format!("{:?}", v), tag_data.to_vec())),
+                    }
                     b'F' => TagValue::String(ValueType::new(|d| Self::parse_string(d),   |v| v.into(), tag_data.to_vec())),
                     b'G' => TagValue::Uuid  (ValueType::new(|d| Self::parse_uuid(d),     |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), tag_data.to_vec())),
                     b'U' => TagValue::u64   (ValueType::new(|d| Self::parse_utcdate(d),  |v| chrono::TimeZone::timestamp_millis(&chrono::Utc, *v as i64).to_string(), tag_data.to_vec())),
@@ -98,7 +104,7 @@ impl KLV {
             b"WBAL" | b"ISOE" | b"SHUT" |
             b"MWET" | b"IORI" | b"CORI" |
             b"AALP" | b"WNDM" | b"UNIF" |
-            b"WRGB" => TagId::Data,
+            b"WRGB" | b"GPS5" => TagId::Data,
 
             b"SIUN" | b"UNIT" => TagId::Unit,
             b"MTRX" => TagId::Matrix,
@@ -122,6 +128,7 @@ impl KLV {
             b"CORI" => GroupId::CameraOrientation,
             b"IORI" => GroupId::ImageOrientation,
             b"SHUT" => GroupId::Exposure,
+            b"GPS5" => GroupId::GPS,
             b"MWET" => GroupId::Custom("MicrophoneWet".into()),
             b"AALP" => GroupId::Custom("AGCAudioLevel".into()),
             b"WNDM" => GroupId::Custom("WindProcessing".into()),
@@ -137,6 +144,22 @@ impl KLV {
 
     fn parse_string(d: &mut Cursor::<&[u8]>) -> Result<String> {
         Ok((&d.get_ref()[8..].iter().map(|&c| c as char).collect::<String>()).trim_end_matches(char::from(0)).to_string())
+    }
+    fn parse_strings(d: &mut Cursor::<&[u8]>) -> Result<Vec<String>> {
+        let e = |_| -> Error { ErrorKind::InvalidData.into() };
+
+        d.seek(SeekFrom::Current(5))?;
+        let size = d.read_u8()? as usize;
+        let repeat = d.read_u16::<BigEndian>()? as usize;
+
+        let mut ret = Vec::with_capacity(repeat);
+        for v in d.get_ref()[8..].chunks(size) {
+            let end = v.iter().position(|&c| c == 0).unwrap_or(v.len());
+            
+            ret.push(String::from_utf8(v[0..end].to_vec()).map_err(e)?);
+        }
+        
+        Ok(ret)
     }
     fn parse_utcdate(x: &mut Cursor::<&[u8]>) -> Result<u64> {
         let e = |_| -> Error { ErrorKind::InvalidData.into() };
