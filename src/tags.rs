@@ -82,6 +82,7 @@ declare_types! {
     bool:   bool,
     u32x2:  (u32, u32),
     Uuid:   (u32, u32, u32, u32),
+    f64x3:  (f64, f64, f64),
 
     GpsData: GpsData,
 
@@ -97,6 +98,8 @@ declare_types! {
     Vector3_i8: Vector3<i8>,
     Vector3_i16: Vector3<i16>,
     Vector3_i32: Vector3<i32>,
+
+    Vec_String: Vec<String>, 
 
     Vec_i8:  Vec<i8>,  Vec_Vec_i8:  Vec<Vec<i8>>,  Vec_Vector3_i8:  Vec<Vector3<i8>>,  Vec_TimeVector3_i8:  Vec<TimeVector3<i8>>, 
     Vec_u8:  Vec<u8>,  Vec_Vec_u8:  Vec<Vec<u8>>,  Vec_Vector3_u8:  Vec<Vector3<u8>>,  Vec_TimeVector3_u8:  Vec<TimeVector3<u8>>,
