@@ -17,7 +17,8 @@ prost = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 argh = "0.1"
-memchr = "2"
+memchr = "2.4"
+fc-blackbox = { path = "dev/fc-blackbox/" }
 
 quick-xml = { version = "0.22", optional = true }
 

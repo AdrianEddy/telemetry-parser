@@ -2,6 +2,7 @@ use std::time::Instant;
 use argh::FromArgs;
 
 use telemetry_parser::*;
+use telemetry_parser::tags_impl::*;
 
 /** gyro2bb v0.1.4
 Author: Adrian <adrian.eddy@gmail.com>
@@ -50,9 +51,21 @@ fn main() {
         }
     }
 
-    let imu_data = util::normalized_imu(samples, opts.imuo).unwrap();
+    let imu_data = util::normalized_imu(&input, opts.imuo).unwrap();
 
     let mut csv = String::with_capacity(2*1024*1024);
+    crate::try_block!({
+        let map = samples[0].tag_map.as_ref()?;
+        let json = (map.get(&GroupId::Default)?.get_t(TagId::Metadata) as Option<&serde_json::Value>)?;
+        for (k, v) in json.as_object()? {
+            csv.push('"');
+            csv.push_str(&k.to_string());
+            csv.push_str("\",");
+            csv.push_str(&v.to_string());
+            csv.push('\n');
+        }
+    });
+
     csv.push_str(r#""loopIteration","time","gyroADC[0]","gyroADC[1]","gyroADC[2]","accSmooth[0]","accSmooth[1]","accSmooth[2]""#);
     csv.push('\n');
     for v in imu_data {

@@ -108,13 +108,13 @@ pub struct IMUData {
 }
 
 // TODO: interpolate if gyro and accel have different rates
-pub fn normalized_imu(samples: &[SampleInfo], orientation: Option<String>) -> Result<Vec<IMUData>> {
+pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Result<Vec<IMUData>> {
     let mut timestamp = 0f64;
 
     let mut final_data = Vec::<IMUData>::with_capacity(10000);
     let mut data_index = 0;
 
-    for info in samples {
+    for info in input.samples.as_ref().unwrap() {
         if info.tag_map.is_none() { continue; }
 
         let grouped_tag_map = info.tag_map.as_ref().unwrap();
@@ -148,6 +148,7 @@ pub fn normalized_imu(samples: &[SampleInfo], orientation: Option<String>) -> Re
                     Some(v) => v.clone(),
                     None => "XYZ".into()
                 };
+                io = input.normalize_imu_orientation(io);
                 if let Some(imuo) = &orientation {
                     io = imuo.clone();
                 }
@@ -202,6 +203,11 @@ pub fn find_between_with_offset(buffer: &[u8], from: &[u8], to: u8, offset: i32)
 
 pub fn find_between(buffer: &[u8], from: &[u8], to: u8) -> Option<String> {
     find_between_with_offset(buffer, from, to, 0)
+}
+
+pub fn insert_tag(map: &mut GroupedTagMap, tag: TagDescription) {
+    let group_map = map.entry(tag.group.clone()).or_insert_with(TagMap::new);
+    group_map.insert(tag.id.clone(), tag);
 }
 
 #[macro_export]

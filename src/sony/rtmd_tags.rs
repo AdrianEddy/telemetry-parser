@@ -140,7 +140,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
 
         0x8104 => tag!(Default, SensorWidth,  "Imager Dimension (Effective Width)",              f32, "{:.2}mm", |d| Ok(d.read_u16::<BigEndian>()? as f32 / 1000.0), tag_data),
         0x8105 => tag!(Default, SensorHeight, "Imager Dimension (Effective Height)",             f32, "{:.2}mm", |d| Ok(d.read_u16::<BigEndian>()? as f32 / 1000.0), tag_data),
-        0x8106 => tag!(Default, FrameRate,    "Capture Frame Rate",                              f32, "{:.3}fps", |d| read_rational(d), tag_data),
+        0x8106 => tag!(Default, FrameRate,    "Capture Frame Rate",                              f64, "{:.3}fps", |d| read_rational(d), tag_data),
         
         0x8107 => tag!(Default, SensorReadoutMode, "Image Sensor Readout Mode", u8, |v| { match v {
             0 => "Interlaced field" .into(),
@@ -167,7 +167,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         0x810E => tag!(Colors, WhiteBalance, "White Balance",                                     u16,  "{}K",    |d| d.read_u16::<BigEndian>(), tag_data),
         0x810F => tag!(Colors, MasterBlackLevel, "Camera Master BlackLevel",                      f32,  "{:.2}",  |d| Ok(d.read_u16::<BigEndian>()? as f32 / 10.0), tag_data),
         0x8110 => tag!(Colors, KneePoint, "Camera Knee Point",                                    f32,  "{:.2}",  |d| Ok(d.read_u16::<BigEndian>()? as f32 / 10.0), tag_data),
-        0x8111 => tag!(Colors, KneeSlope, "Camera Knee Slope",                                    f32,  "{:.2}",  |d| read_rational(d), tag_data),
+        0x8111 => tag!(Colors, KneeSlope, "Camera Knee Slope",                                    f64,  "{:.2}",  |d| read_rational(d), tag_data),
         0x8112 => tag!(Colors, LuminanceDynamicRange, "Camera Luminance Dynamic Range",           f32,  "{:.2}",  |d| Ok(d.read_u16::<BigEndian>()? as f32 / 10.0), tag_data),
         0x8113 => tag!(Default, TagId::Custom("SettingFileURI".into()), "Camera Setting File URI",String, |v| v.to_string(), |d| read_utf8(d), tag_data),
         0x8114 => tag!(Default, CameraAttributes, "Camera Attributes",                            String, |v| v.to_string(), |d| read_utf8(d), tag_data),
@@ -315,14 +315,14 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             1 => "in".into(),
             _ => format!("{}", v)
         } }, |d| d.read_u8(), tag_data),
-        0xe108 => tag!(Default, TagId::Custom("Unknown_e108".into()), "Unknown_e108", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
-        0xe10d => tag!(Default, TagId::Custom("Unknown_e10d".into()), "Unknown_e10d", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
-        0xe10e => tag!(Default, TagId::Custom("Unknown_e10e".into()), "Unknown_e10e", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
-        0xe10f => tag!(Default, TagId::Custom("Unknown_e10f".into()), "Unknown_e10f", u32x2, |v| format!("{} x {}", v.0, v.1), |d| Ok((d.read_u32::<BigEndian>()?, d.read_u32::<BigEndian>()?)), tag_data),
+        0xe108 => tag!(Default, Unknown(0xe108), "Unknown_e108", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
+        0xe10d => tag!(Default, Unknown(0xe10d), "Unknown_e10d", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
+        0xe10e => tag!(Default, Unknown(0xe10e), "Unknown_e10e", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
+        0xe10f => tag!(Default, Unknown(0xe10f), "Unknown_e10f", u32x2, |v| format!("{} x {}", v.0, v.1), |d| Ok((d.read_u32::<BigEndian>()?, d.read_u32::<BigEndian>()?)), tag_data),
         
-        0xe111 => tag!(Default, TagId::Custom("Unknown_e111".into()), "Unknown_e111", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
-        0xe112 => tag!(Default, TagId::Custom("Unknown_e112".into()), "Unknown_e112", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
-        0xe113 => tag!(Default, TagId::Custom("Unknown_e113".into()), "Unknown_e113", String, "{}", |d| read_utf8(d), tag_data),
+        0xe111 => tag!(Default, Unknown(0xe111), "Unknown_e111", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
+        0xe112 => tag!(Default, Unknown(0xe112), "Unknown_e112", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
+        0xe113 => tag!(Default, Unknown(0xe113), "Unknown_e113", String, "{}", |d| read_utf8(d), tag_data),
 
         // -------------- Sony's proprietary --------------
         0xe300 => tag!(Default, StabilizationEnabled, "Stabilization", u8, "{}", |d| d.read_u8(), tag_data),
@@ -629,25 +629,53 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         0xf010 => tag!(UnknownGroup(0xf000), Unknown(tag as u32), "Large unknown", tag_data),
         0xf020 => tag!(UnknownGroup(0xf000), Unknown(tag as u32), "Large unknown", tag_data),
 
-        /* TODO: GPS Tags
-           0x8500 - GPSVersionID 4 bytes - gps version - 2.2.0.0 (02020000)
-           0x8501 - GPSLatitudeRef 1 byte - LatitudeRef - N (4e)
-           0x8502 - GPSLatitude 18h bytes - Latitude - [4]/[4]:[4]/[4]:[4]/[4] = 09:09:09.123
-           0x8503 - GPSLongitudeRef 1 byte - LongtitudeRef - E (45)
-           0x8504 - GPSLongitude 18h bytes - Longtitude - [4]/[4]:[4]/[4]:[4]/[4] = 09:09:09.123
-           0x8505 - 1 byte - AltitudeRef  (equal to 1)
-           0x8506 - 8 bytes - Altitude (meters) ([4]/[4]???). Second [4] almost always = 1000 dec
-           0x8507 - GPSTimeStamp 18h bytes - Timestamp - [4]/[4]:[4]/[4]:[4]/[4] = 09:09:09.123
-           0x8509 - GPSStatus 1 byte - STATUS - 'A' (if GPS not acquired, = 'V')
-           0x850a - GPSMeasureMode 1 byte - MeasureMode - (2 = 2D, 3 = 3D)
-           0x850b - 8 bytes - DOP ([4]/[4]???). Second [4] almost always = 1000 dec
-           0x850c - 1 byte - SpeedRef (K = km/h, M = mph, N = knots)
-           0x850d - 8 bytes ([4]/[4]???) - SPEED
-           0x850e - 1 byte - TrackRef (Direction Reference, T = True direction, M = Magnetic direction)
-           0x850f - Direction 8 bytes ([4]/[4]???) (degrees from 0.0 to 359.99)
-           0x8512 - GPSMapDatum 6 bytes - MapDatum  - 57 47 53 2D 38 34 (WGS-84)
-           0x851d - GPSDateStamp 0a bytes - string (2018:10:30)
-        */
+        ////////////////////////////////////////// GPS //////////////////////////////////////////
+        0x8500 => tag!(GPS, TagId::Custom("GPSVersionID".into()), "GPS version ID", u32, |v| format!("{}.{}.{}.{}", (v << 24) & 0xff, (v << 16) & 0xff, (v << 8) & 0xff, v & 0xff), |d| d.read_u32::<BigEndian>(), tag_data),
+        0x8501 => tag!(GPS, TagId::Custom("GPSLatitudeRef".into()), "GPS latitude ref", u8, |v| match v {
+            b'N' => "North".into(),
+            b'S' => "South".into(),
+            _ => format!("{}", *v as char)
+        }, |d| d.read_u8(), tag_data),
+        0x8502 => tag!(GPS, TagId::Custom("GPSLatitude".into()), "GPS latitude", f64x3, |v| format!("{}:{}:{}", v.0, v.1, v.2), |d| Ok((read_rational(d)?, read_rational(d)?, read_rational(d)?)), tag_data), // TODO: ToDegrees, ToDMS
+        0x8503 => tag!(GPS, TagId::Custom("GPSLongitudeRef".into()), "GPS longitude ref", u8, |v| match v {
+            b'E' => "East".into(),
+            b'W' => "West".into(),
+            _ => format!("{}", *v as char)
+        }, |d| d.read_u8(), tag_data),
+        0x8504 => tag!(GPS, TagId::Custom("GPSLongitude".into()), "GPS longitude", f64x3, |v| format!("{}:{}:{}", v.0, v.1, v.2), |d| Ok((read_rational(d)?, read_rational(d)?, read_rational(d)?)), tag_data), // TODO: ToDegrees, ToDMS
+        0x8505 => tag!(GPS, TagId::Custom("GPSAltitudeRef".into()), "GPS altitude ref", u8, "{}", |d| d.read_u8(), tag_data),
+        0x8506 => tag!(GPS, TagId::Custom("GPSAltitude".into()), "GPS altitude", f64, "{}", |d| read_rational(d), tag_data),
+        
+        0x8507 => tag!(GPS, TagId::Custom("GPSTimeStamp".into()), "GPS timestamp", f64x3, |v| format!("{}:{}:{}", v.0, v.1, v.2), |d| Ok((read_rational(d)?, read_rational(d)?, read_rational(d)?)), tag_data), // TODO: ConvertTimeStamp, PrintTimeStamp
+        0x8509 => tag!(GPS, TagId::Custom("GPSStatus".into()), "GPS status", u8, |v| match v {
+            b'A' => "Active".into(),
+            b'V' => "Void".into(),
+            _ => format!("{}", *v as char)
+        }, |d| d.read_u8(), tag_data),
+        0x850a => tag!(GPS, TagId::Custom("GPSMeasureMode".into()), "GPS measure mode", u8, |v| match v {
+            2 => "2D".into(),
+            3 => "3D".into(),
+            _ => format!("{}", v)
+        }, |d| d.read_u8(), tag_data),
+
+        0x850b => tag!(GPS, TagId::Custom("DOP".into()), "DOP", f64, "{}", |d| read_rational(d), tag_data),
+        0x850c => tag!(GPS, TagId::Custom("GPSSpeedRef".into()), "GPS speed ref", u8, |v| match v {
+            b'K' => "km/h".into(),
+            b'M' => "mph".into(),
+            b'N' => "knots".into(),
+            _ => format!("{}", *v as char)
+        }, |d| d.read_u8(), tag_data),
+        0x850d => tag!(GPS, TagId::Custom("GPSSpeed".into()), "GPS speed", f64, "{}", |d| read_rational(d), tag_data),
+        0x850e => tag!(GPS, TagId::Custom("GPSTrackRef".into()), "GPS track ref", u8, |v| match v {
+            b'T' => "True direction".into(),
+            b'M' => "Magnetic direction".into(),
+            _ => format!("{}", *v as char)
+        }, |d| d.read_u8(), tag_data),
+
+        0x8512 => tag!(GPS, TagId::Custom("GPSMapDatum".into()),  "GPS map datum",  String, |v| v.to_string(), |d| read_utf8(d), tag_data),
+        0x851d => tag!(GPS, TagId::Custom("GPSDateStamp".into()), "GPS date stamp", String, |v| v.to_string(), |d| read_utf8(d), tag_data), // TODO: Exif::ExifDate
+
+        ////////////////////////////////////////// GPS //////////////////////////////////////////
         _ => tag!(UnknownGroup(0), Unknown(tag as u32), "Unknown", tag_data),
     }
 }
@@ -688,47 +716,33 @@ fn read_uuid(d: &mut Cursor::<&[u8]>) -> Result<(u32,u32,u32,u32)> {
 
 fn read_orientation(d: &mut Cursor::<&[u8]>) -> Result<String> {
     let num = d.read_u16::<BigEndian>()?;
-    // RX0 II:    0x241 ; 0010 0100 0001 ; xZY -> Zxy
-    // A7s III:   0x420 ; 0100 0010 0000 ; XYZ -> YXz
-    // RX100 VII: 0x152 ; 0001 0101 0010 ; Yzx -> zYX
-    // ZV1:       0x351 ; 0011 0101 0001 ; xzy -> zxY
-    // A7C:       0x420 ; 0100 0010 0000 ; XYZ -> YXz
+    // RX0 II:    0x241 ; 0010 0100 0001 ; xZY
+    // A7s III:   0x420 ; 0100 0010 0000 ; XYZ
+    // RX100 VII: 0x152 ; 0001 0101 0010 ; Yzx
+    // ZV1:       0x351 ; 0011 0101 0001 ; xzy
+    // A7C:       0x420 ; 0100 0010 0000 ; XYZ
 
-    fn from_num(n: i8) -> char {
-        match n { // lowercase is negative
+    fn from_num(n: i8) -> Result<char> {
+        Ok(match n { // lowercase is negative
             0 => 'X', 1 => 'x',
             2 => 'Y', 3 => 'y',
             4 => 'Z', 5 => 'z',
-            _ => '_'
-        }
-    }
-    fn invert_case(x: char) -> char {
-        if x.is_ascii_lowercase() { x.to_ascii_uppercase() } else { x.to_ascii_lowercase() }
+            _ => { return Err(Error::new(ErrorKind::Other, format!("Invalid orientation data! {} {:#x} {:#b}", n, n, n))); }
+        })
     }
 
-    let mut ret = vec![
-        from_num((num & 0x0f) as i8),
-        from_num(((num >> 4) & 0x0f) as i8),
-        from_num(((num >> 8) & 0x0f) as i8)
-    ];
-
-    if ret.contains(&'_') {
-        return Err(Error::new(ErrorKind::Other, format!("Invalid orientation data! {} {:#x} {:#b}: {:?}", num, num, num, ret)));
-    }
-
-    // Normalize to common orientation - swap X/Y and invert Z
-    // TODO: I don't think it belongs here
-    ret.swap(0, 1);
-    ret[2] = invert_case(ret[2]);
-
-    Ok(ret.iter().collect())
+    Ok(vec![
+        from_num((num & 0x0f) as i8)?,
+        from_num(((num >> 4) & 0x0f) as i8)?,
+        from_num(((num >> 8) & 0x0f) as i8)?
+    ].iter().collect())
 }
 
-fn read_rational(d: &mut Cursor::<&[u8]>) -> Result<f32> {
+fn read_rational(d: &mut Cursor::<&[u8]>) -> Result<f64> {
     let n = d.read_i32::<BigEndian>()? as f64;
     let d = d.read_i32::<BigEndian>()? as f64;
     if d > 0.0 {
-        Ok((n / d) as f32)
+        Ok(n / d)
     } else {
         Err(Error::new(ErrorKind::Other, "Invalid rational"))
     }

@@ -66,8 +66,9 @@ impl KLV {
                             }
                         }
                     },)*
-                    b'c' => match self.repeat {
-                        1 => TagValue::String    (ValueType::new(|d| Self::parse_string(d), |v| v.into(), tag_data.to_vec())),
+                    b'c' => match (self.repeat, self.size) {
+                        (1, _) |
+                        (_, 1) => TagValue::String    (ValueType::new(|d| Self::parse_string(d), |v| v.into(), tag_data.to_vec())),
                         _ => TagValue::Vec_String(ValueType::new(|d| Self::parse_strings(d), |v| format!("{:?}", v), tag_data.to_vec())),
                     }
                     b'F' => TagValue::String(ValueType::new(|d| Self::parse_string(d),   |v| v.into(), tag_data.to_vec())),

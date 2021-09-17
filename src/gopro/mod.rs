@@ -18,7 +18,7 @@ impl GoPro {
     pub fn detect(buffer: &[u8]) -> Option<Self> {
         let mut ret = None;
     
-        if let Some(pos) = memmem::find(&buffer, b"GPMFDEVC") {
+        if let Some(pos) = memmem::find(buffer, b"GPMFDEVC") {
             let mut obj = Self::default();
             let mut buf = &buffer[pos-4..];
             let len = buf.read_u32::<BigEndian>().unwrap() as usize;
@@ -34,18 +34,19 @@ impl GoPro {
                 obj.extra_gpmf = Some(map);
             }
             ret = Some(obj);
+        } else if memmem::find(buffer, b"GoPro MET").is_some() {
+            ret = Some(Self::default());
         }
+        
         if ret.is_none() || ret.as_ref().unwrap().model.is_none() {
             // Find model name in GPRO section in `mdat` at the beginning of the file
-            if let Some(p1) = memmem::find(&buffer, b"GPRO") {
-                ret = Some(Self {
-                    model: crate::try_block!(String, {
-                        let p2 = memmem::find(&buffer[p1..p1+1024], b"HERO")?;
-                        let end = memchr::memchr(0, &buffer[p1+p2..p1+p2+64])?;
-                        String::from_utf8_lossy(&buffer[p1+p2..p1+p2+end]).into_owned()
-                    }),
-                    ..Default::default()
-                });
+            if let Some(p1) = memmem::find(buffer, b"GPRO") {
+                let model = util::find_between_with_offset(&buffer[p1..p1+1024], b"HERO", b'\0', -4);
+                if ret.is_some() {
+                    ret.as_mut().unwrap().model = model;
+                } else {
+                    ret = Some(Self { model, ..Default::default() });
+                }
             }
         }
         ret
@@ -57,7 +58,7 @@ impl GoPro {
             samples.push(SampleInfo { index: 0, timestamp_ms: 0.0, duration_ms: 0.0, tag_map: Some(extra.clone()) });
         }
         util::get_metadata_track_samples(stream, size, |mut info: SampleInfo, data: &[u8]| {
-            if Self::detect_metadata(&data) {
+            if Self::detect_metadata(data) {
                 if let Ok(mut map) = GoPro::parse_metadata(&data[8..], GroupId::Default, false) {
                     self.process_map(&mut map);
                     info.tag_map = Some(map);
@@ -92,7 +93,7 @@ impl GoPro {
                 slice.seek(SeekFrom::Current(klv.aligned_data_len() as i64))?;
 
                 if klv.data_type == 0 { // Container
-                    let container_group = if force_group { group_id.clone() } else { KLV::group_from_key(GoPro::get_last_klv(&tag_data)?) };
+                    let container_group = if force_group { group_id.clone() } else { KLV::group_from_key(GoPro::get_last_klv(tag_data)?) };
                     for (g, v) in GoPro::parse_metadata(tag_data, container_group, force_group)? {
                         let group_map = map.entry(g).or_insert_with(TagMap::new);
                         group_map.extend(v);
@@ -104,7 +105,7 @@ impl GoPro {
                     group:       group_id.clone(),
                     id:          klv.tag_id(),
                     description: klv.key_as_string(),
-                    value:       klv.parse_data(&full_tag_data),
+                    value:       klv.parse_data(full_tag_data),
                     native_id:   Some((&klv.key[..]).read_u32::<BigEndian>()?)
                 };
 
@@ -172,5 +173,9 @@ impl GoPro {
             else if mtrx[x * 3 + 2] > 0.5 { 'Z' } else if mtrx[x * 3 + 2] < -0.5 { 'z' }
             else { panic!("Invalid MTRX {:?}", mtrx) }
         }).collect()
+    }
+
+    pub fn normalize_imu_orientation(v: String) -> String {
+        v
     }
 }

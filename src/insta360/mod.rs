@@ -86,4 +86,8 @@ impl Insta360 {
             x.insert(Orientation, tag!(parsed Accelerometer, Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.to_string(), Vec::new()));
         }
     }
+
+    pub fn normalize_imu_orientation(v: String) -> String {
+        v
+    }
 }

@@ -90,7 +90,7 @@ pub fn parse(id: u8, format: u8, data: &[u8]) -> Result<GroupedTagMap> {
             insert_tag(&mut map, tag!(parsed Accelerometer, Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), acc_vec, vec![]));
             insert_tag(&mut map, tag!(parsed Gyroscope,     Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro_vec, vec![]));
 
-            insert_tag(&mut map, tag!(parsed Accelerometer, Unit, "Accelerometer unit", String, |v| v.to_string(), "m/s2".into(),  Vec::new()));
+            insert_tag(&mut map, tag!(parsed Accelerometer, Unit, "Accelerometer unit", String, |v| v.to_string(), "m/s²".into(),  Vec::new()));
             insert_tag(&mut map, tag!(parsed Gyroscope,     Unit, "Gyroscope unit",     String, |v| v.to_string(), "rad/s".into(), Vec::new()));
         },
         RecordType::Exposure | RecordType::ExposureSecondary => {

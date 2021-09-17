@@ -63,9 +63,7 @@ impl Parser {
     fn normalized_imu(&self, orientation: Option<String>) -> PyResult<Py<PyAny>> {
         if self.input.samples.is_none() { return Err(pyo3::exceptions::PyValueError::new_err("No metadata")); }
 
-        let samples = self.input.samples.as_ref().unwrap();
-
-        let imu_data = util::normalized_imu(&samples, orientation)?;
+        let imu_data = util::normalized_imu(&self.input, orientation)?;
         
         let gil = Python::acquire_gil();
         Ok(pythonize(gil.python(), &imu_data)?)

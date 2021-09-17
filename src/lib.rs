@@ -42,6 +42,11 @@ macro_rules! impl_formats {
                     $(SupportedFormats::$name(x) => x.model.as_ref(),)*
                 }
             }
+            pub fn normalize_imu_orientation(&self, v: String) -> String {
+                match &self.inner {
+                    $(SupportedFormats::$name(_) => <$class>::normalize_imu_orientation(v),)*
+                }
+            }
         }
     };
 }
