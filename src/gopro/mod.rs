@@ -15,7 +15,7 @@ pub struct GoPro {
 }
 
 impl GoPro {
-    pub fn detect(buffer: &[u8]) -> Option<Self> {
+    pub fn detect(buffer: &[u8], _filename: &str) -> Option<Self> {
         let mut ret = None;
     
         if let Some(pos) = memmem::find(buffer, b"GPMFDEVC") {
@@ -41,11 +41,12 @@ impl GoPro {
         if ret.is_none() || ret.as_ref().unwrap().model.is_none() {
             // Find model name in GPRO section in `mdat` at the beginning of the file
             if let Some(p1) = memmem::find(buffer, b"GPRO") {
-                let model = util::find_between_with_offset(&buffer[p1..p1+1024], b"HERO", b'\0', -4);
-                if ret.is_some() {
-                    ret.as_mut().unwrap().model = model;
-                } else {
-                    ret = Some(Self { model, ..Default::default() });
+                if let Some(model) = util::find_between_with_offset(&buffer[p1..(p1+1024).min(buffer.len())], b"HERO", b'\0', -4) {
+                    if let Some(obj) = &mut ret {
+                        obj.model = Some(model);
+                    } else {
+                        ret = Some(Self { model: Some(model), ..Default::default() });
+                    }
                 }
             }
         }
@@ -101,16 +102,13 @@ impl GoPro {
                     continue;
                 }
 
-                let tag_info = TagDescription {
+                util::insert_tag(&mut map, TagDescription {
                     group:       group_id.clone(),
                     id:          klv.tag_id(),
                     description: klv.key_as_string(),
                     value:       klv.parse_data(full_tag_data),
                     native_id:   Some((&klv.key[..]).read_u32::<BigEndian>()?)
-                };
-
-                let group_map = map.entry(tag_info.group.clone()).or_insert_with(TagMap::new);
-                group_map.insert(tag_info.id.clone(), tag_info);
+                });
             } else {
                 break;
             }
@@ -177,5 +175,9 @@ impl GoPro {
 
     pub fn normalize_imu_orientation(v: String) -> String {
         v
+    }
+    
+    pub fn camera_type(&self) -> String {
+        "GoPro".to_owned()
     }
 }

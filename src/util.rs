@@ -24,7 +24,7 @@ fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Result<mp
         // With large files we can save a lot of time by only parsing actual MP4 box structure, skipping track data ifself.
         // We do that by reading 2 MB from each end of the file, then patching `mdat` box to make the 4 MB buffer a correct MP4 file.
         // This is hacky, but it's worth a try and if we fail we fallback to full parsing anyway.
-        let mut all = read_beginning_and_end(stream, 2*1024*1024)?;
+        let mut all = read_beginning_and_end(stream, size, 2*1024*1024)?;
         if let Some(pos) = memchr::memmem::find(&all, b"mdat") {
             let how_much_less = (size - all.len()) as u64;
             let mut len = (&all[pos-4..]).read_u32::<BigEndian>()? as u64;
@@ -85,18 +85,25 @@ pub fn get_metadata_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize
     Ok(())
 }
 
-pub fn read_beginning_and_end<T: Read + Seek>(stream: &mut T, size: usize) -> Result<Vec<u8>> {
-    let mut all = vec![0u8; size*2];
-
-    stream.seek(SeekFrom::Start(0))?;
-    let read1 = stream.read(&mut all[..size])?;
-
-    stream.seek(SeekFrom::End(-(size as i64)))?;
-    let read2 = stream.read(&mut all[read1..])?;
+pub fn read_beginning_and_end<T: Read + Seek>(stream: &mut T, stream_size: usize, read_size: usize) -> Result<Vec<u8>> {
+    let mut all = vec![0u8; read_size*2];
 
     stream.seek(SeekFrom::Start(0))?;
 
-    all.resize(read1+read2, 0);
+    if stream_size > read_size * 2 {
+        let read1 = stream.read(&mut all[..read_size])?;
+    
+        stream.seek(SeekFrom::End(-(read_size as i64)))?;
+        let read2 = stream.read(&mut all[read1..])?;
+
+        all.resize(read1+read2, 0);
+    } else {
+        let read = stream.read(&mut all)?;
+        all.resize(read, 0);
+    }
+
+    stream.seek(SeekFrom::Start(0))?;
+
     Ok(all)
 }
 
@@ -133,6 +140,7 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
                     match &map.get(&TagId::Scale)?.value {
                         TagValue::i16(v) => *v.get() as f64,
                         TagValue::f32(v) => *v.get() as f64,
+                        TagValue::f64(v) => *v.get(),
                         _ => 1.0
                     }
                 }).unwrap_or(1.0);

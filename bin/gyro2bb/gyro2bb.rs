@@ -4,7 +4,7 @@ use argh::FromArgs;
 use telemetry_parser::*;
 use telemetry_parser::tags_impl::*;
 
-/** gyro2bb v0.1.4
+/** gyro2bb v0.1.5
 Author: Adrian <adrian.eddy@gmail.com>
 
 Extract gyro data from Sony, GoPro and Insta360 cameras to betaflight blackbox csv log
@@ -31,7 +31,9 @@ fn main() {
     let mut stream = std::fs::File::open(&opts.input).unwrap();
     let filesize = stream.metadata().unwrap().len() as usize;
 
-    let input = Input::from_stream(&mut stream, filesize).unwrap();
+    let filename = std::path::Path::new(&opts.input).file_name().unwrap().to_str().unwrap();
+
+    let input = Input::from_stream(&mut stream, filesize, filename).unwrap();
 
     let mut i = 0;
     println!("Detected camera: {} {}", input.camera_type(), input.camera_model().unwrap_or(&"".into()));
@@ -54,6 +56,8 @@ fn main() {
     let imu_data = util::normalized_imu(&input, opts.imuo).unwrap();
 
     let mut csv = String::with_capacity(2*1024*1024);
+    csv.push_str(r#""Product","Blackbox flight data recorder by Nicholas Sherlock""#);
+    csv.push('\n');
     crate::try_block!({
         let map = samples[0].tag_map.as_ref()?;
         let json = (map.get(&GroupId::Default)?.get_t(TagId::Metadata) as Option<&serde_json::Value>)?;

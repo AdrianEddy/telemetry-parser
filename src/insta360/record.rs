@@ -6,6 +6,7 @@ use crate::tag;
 use crate::tags_impl::*;
 use crate::tags_impl::TagId::*;
 use crate::tags_impl::GroupId::*;
+use crate::util::insert_tag;
 
 #[allow(non_snake_case, non_upper_case_globals)]
 mod RecordType {
@@ -28,11 +29,6 @@ mod RecordFormat {
     pub const Binary   : u8 = 0;
     pub const Protobuf : u8 = 1;
     pub const Json     : u8 = 2;
-}
-
-fn insert_tag(map: &mut GroupedTagMap, tag: TagDescription) {
-    let group_map = map.entry(tag.group.clone()).or_insert_with(TagMap::new);
-    group_map.insert(tag.id.clone(), tag);
 }
 
 pub fn parse(id: u8, format: u8, data: &[u8]) -> Result<GroupedTagMap> {

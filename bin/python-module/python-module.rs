@@ -20,7 +20,9 @@ impl Parser {
         let mut stream = std::fs::File::open(&path)?;
         let filesize = stream.metadata()?.len() as usize;
 
-        let input = Input::from_stream(&mut stream, filesize)?;
+        let filename = std::path::Path::new(&path).file_name().unwrap_or_default().to_str().unwrap_or_default();
+
+        let input = Input::from_stream(&mut stream, filesize, filename)?;
 
         Ok(Self {
             camera: Some(input.camera_type()),
@@ -42,7 +44,7 @@ impl Parser {
             let groups_map = info.tag_map.as_ref().unwrap();
 
             for (group, map) in groups_map {
-                let group_map = groups.entry(group).or_insert(BTreeMap::new());
+                let group_map = groups.entry(group).or_insert_with(BTreeMap::new);
                 for (tagid, info) in map {
                     let value = if human_readable.unwrap_or(false) {
                         serde_json::to_value(info.value.to_string())

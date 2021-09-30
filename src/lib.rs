@@ -1,6 +1,8 @@
 mod sony;
 mod gopro;
 mod insta360;
+mod blackbox;
+mod runcam;
 
 pub mod tags_impl;
 pub mod util;
@@ -18,23 +20,21 @@ macro_rules! impl_formats {
             pub samples: Option<Vec<SampleInfo>>
         }
         impl Input {
-            pub fn from_stream<T: Read + Seek>(stream: &mut T, size: usize) -> Result<Input> {
-                if let Ok(buf) = util::read_beginning_and_end(stream, 1024*1024) { // 1 MB
-                    $(
-                        if let Some(mut x) = <$class>::detect(&buf) {
-                            return Ok(Input {
-                                samples: x.parse(stream, size).ok(),
-                                inner: SupportedFormats::$name(x)
-                            });
-                        }
-                    )*
-                    return Err(Error::new(ErrorKind::Other, "Unsupported file format"));
-                }
-                Err(Error::new(ErrorKind::Other, "Unable to read the source file"))
+            pub fn from_stream<T: Read + Seek>(stream: &mut T, size: usize, filename: &str) -> Result<Input> {
+                let buf = util::read_beginning_and_end(stream, size, 2*1024*1024)?; // 2 MB
+                $(
+                    if let Some(mut x) = <$class>::detect(&buf, filename) {
+                        return Ok(Input {
+                            samples: x.parse(stream, size).ok(),
+                            inner: SupportedFormats::$name(x)
+                        });
+                    }
+                )*
+                return Err(Error::new(ErrorKind::Other, "Unsupported file format"));
             }
             pub fn camera_type(&self) -> String {
                 match &self.inner {
-                    $(SupportedFormats::$name(_) => stringify!($name).into(),)*
+                    $(SupportedFormats::$name(x) => x.camera_type(),)*
                 }
             }
             pub fn camera_model(&self) -> Option<&String> {
@@ -55,4 +55,6 @@ impl_formats! {
     GoPro    => gopro::GoPro,
     Sony     => sony::Sony,
     Insta360 => insta360::Insta360,
+    BlackBox => blackbox::BlackBox,
+    Runcam   => runcam::Runcam,
 }

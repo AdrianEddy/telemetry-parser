@@ -18,7 +18,7 @@ pub struct Insta360 {
 }
 
 impl Insta360 {
-    pub fn detect(buffer: &[u8]) -> Option<Self> {
+    pub fn detect(buffer: &[u8], _filename: &str) -> Option<Self> {
         if buffer.len() > MAGIC.len() && &buffer[buffer.len()-MAGIC.len()..] == MAGIC {
             return Some(Insta360::default());
         }
@@ -89,5 +89,9 @@ impl Insta360 {
 
     pub fn normalize_imu_orientation(v: String) -> String {
         v
+    }
+    
+    pub fn camera_type(&self) -> String {
+        "Insta360".to_owned()
     }
 }

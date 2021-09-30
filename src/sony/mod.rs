@@ -17,10 +17,10 @@ pub struct Sony {
     pub model: Option<String>
 }
 impl Sony {
-    pub fn detect(buffer: &[u8]) -> Option<Self> {
+    pub fn detect(buffer: &[u8], _filename: &str) -> Option<Self> {
         if let Some(p1) = memmem::find(buffer, b"manufacturer=\"Sony\"") {
             return Some(Self {
-                model: util::find_between(&buffer[p1..p1+1024], b"modelName=\"", b'"')
+                model: util::find_between(&buffer[p1..(p1+1024).min(buffer.len())], b"modelName=\"", b'"')
             });
         }
         None
@@ -90,8 +90,7 @@ impl Sony {
             let mut tag_info = get_tag(tag, tag_data);
             tag_info.native_id = Some(tag as u32);
 
-            let group_map = map.entry(tag_info.group.clone()).or_insert_with(TagMap::new);
-            group_map.insert(tag_info.id.clone(), tag_info);
+            util::insert_tag(&mut map, tag_info);
         }
         Ok(map)
     }
@@ -108,5 +107,9 @@ impl Sony {
         v[2] = invert_case(v[2]);
     
         v.iter().collect()
+    }
+    
+    pub fn camera_type(&self) -> String {
+        "Sony".to_owned()
     }
 }
