@@ -7,7 +7,7 @@ name = "telemetry-parser"
 requires-python = ">=3.6"
 license = { text = "MPL-2.0" }
 authors = [{ name = "Adrian", email = "adrian.eddy@gmail.com" }]
-readme = README.md
+readme = "README.md"
 classifiers = [
     "Topic :: Utilities",
     "Programming Language :: Rust",
