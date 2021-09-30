@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>telemetry-parser-wasm</title>
+        <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/jquery.json-viewer@latest/json-viewer/jquery.json-viewer.js"></script>
+        <link href="https://cdn.jsdelivr.net/npm/jquery.json-viewer@latest/json-viewer/jquery.json-viewer.css" type="text/css" rel="stylesheet">
+    </head>
+    <body>
+        <input type="file" />
+        <input type="range" min="0" max="1" step="1" />
+        
+        <div id="camera"></div>
+        <pre id="result"></pre>
+        
+        <script type="module">
+            import init, {Parser} from "./pkg/telemetry_parser.js";
+            init().then(() => {
+                document.querySelector('input[type=file]').addEventListener('change', function() {
+                    let reader = new FileReader();
+                    reader.onload = function() {
+                        const parsed = new Parser(new Uint8Array(this.result), 'test');
+                        $("#camera").text(`Detected camera: ${parsed.camera} ${parsed.model}`);
+                        
+                        const telemetry = parsed.telemetry(true);
+                        
+                        document.querySelector('input[type=range]').max = telemetry.length;
+                        $('input[type=range]').prop('max', telemetry.length).on('input', function() {
+                            $("#result").jsonViewer(telemetry[this.value]);
+                        }).trigger('input');
+                        console.log(telemetry);
+                        // console.log(parsed.normalized_imu());
+                        //$("#result").jsonViewer(telemetry);
+                    }
+                    reader.readAsArrayBuffer(this.files[0]);
+                }, false);
+            });
+        </script>
+    </body>
+</html>
