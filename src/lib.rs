@@ -3,6 +3,7 @@ mod gopro;
 mod insta360;
 mod blackbox;
 mod runcam;
+mod witmotion;
 
 pub mod tags_impl;
 pub mod util;
@@ -52,9 +53,10 @@ macro_rules! impl_formats {
 }
 
 impl_formats! {
-    GoPro    => gopro::GoPro,
-    Sony     => sony::Sony,
-    Insta360 => insta360::Insta360,
-    BlackBox => blackbox::BlackBox,
-    Runcam   => runcam::Runcam,
+    GoPro     => gopro::GoPro,
+    Sony      => sony::Sony,
+    Insta360  => insta360::Insta360,
+    BlackBox  => blackbox::BlackBox,
+    Runcam    => runcam::Runcam,
+    WitMotion => witmotion::WitMotion,
 }

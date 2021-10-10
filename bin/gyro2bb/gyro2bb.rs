@@ -59,7 +59,7 @@ fn main() {
     csv.push_str(r#""Product","Blackbox flight data recorder by Nicholas Sherlock""#);
     csv.push('\n');
     crate::try_block!({
-        let map = samples[0].tag_map.as_ref()?;
+        let map = samples.get(0)?.tag_map.as_ref()?;
         let json = (map.get(&GroupId::Default)?.get_t(TagId::Metadata) as Option<&serde_json::Value>)?;
         for (k, v) in json.as_object()? {
             csv.push('"');

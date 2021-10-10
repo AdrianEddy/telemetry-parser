@@ -133,7 +133,7 @@ impl GoPro {
             }
 
             // Convert MTRX to Orientation tag
-            if g == &GroupId::Gyroscope || g == &GroupId::Accelerometer/* || g == &GroupId::CustomAlloc("MAGN")*/ {
+            if g == &GroupId::Gyroscope || g == &GroupId::Accelerometer/* || g == &GroupId::Custom("MAGN")*/ {
                 let mut imu_orientation = None;
                 if let Some(m) = v.get_t(TagId::Matrix) as Option<&Vec<Vec<f32>>> {
                     if !m.is_empty() && !m[0].is_empty() {

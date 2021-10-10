@@ -6,14 +6,13 @@ use crate::*;
 use crate::tags_impl::*;
 
 pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleInfo>> {
+    let mut stream = std::io::BufReader::new(stream);
     let mut samples = Vec::new();
 
     let mut index = 0;
     let mut id = [0u8; 16];
-    loop {
-        if stream.read_exact(&mut id).is_err() { break; }
-
-        let length = read_ber(stream)?;
+    while let Ok(_) = stream.read_exact(&mut id) {
+        let length = read_ber(&mut stream)?;
 
         // println!("{}: {}", util::to_hex(&id), length);
         

@@ -243,8 +243,8 @@ impl Vector3<f64> {
     }
 }
 #[derive(Debug, Clone, Serialize, Default)]
-pub struct TimeVector3<T> {
-    pub t: T,
+pub struct TimeVector3<T, TT = T> {
+    pub t: TT,
     pub x: T,
     pub y: T, 
     pub z: T,

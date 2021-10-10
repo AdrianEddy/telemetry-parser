@@ -112,6 +112,8 @@ declare_types! {
     Vec_i64: Vec<i64>, Vec_Vec_i64: Vec<Vec<i64>>, Vec_Vector3_i64: Vec<Vector3<i64>>, Vec_TimeVector3_i64: Vec<TimeVector3<i64>>, 
     Vec_u64: Vec<u64>, Vec_Vec_u64: Vec<Vec<u64>>, Vec_Vector3_u64: Vec<Vector3<u64>>, Vec_TimeVector3_u64: Vec<TimeVector3<u64>>, 
 
+    Vec_TimeVector3_i64f64: Vec<TimeVector3<i64, f64>>, 
+
     Vec_TimeArray4_f64: Vec<TimeArray4<f64>>, 
     Vec_TimeArray2_f64: Vec<TimeArray2<f64>>, 
 }

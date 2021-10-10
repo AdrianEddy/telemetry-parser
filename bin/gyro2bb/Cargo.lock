@@ -233,7 +233,7 @@ dependencies = [
 
 [[package]]
 name = "gyro2bb"
-version = "0.1.4"
+version = "0.1.6"
 dependencies = [
  "argh",
  "serde",
@@ -565,7 +565,7 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "telemetry-parser"
-version = "0.1.4"
+version = "0.1.6"
 dependencies = [
  "argh",
  "byteorder",
