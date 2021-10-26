@@ -107,7 +107,7 @@ pub fn read_beginning_and_end<T: Read + Seek>(stream: &mut T, stream_size: usize
     Ok(all)
 }
 
-#[derive(Default, serde::Serialize)]
+#[derive(Default, serde::Serialize, Clone, Debug)]
 pub struct IMUData {
     pub timestamp: f64,
     pub gyro: [f64; 3],
@@ -223,12 +223,12 @@ macro_rules! try_block {
     ($type:ty, $body:block) => {
         (|| -> Option<$type> {
             Some($body)
-        }());
+        }())
     };
     ($body:block) => {
         (|| -> Option<()> {
             $body
             Some(())
-        }());
+        }())
     };
 }

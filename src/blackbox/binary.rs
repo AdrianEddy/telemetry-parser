@@ -19,7 +19,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
             
             // Remove acc_1G from `other_headers` because we will have it in Accelerometer/Scale tag, instead of in metadata
             let accl_scale = bbox.header.other_headers.remove("acc_1G").unwrap_or("1.0".to_owned()).parse::<f64>().unwrap();
-            let gyro_scale = bbox.header.org_gyro_scale as f64;
+            let gyro_scale = bbox.header.raw_gyro_scale as f64;
 
             let mut map = GroupedTagMap::new();
 

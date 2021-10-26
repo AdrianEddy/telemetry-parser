@@ -75,7 +75,7 @@ fn main() {
     for v in imu_data {
         csv.push_str(&format!("{},{:.0},{},{},{},{},{},{}\n", i, (v.timestamp * 1000.0).round(), 
             -v.gyro[2], v.gyro[1], v.gyro[0],
-            -v.accl[2], v.accl[1], v.accl[0]
+            -v.accl[2] * 2048.0, v.accl[1] * 2048.0, v.accl[0] * 2048.0
         ));
         i += 1;
     }
