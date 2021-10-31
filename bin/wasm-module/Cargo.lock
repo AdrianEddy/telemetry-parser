@@ -209,7 +209,7 @@ dependencies = [
 [[package]]
 name = "fc-blackbox"
 version = "0.1.1"
-source = "git+https://github.com/AdrianEddy/fc-blackbox.git#bd409701fef8f9be82520941cb01509ce6e0b98f"
+source = "git+https://github.com/AdrianEddy/fc-blackbox.git?branch=updated#c7c803d5560f1d4fe5f126abaa7e84c8348f2e89"
 dependencies = [
  "chrono",
  "integer-encoding",
@@ -343,8 +343,9 @@ checksum = "308cc39be01b73d0d18f82a0e7b2a3df85245f84af96fdddc5d202d27e47b86a"
 
 [[package]]
 name = "mp4parse"
-version = "0.11.5"
-source = "git+https://github.com/mozilla/mp4parse-rust.git#72eb355ddeada541d7e57dbe5fb60eb5124dea0d"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67d2b6c6932c2cce721e9bd213461412300466d4613d93d25a36fb8881d9f8de"
 dependencies = [
  "bitreader",
  "byteorder",
@@ -439,9 +440,9 @@ dependencies = [
 
 [[package]]
 name = "prost"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de5e2533f59d08fcf364fd374ebda0692a70bd6d7e66ef97f306f45c6c5d8020"
+checksum = "444879275cb4fd84958b1a1d5420d15e6fcf7c235fe47f053c9c2a80aceb6001"
 dependencies = [
  "bytes",
  "prost-derive",
@@ -449,9 +450,9 @@ dependencies = [
 
 [[package]]
 name = "prost-derive"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "600d2f334aa05acb02a755e217ef1ab6dea4d51b58b7846588b747edec04efba"
+checksum = "f9cc1a3263e07e0bf68e96268f37665207b49560d98739662cdfaae215c720fe"
 dependencies = [
  "anyhow",
  "itertools",
@@ -561,7 +562,7 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "telemetry-parser"
-version = "0.1.4"
+version = "0.1.6"
 dependencies = [
  "argh",
  "byteorder",
@@ -580,7 +581,7 @@ dependencies = [
 
 [[package]]
 name = "telemetry-parser-wasm"
-version = "0.1.4"
+version = "0.1.6"
 dependencies = [
  "serde",
  "serde_json",

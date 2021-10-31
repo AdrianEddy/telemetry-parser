@@ -29,7 +29,11 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
             let time = row[1].parse::<i64>().unwrap() as f64 / 1000000.0;
             for (col, value) in h.columns.iter().zip(row.iter()) {
                 let mut desc = col.desc.as_ref().borrow_mut();
-                super::BlackBox::insert_value_to_vec(&mut desc, time, value.parse::<f64>().unwrap(), col.index);
+                if let Ok(f) = value.parse::<f64>() {
+                    super::BlackBox::insert_value_to_vec(&mut desc, time, f, col.index);
+                } else {
+                    eprintln!("Invalid float {}", value);
+                }
             }
         }
     }

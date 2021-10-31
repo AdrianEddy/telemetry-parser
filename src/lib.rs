@@ -4,6 +4,7 @@ mod insta360;
 mod blackbox;
 mod runcam;
 mod witmotion;
+mod dji;
 
 pub mod tags_impl;
 pub mod util;
@@ -59,4 +60,5 @@ impl_formats! {
     BlackBox  => blackbox::BlackBox,
     Runcam    => runcam::Runcam,
     WitMotion => witmotion::WitMotion,
+    Dji       => dji::Dji,
 }

@@ -39,7 +39,7 @@ pub fn parse(id: u8, format: u8, data: &[u8]) -> Result<GroupedTagMap> {
     
     match id {
         RecordType::Metadata => { // Metadata in protobuf format
-            insert_tag(&mut map, tag!(Default, TagId::Metadata, "Extra metadata", Json, |v| format!("{:?}", v), |d| {
+            insert_tag(&mut map, tag!(Default, TagId::Metadata, "Extra metadata", Json, |v| serde_json::to_string(v).unwrap(), |d| {
                 use prost::Message;
                 let info = extra_info::ExtraMetadata::decode(*d.get_ref())?;
 

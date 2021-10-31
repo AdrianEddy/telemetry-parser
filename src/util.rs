@@ -42,7 +42,7 @@ fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Result<mp
     mp4parse::read_mp4(stream)
 }
 
-pub fn get_metadata_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, mut callback: F) -> Result<()>
+fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4parse::TrackType, mut callback: F) -> Result<()>
     where F: FnMut(SampleInfo, &[u8])
 {
 
@@ -53,7 +53,7 @@ pub fn get_metadata_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize
     let mut timestamp_ms = 0f64;
 
     for x in ctx.tracks {
-        if x.track_type == mp4parse::TrackType::Metadata {
+        if x.track_type == typ {
             if let Some(timescale) = x.timescale {
                 if let Some(ref stts) = x.stts {
                     sample_delta = stts.samples[0].sample_delta;
@@ -83,6 +83,17 @@ pub fn get_metadata_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize
         }
     }
     Ok(())
+}
+
+pub fn get_metadata_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, callback: F) -> Result<()>
+    where F: FnMut(SampleInfo, &[u8])
+{
+    get_track_samples(stream, size, mp4parse::TrackType::Metadata, callback)
+}
+pub fn get_other_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, callback: F) -> Result<()>
+    where F: FnMut(SampleInfo, &[u8])
+{
+    get_track_samples(stream, size, mp4parse::TrackType::Unknown, callback)
 }
 
 pub fn read_beginning_and_end<T: Read + Seek>(stream: &mut T, stream_size: usize, read_size: usize) -> Result<Vec<u8>> {
