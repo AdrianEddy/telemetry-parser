@@ -5,6 +5,7 @@ mod blackbox;
 mod runcam;
 mod witmotion;
 mod dji;
+mod phone_apps;
 
 pub mod tags_impl;
 pub mod util;
@@ -61,4 +62,5 @@ impl_formats! {
     Runcam    => runcam::Runcam,
     WitMotion => witmotion::WitMotion,
     Dji       => dji::Dji,
+    PhoneApps => phone_apps::PhoneApps,
 }

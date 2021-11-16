@@ -126,6 +126,7 @@ impl KLV {
             b"GYRO" => GroupId::Gyroscope,
             b"ACCL" => GroupId::Accelerometer,
             b"GRAV" => GroupId::GravityVector,
+            b"MAGN" => GroupId::Magnetometer,
             b"CORI" => GroupId::CameraOrientation,
             b"IORI" => GroupId::ImageOrientation,
             b"SHUT" => GroupId::Exposure,

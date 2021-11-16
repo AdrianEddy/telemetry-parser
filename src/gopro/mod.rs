@@ -67,6 +67,7 @@ impl GoPro {
                 }
             }
         })?;
+        self.process_samples(&mut samples);
         Ok(samples)
     }
 
@@ -133,7 +134,7 @@ impl GoPro {
             }
 
             // Convert MTRX to Orientation tag
-            if g == &GroupId::Gyroscope || g == &GroupId::Accelerometer/* || g == &GroupId::Custom("MAGN")*/ {
+            if g == &GroupId::Gyroscope || g == &GroupId::Accelerometer || g == &GroupId::Magnetometer {
                 let mut imu_orientation = None;
                 if let Some(m) = v.get_t(TagId::Matrix) as Option<&Vec<Vec<f32>>> {
                     if !m.is_empty() && !m[0].is_empty() {
@@ -146,6 +147,74 @@ impl GoPro {
                 if let Some(o) = imu_orientation {
                     v.insert(TagId::Orientation, crate::tag!(parsed g.clone(), TagId::Orientation, "IMUO", String, |v| v.to_string(), o, Vec::new()));
                 }
+            }
+
+        }
+    }
+
+    fn process_samples(&self, samples: &mut Vec<SampleInfo>) {
+        fn get_timestamp(info: &util::SampleInfo) -> Option<i64> {
+            if let Some(ref grouped_tag_map) = info.tag_map {
+                for (group, map) in grouped_tag_map {
+                    if group == &GroupId::CameraOrientation || group == &GroupId::ImageOrientation {
+                        let timestamp_us = *(map.get_t(TagId::TimestampUs) as Option<&u64>).unwrap_or(&0) as i64;
+                        return Some(timestamp_us);
+                    }
+                }
+            }
+            None
+        }
+        
+        // Normalize quaternions
+        let mut prev_increment = 0;
+        let mut start_timestamp_us = None;
+        for i in 0..samples.len() {
+            let info = &samples[i];
+            if info.tag_map.is_none() { continue; }
+        
+            let grouped_tag_map = info.tag_map.as_ref().unwrap();
+    
+            let mut cori = Vec::new();
+            let mut iori = Vec::new();
+            for (group, map) in grouped_tag_map.iter() {
+                if group == &GroupId::CameraOrientation || group == &GroupId::ImageOrientation {
+                    let scale = *(map.get_t(TagId::Scale) as Option<&i16>).unwrap_or(&32767) as f64;
+                    let mut timestamp_us = *(map.get_t(TagId::TimestampUs) as Option<&u64>).unwrap_or(&0) as i64;
+                    // let start_count = *(map.get_t(TagId::Count) as Option<&u32>).unwrap_or(&0);
+                    let next_timestamp_us = samples.get(i + 1).map(get_timestamp).unwrap_or(None);
+                    if start_timestamp_us.is_none() {
+                        start_timestamp_us = Some(timestamp_us);
+                    }
+                    // TODO https://github.com/gopro/gpmf-parser/blob/master/GPMF_utils.c
+                    if let Some(arr) = map.get_t(TagId::Data) as Option<&Vec<Quaternion<i16>>> {
+                        let sample_count = arr.len() as i64;
+                        let increment = next_timestamp_us.map(|x| ((x - timestamp_us) / sample_count)).unwrap_or(prev_increment);
+                        prev_increment = increment;
+                        for v in arr.iter() {
+                            let aout = if group == &GroupId::CameraOrientation { &mut cori } else { &mut iori };
+                            aout.push((
+                                timestamp_us - start_timestamp_us.unwrap(), 
+                                Quaternion {
+                                    w: v.w as f64 / scale, 
+                                    x: -v.x as f64 / scale,
+                                    y: v.y as f64 / scale,
+                                    z: v.z as f64 / scale
+                                }
+                            ));
+                            timestamp_us += increment;
+                        }
+                    }
+                }
+            }
+            if !cori.is_empty() && cori.len() == iori.len() {
+                // Multiply CORI * IORI
+                let quat = cori.into_iter().zip(iori.into_iter()).map(|(c, i)| TimeQuaternion {
+                    t: c.0 as f64 / 1000.0,
+                    v: c.1 * i.1
+                }).collect();
+                
+                let grouped_tag_map = samples[i].tag_map.as_mut().unwrap();
+                util::insert_tag(grouped_tag_map, tag!(parsed GroupId::Quaternion, TagId::Data, "Quaternion data",  Vec_TimeQuaternion_f64, |v| format!("{:?}", v), quat, vec![]));
             }
         }
     }

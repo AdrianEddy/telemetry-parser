@@ -1,6 +1,7 @@
 use std::io::*;
 use crate::tags_impl::*;
 use byteorder::{ReadBytesExt, BigEndian};
+use std::collections::BTreeMap;
 use memchr::memmem;
 
 pub fn to_hex(data: &[u8]) -> String {
@@ -216,6 +217,31 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
     Ok(final_data)
 }
 
+// TODO: move to their respective modules
+pub fn frame_readout_time(input: &crate::Input) -> Option<f64> {
+    for info in input.samples.as_ref().unwrap() {
+        if info.tag_map.is_none() { continue; }
+
+        let grouped_tag_map = info.tag_map.as_ref().unwrap();
+
+        // Insta360
+        if let Some(val) = crate::try_block!(f64, {
+            (grouped_tag_map.get(&GroupId::Default)?.get_t(TagId::Metadata) as Option<&serde_json::Value>)?
+                .as_object()?
+                .get("rolling_shutter_time")?
+                .as_f64()?
+            }) {
+            return Some(val);
+        }
+            
+        // GoPro
+        if let Some(val) = crate::try_block!(f32, { *(grouped_tag_map.get(&GroupId::Default)?.get_t(TagId::Unknown(0x53524F54 /*SROT*/)) as Option<&f32>)? }) {
+            return Some(val as f64);
+        }
+    }
+    None
+}
+
 pub fn find_between_with_offset(buffer: &[u8], from: &[u8], to: u8, offset: i32) -> Option<String> {
     let pos = memmem::find(buffer, from)?;
     let end = memchr::memchr(to, &buffer[pos+from.len()..])?;
@@ -229,6 +255,13 @@ pub fn find_between(buffer: &[u8], from: &[u8], to: u8) -> Option<String> {
 pub fn insert_tag(map: &mut GroupedTagMap, tag: TagDescription) {
     let group_map = map.entry(tag.group.clone()).or_insert_with(TagMap::new);
     group_map.insert(tag.id.clone(), tag);
+}
+
+pub fn create_csv_map<'a, 'b>(row: &'b csv::StringRecord, headers: &'a Vec<String>) -> BTreeMap<&'a str, &'b str> {
+    headers.iter().zip(row).map(|(a, b)| (&a[..], b.trim())).collect()
+}
+pub fn create_csv_map_hdr<'a, 'b>(row: &'b csv::StringRecord, headers: &'a csv::StringRecord) -> BTreeMap<&'a str, &'b str> {
+    headers.iter().zip(row).map(|(a, b)| (a, b)).collect()
 }
 
 #[macro_export]

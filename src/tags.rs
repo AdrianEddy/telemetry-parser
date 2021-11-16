@@ -8,6 +8,8 @@ declare_groups! {
     GPS,
     Gyroscope,
     Accelerometer,
+    Magnetometer,
+    Quaternion,
     IBIS,
     LensOSS,
     GravityVector,
@@ -113,6 +115,7 @@ declare_types! {
     Vec_u64: Vec<u64>, Vec_Vec_u64: Vec<Vec<u64>>, Vec_Vector3_u64: Vec<Vector3<u64>>, Vec_TimeVector3_u64: Vec<TimeVector3<u64>>, 
 
     Vec_TimeVector3_i64f64: Vec<TimeVector3<i64, f64>>, 
+    Vec_TimeQuaternion_f64: Vec<TimeQuaternion<f64>>, 
 
     Vec_TimeArray4_f64: Vec<TimeArray4<f64>>, 
     Vec_TimeArray2_f64: Vec<TimeArray2<f64>>, 

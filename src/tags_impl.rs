@@ -280,6 +280,23 @@ pub struct Quaternion<T> {
     pub y: T, 
     pub z: T,
 }
+impl<T: Copy + std::ops::Mul<Output = T> + std::ops::Sub<Output = T> + std::ops::Add<Output = T>> std::ops::Mul for Quaternion<T> {
+    type Output = Self;
+    fn mul(self, rhs: Self) -> Self {
+        Self {
+            w: self.w * rhs.w - self.x * rhs.x - self.y * rhs.y - self.z * rhs.z,
+            x: self.w * rhs.x + self.x * rhs.w + self.y * rhs.z - self.z * rhs.y,
+            y: self.w * rhs.y - self.x * rhs.z + self.y * rhs.w + self.z * rhs.x,
+            z: self.w * rhs.z + self.x * rhs.y - self.y * rhs.x + self.z * rhs.w
+        }
+    }
+}
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct TimeQuaternion<T> {
+    pub t: f64,
+    pub v: Quaternion<T>
+}
+
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct GpsData {
     pub is_acquired: bool,

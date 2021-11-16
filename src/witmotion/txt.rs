@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+
 use std::io::*;
 
 use crate::tags_impl::*;
@@ -25,7 +25,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
     for row in csv.records() {
         let row = row?;
         if let Some(ref h) = headers {
-            let map = create_map(&row, &h);
+            let map = util::create_csv_map(&row, &h);
 
             let ts = chrono::NaiveDateTime::parse_from_str(*map.get("ChipTime").unwrap(), "%Y-%m-%d %H:%M:%S%.3f").unwrap().timestamp_millis() as f64 / 1000.0;
             if first_timestamp == 0.0 {
@@ -33,14 +33,6 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
             }
             last_timestamp = ts;
 
-            crate::try_block!({
-                accl.push(TimeVector3 {
-                    t: ts as f64,
-                    x: map.get("ax(g)")?.replace(',', ".").parse::<f64>().ok()?,
-                    y: map.get("ay(g)")?.replace(',', ".").parse::<f64>().ok()?,
-                    z: map.get("az(g)")?.replace(',', ".").parse::<f64>().ok()?
-                });
-            });
             crate::try_block!({
                 accl.push(TimeVector3 {
                     t: ts as f64,
@@ -101,19 +93,15 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
     util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
     util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
 
-    util::insert_tag(&mut map, tag!(parsed GroupId::Custom("Magnetometer".into()), TagId::Data, "Magnetometer data", Vec_TimeVector3_i64f64, |v| format!("{:?}", v), magn, vec![]));
-    util::insert_tag(&mut map, tag!(parsed GroupId::Custom("Magnetometer".into()), TagId::Unit, "Magnetometer unit", String, |v| v.to_string(), "μT".into(), Vec::new()));
+    util::insert_tag(&mut map, tag!(parsed GroupId::Magnetometer,  TagId::Data, "Magnetometer data", Vec_TimeVector3_i64f64, |v| format!("{:?}", v), magn, vec![]));
+    util::insert_tag(&mut map, tag!(parsed GroupId::Magnetometer,  TagId::Unit, "Magnetometer unit", String, |v| v.to_string(), "μT".into(), Vec::new()));
 
     util::insert_tag(&mut map, tag!(parsed GroupId::Custom("Angle".into()),        TagId::Data, "Angle data", Vec_TimeVector3_f64, |v| format!("{:?}", v), angl, vec![]));
     util::insert_tag(&mut map, tag!(parsed GroupId::Custom("Angle".into()),        TagId::Unit, "Angle unit", String, |v| v.to_string(), "deg".into(),  Vec::new()));
 
-    util::insert_tag(&mut map, tag!(parsed GroupId::Custom("Quaternion".into()),   TagId::Data, "Quaternion data",   Vec_TimeArray4_f64,  |v| format!("{:?}", v), quat, vec![]));
+    util::insert_tag(&mut map, tag!(parsed GroupId::Quaternion,                    TagId::Data, "Quaternion data",   Vec_TimeArray4_f64,  |v| format!("{:?}", v), quat, vec![]));
 
     Ok(vec![
         SampleInfo { index: 0, timestamp_ms: first_timestamp as f64, duration_ms: (last_timestamp - first_timestamp) as f64, tag_map: Some(map) }
     ])
-}
-
-fn create_map<'a, 'b>(row: &'b csv::StringRecord, headers: &'a Vec<String>) -> BTreeMap<&'a str, &'b str> {
-    headers.iter().zip(row).map(|(a, b)| (&a[..], b.trim())).collect()
 }
