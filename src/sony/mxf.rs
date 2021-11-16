@@ -25,14 +25,16 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
                 let mut frame_rate = 25.0; // Probably wrong assumption, but it's better than 0 (at least we'll have some timestamps)
                 if let Some(group) = map.get(&GroupId::Default) {
                     if let Some(val) = group.get(&TagId::FrameRate) {
-                        if let TagValue::f32(vv) = &val.value {
-                            frame_rate = *vv.get() as f64;
+                        match &val.value {
+                            TagValue::f32(vv) => frame_rate = *vv.get() as f64,
+                            TagValue::f64(vv) => frame_rate = *vv.get(),
+                            _ => {}
                         }
                     }
                 }
                 let duration_ms = 1000.0 / frame_rate;
 
-                // println!("Index: {}, Duration: {}, Timestamp: {}", index, duration_ms, index as f64 * duration_ms);
+                // println!("Index: {}, Duration: {}, Frame rate: {}, Timestamp: {}", index, duration_ms, frame_rate, index as f64 * duration_ms);
 
                 samples.push(SampleInfo {
                     index, 

@@ -81,7 +81,7 @@ pub struct FrameDataInner4 {
 
     #[prost(uint32, tag="15")] pub unknown15: u32,
     #[prost(uint32, tag="16")] pub unknown16: u32,
-    #[prost(uint32, tag="19")] pub unknown19: u32,
+    #[prost(uint32, tag="19")] pub unknown19: u32, // Probably ISO
 
     #[prost(float, tag="21")] pub frame_rate: f32,
     #[prost(float, tag="22")] pub unknownf22: f32,
@@ -203,7 +203,7 @@ pub struct FrameDataInner7 {
     #[serde(serialize_with="bytes_serializer")]
     #[prost(bytes="vec", tag="7")] pub unknown7_bin: Vec<u8>,
 
-    #[prost(message, optional, tag="8")] pub unknown8: Option<FrameDataInner8>,
+    #[prost(message, optional, tag="8")] pub unknown8: Option<SingleF64>,
 
     #[prost(uint32, tag="9")] pub unknown9: u32,
     #[prost(uint32, tag="11")] pub unknown11: u32,
@@ -237,6 +237,12 @@ pub struct FrameDataInner7 {
 pub struct FrameDataInner8 {
     #[prost(float, tag="1")] pub unknownf1: f32,
 }
+
+#[derive(Clone, PartialEq, ::prost::Message, ::serde::Serialize)]
+pub struct SingleF64 {
+    #[prost(double, tag="19")] pub unknownd19: f64,
+}
+
 
 fn bytes_serializer<S>(x: &[u8], s: S) -> std::prelude::rust_2021::Result<S::Ok, S::Error> where S: serde::Serializer {
     let mut ret = String::with_capacity(x.len() * 2);

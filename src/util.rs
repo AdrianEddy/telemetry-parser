@@ -49,21 +49,23 @@ fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4par
     let ctx = parse_mp4(stream, size).or_else(|_| mp4parse::read_mp4(stream))?;
 
     let mut index = 0u64;
-    let mut sample_delta = 0u32;
-    let mut timestamp_ms = 0f64;
+    // let mut sample_delta = 0u32;
+    // let mut timestamp_ms = 0f64;
 
     for x in ctx.tracks {
         if x.track_type == typ {
-            if let Some(timescale) = x.timescale {
-                if let Some(ref stts) = x.stts {
-                    sample_delta = stts.samples[0].sample_delta;
-                }
-                let duration_ms = sample_delta as f64 * 1000.0 / timescale.0 as f64;
+            // if let Some(timescale) = x.timescale {
+                // if let Some(ref stts) = x.stts {
+                //     sample_delta = stts.samples[0].sample_delta;
+                // }
+                // let duration_ms = sample_delta as f64 * 1000.0 / timescale.0 as f64;
 
                 if let Some(samples) = mp4parse::unstable::create_sample_table(&x, 0.into()) {
                     let mut sample_data = Vec::new();
                     for x in samples {
                         let sample_size = (x.end_offset.0 - x.start_offset.0) as usize;
+                        let sample_timestamp_ms = x.start_composition.0 as f64 / 1000.0;
+                        let sample_duration_ms = (x.end_composition.0 - x.start_composition.0) as f64 / 1000.0;
                         if sample_size > 4 {
                             if sample_data.len() != sample_size {
                                 sample_data.resize(sample_size, 0u8);
@@ -72,14 +74,14 @@ fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4par
                             stream.seek(SeekFrom::Start(x.start_offset.0 as u64))?;
                             stream.read_exact(&mut sample_data[..])?;
 
-                            callback(SampleInfo { index, timestamp_ms, duration_ms, tag_map: None }, &sample_data);
+                            callback(SampleInfo { index, timestamp_ms: sample_timestamp_ms, duration_ms: sample_duration_ms, tag_map: None }, &sample_data);
                         
-                            timestamp_ms += duration_ms;
+                            //timestamp_ms += duration_ms;
                             index += 1;
                         }
                     }
                 }
-            }
+            // }
         }
     }
     Ok(())

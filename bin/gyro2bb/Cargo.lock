@@ -203,7 +203,7 @@ dependencies = [
 [[package]]
 name = "fc-blackbox"
 version = "0.1.1"
-source = "git+https://github.com/AdrianEddy/fc-blackbox.git?branch=updated#c7c803d5560f1d4fe5f126abaa7e84c8348f2e89"
+source = "git+https://github.com/ilya-epifanov/fc-blackbox.git#bf493a01e7f8c81ff53ab260d341b027c8b21cfc"
 dependencies = [
  "chrono",
  "integer-encoding",
@@ -233,7 +233,7 @@ dependencies = [
 
 [[package]]
 name = "gyro2bb"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "argh",
  "serde",
@@ -566,7 +566,7 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "telemetry-parser"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "argh",
  "byteorder",

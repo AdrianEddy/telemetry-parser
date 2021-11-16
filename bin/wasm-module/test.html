@@ -7,27 +7,43 @@
         <script src="https://cdn.jsdelivr.net/npm/jquery.json-viewer@latest/json-viewer/jquery.json-viewer.js"></script>
         <link href="https://cdn.jsdelivr.net/npm/jquery.json-viewer@latest/json-viewer/jquery.json-viewer.css" type="text/css" rel="stylesheet">
     </head>
+    <style>pre { flex: 1; line-break: anywhere; white-space: break-spaces;  overflow-y: scroll; } body { display: flex; flex-flow: column; height: calc(100vh - 20px); }</style>
     <body>
-        <input type="file" />
-        <input type="range" min="0" max="1" step="1" />
-        
-        <div id="camera"></div>
+        <div class="hdr">
+            <input type="file" />
+            <input type="range" min="0" max="1" step="1" style="width: 100%" />
+            
+            <div id="camera"></div>
+        </div>
         <pre id="result"></pre>
         
         <script type="module">
+            let collapseStates = {};
+                
             import init, {Parser} from "./pkg/telemetry_parser.js";
             init().then(() => {
+            
                 document.querySelector('input[type=file]').addEventListener('change', function() {
                     let reader = new FileReader();
                     reader.onload = function() {
+                        console.log('starting parser');
                         const parsed = new Parser(new Uint8Array(this.result), 'test');
                         $("#camera").text(`Detected camera: ${parsed.camera} ${parsed.model}`);
                         
-                        const telemetry = parsed.telemetry(true);
+                        const telemetry = parsed.telemetry(false);
                         
                         document.querySelector('input[type=range]').max = telemetry.length;
                         $('input[type=range]').prop('max', telemetry.length).on('input', function() {
-                            $("#result").jsonViewer(telemetry[this.value]);
+                            let tm = telemetry[this.value];
+                            // delete tm['Gyroscope'];
+                            /*try { 
+                                tm['Default']['Metadata'] = JSON.parse(tm['Default']['Metadata']);
+                            } catch(e) {
+                                console.log(e, telemetry[this.value]);
+                            }*/
+                            $("#result").jsonViewer(tm);
+                            $("#result").on('click', 'a.json-toggle', saveState);
+                            restoreState();
                         }).trigger('input');
                         console.log(telemetry);
                         // console.log(parsed.normalized_imu());
@@ -36,6 +52,34 @@
                     reader.readAsArrayBuffer(this.files[0]);
                 }, false);
             });
+            
+            function saveState() {
+                $(this).siblings('ul.json-dict, ol.json-array').each(function() {
+                    const el = $(this).siblings('a.json-toggle');
+                    collapseStates[getPath(el)] = $(this).is(':visible');
+                });
+            }
+            function restoreState() {
+                for (const x in collapseStates) {
+                    const el = getElementFromPath(x);
+                    if (!collapseStates[x]) {
+                        $(el).trigger('click');
+                    }                    
+                }
+            }
+            function getPath(el) {
+                let path = []
+                $(el).parentsUntil('.json-document').each(function() {
+                    if ($(this).is('li')) { path.push($(this).find('a.json-toggle').eq(0).text()) }
+                });
+                return path.reverse().join('/');
+            }
+            function getElementFromPath(path) {
+                return $('a.json-toggle').filter(function() {
+                    return getPath(this) == path;
+                });
+            }
+            
         </script>
     </body>
 </html>
