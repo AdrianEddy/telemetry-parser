@@ -396,17 +396,21 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             if length != 16 {
                 return Err(Error::new(ErrorKind::Other, "Invalid OSS table"));
             }
-            let mut ret = Vec::with_capacity(count as usize);
-            for _ in 0..count {
-                // XAVC::base_2D_TimeOffset<XAVC::base_3D<int>>
-                ret.push(TimeVector3 {
-                    t: d.read_i32::<BigEndian>()?, // time offset
-                    x: d.read_i32::<BigEndian>()?, // x, confirmed i32
-                    y: d.read_i32::<BigEndian>()?, // y, confirmed i32
-                    z: d.read_i32::<BigEndian>()?  // z. confirmed i32
-                });
+            if count > 0 {
+                let mut ret = Vec::with_capacity(count as usize);
+                for _ in 0..count {
+                    // XAVC::base_2D_TimeOffset<XAVC::base_3D<int>>
+                    ret.push(TimeVector3 {
+                        t: d.read_i32::<BigEndian>()?, // time offset
+                        x: d.read_i32::<BigEndian>()?, // x, confirmed i32
+                        y: d.read_i32::<BigEndian>()?, // y, confirmed i32
+                        z: d.read_i32::<BigEndian>()?  // z. confirmed i32
+                    });
+                }
+                Ok(ret)
+            } else {
+                Ok(vec![])
             }
-            Ok(ret)
         }, tag_data),
         0xe450 => tag!(IBIS, Data2, "IBIS TimeOffset table 2", Vec_TimeVector3_i32, "{:?}", |d| {
             let count  = d.read_i32::<BigEndian>()?;
@@ -414,17 +418,21 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             if length != 10 {
                 return Err(Error::new(ErrorKind::Other, "Invalid table"));
             }
-            let mut ret = Vec::with_capacity(count as usize);
-            for _ in 0..count {
-                // XAVC::base_2D_TimeOffset<XAVC::base_3D<short>>
-                ret.push(TimeVector3 {
-                    t: d.read_i32::<BigEndian>()?, // time offset
-                    x: d.read_i16::<BigEndian>()? as i32, // x, confirmed i16
-                    y: d.read_i16::<BigEndian>()? as i32, // y, confirmed i16
-                    z: d.read_i16::<BigEndian>()? as i32  // z, confirmed i16
-                });
+            if count > 0 {
+                let mut ret = Vec::with_capacity(count as usize);
+                for _ in 0..count {
+                    // XAVC::base_2D_TimeOffset<XAVC::base_3D<short>>
+                    ret.push(TimeVector3 {
+                        t: d.read_i32::<BigEndian>()?, // time offset
+                        x: d.read_i16::<BigEndian>()? as i32, // x, confirmed i16
+                        y: d.read_i16::<BigEndian>()? as i32, // y, confirmed i16
+                        z: d.read_i16::<BigEndian>()? as i32  // z, confirmed i16
+                    });
+                }
+                Ok(ret)
+            } else {
+                Ok(vec![])
             }
-            Ok(ret)
         }, tag_data),
         ////////////////////////////////////////// ImagerControlInformation (IBIS) //////////////////////////////////////////
 
@@ -452,17 +460,21 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             if length != 16 {
                 return Err(Error::new(ErrorKind::Other, "Invalid table"));
             }
-            let mut ret = Vec::with_capacity(count as usize);
-            for _ in 0..count {
-                // XAVC::base_2D_TimeOffset<XAVC::base_3D<int>>
-                ret.push(TimeVector3 {
-                    t: d.read_i32::<BigEndian>()?, // time offset
-                    x: d.read_i32::<BigEndian>()?, // x
-                    y: d.read_i32::<BigEndian>()?, // y
-                    z: d.read_i32::<BigEndian>()?  // z
-                });
+            if count > 0 {
+                let mut ret = Vec::with_capacity(count as usize);
+                for _ in 0..count {
+                    // XAVC::base_2D_TimeOffset<XAVC::base_3D<int>>
+                    ret.push(TimeVector3 {
+                        t: d.read_i32::<BigEndian>()?, // time offset
+                        x: d.read_i32::<BigEndian>()?, // x
+                        y: d.read_i32::<BigEndian>()?, // y
+                        z: d.read_i32::<BigEndian>()?  // z
+                    });
+                }
+                Ok(ret)
+            } else {
+                Ok(vec![])
             }
-            Ok(ret)
         }, tag_data),
         ////////////////////////////////////////// LensControlInformation (Lens OSS) //////////////////////////////////////////
 
@@ -565,20 +577,24 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         0xe439 => tag!(Gyroscope, Scale,           "Gyroscope scale", f32, "{}", |d| d.read_f32::<BigEndian>(), tag_data),
         0xe43a => tag!(Gyroscope, Orientation,     "Gyroscope orientation", String, "{}", read_orientation, tag_data),
         0xe43b => tag!(Gyroscope, Data,            "Gyroscope data", Vec_Vector3_i16, "{:?}", |d| {
-            let count = d.read_u32::<BigEndian>()?;
-            let length = d.read_u32::<BigEndian>()?;
+            let count = d.read_i32::<BigEndian>()?;
+            let length = d.read_i32::<BigEndian>()?;
             if length != 6 {
                 return Err(Error::new(ErrorKind::Other, "Invalid gyro data format"));
             }
-            let mut ret = Vec::with_capacity(count as usize);
-            for _ in 0..count {
-                ret.push(Vector3 {
-                    x: d.read_i16::<BigEndian>()?, // pitch
-                    y: d.read_i16::<BigEndian>()?, // roll
-                    z: d.read_i16::<BigEndian>()?, // yaw
-                });
+            if count > 0 {
+                let mut ret = Vec::with_capacity(count as usize);
+                for _ in 0..count {
+                    ret.push(Vector3 {
+                        x: d.read_i16::<BigEndian>()?, // pitch
+                        y: d.read_i16::<BigEndian>()?, // roll
+                        z: d.read_i16::<BigEndian>()?, // yaw
+                    });
+                }
+                Ok(ret)
+            } else {
+                Ok(vec![])
             }
-            Ok(ret)
         }, tag_data),
         ////////////////////////////////////////// Gyroscope //////////////////////////////////////////
         ////////////////////////////////////////// Accelerometer //////////////////////////////////////////
@@ -614,15 +630,19 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             if length != 6 {
                 return Err(Error::new(ErrorKind::Other, "Invalid accel data format"));
             }
-            let mut ret = Vec::with_capacity(count as usize);
-            for _ in 0..count {
-                ret.push(Vector3 {
-                    x: d.read_i16::<BigEndian>()?, // X
-                    y: d.read_i16::<BigEndian>()?, // Y
-                    z: d.read_i16::<BigEndian>()?, // Z
-                });
+            if count > 0 {
+                let mut ret = Vec::with_capacity(count as usize);
+                for _ in 0..count {
+                    ret.push(Vector3 {
+                        x: d.read_i16::<BigEndian>()?, // X
+                        y: d.read_i16::<BigEndian>()?, // Y
+                        z: d.read_i16::<BigEndian>()?, // Z
+                    });
+                }
+                Ok(ret)
+            } else {
+                Ok(vec![])
             }
-            Ok(ret)
         }, tag_data),
         ////////////////////////////////////////// Accelerometer //////////////////////////////////////////
 
