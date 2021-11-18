@@ -73,7 +73,7 @@ fn main() {
     csv.push_str(r#""loopIteration","time","gyroADC[0]","gyroADC[1]","gyroADC[2]","accSmooth[0]","accSmooth[1]","accSmooth[2]""#);
     csv.push('\n');
     for v in imu_data {
-        csv.push_str(&format!("{},{:.0},{},{},{},{},{},{}\n", i, (v.timestamp * 1000.0).round(), 
+        csv.push_str(&format!("{},{:.0},{},{},{},{},{},{}\n", i, (v.timestamp_ms * 1000.0).round(), 
             -v.gyro[2], v.gyro[1], v.gyro[0],
             -v.accl[2] * 2048.0, v.accl[1] * 2048.0, v.accl[0] * 2048.0
         ));
