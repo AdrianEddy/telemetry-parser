@@ -124,9 +124,9 @@ pub fn read_beginning_and_end<T: Read + Seek>(stream: &mut T, stream_size: usize
 #[derive(Default, serde::Serialize, Clone, Debug)]
 pub struct IMUData {
     pub timestamp_ms: f64,
-    pub gyro: [f64; 3],
-    pub accl: [f64; 3],
-    pub magn: [f64; 3]
+    pub gyro: Option<[f64; 3]>,
+    pub accl: Option<[f64; 3]>,
+    pub magn: Option<[f64; 3]>
 }
 
 // TODO: interpolate if gyro and accel have different rates
@@ -191,9 +191,9 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
                                     timestamp += reading_duration;
                                 }
                                 let itm = v.clone().into_scaled(&raw2unit, &unit2deg).orient(io);
-                                     if group == &GroupId::Gyroscope     { final_data[data_index + j].gyro = [ itm.x, itm.y, itm.z ]; }
-                                else if group == &GroupId::Accelerometer { final_data[data_index + j].accl = [ itm.x, itm.y, itm.z ]; }
-                                else if group == &GroupId::Magnetometer  { final_data[data_index + j].magn = [ itm.x, itm.y, itm.z ]; }
+                                     if group == &GroupId::Gyroscope     { final_data[data_index + j].gyro = Some([ itm.x, itm.y, itm.z ]); }
+                                else if group == &GroupId::Accelerometer { final_data[data_index + j].accl = Some([ itm.x, itm.y, itm.z ]); }
+                                else if group == &GroupId::Magnetometer  { final_data[data_index + j].magn = Some([ itm.x, itm.y, itm.z ]); }
                             }
                         }, 
                         // Insta360
@@ -205,9 +205,9 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
                                     final_data[data_index + j].timestamp_ms = (v.t - first_frame_ts) * 1000.0;
                                 }
                                 let itm = v.clone().into_scaled(&raw2unit, &unit2deg).orient(io);
-                                     if group == &GroupId::Gyroscope     { final_data[data_index + j].gyro = [ itm.x, itm.y, itm.z ]; }
-                                else if group == &GroupId::Accelerometer { final_data[data_index + j].accl = [ itm.x, itm.y, itm.z ]; }
-                                else if group == &GroupId::Magnetometer  { final_data[data_index + j].magn = [ itm.x, itm.y, itm.z ]; }
+                                     if group == &GroupId::Gyroscope     { final_data[data_index + j].gyro = Some([ itm.x, itm.y, itm.z ]); }
+                                else if group == &GroupId::Accelerometer { final_data[data_index + j].accl = Some([ itm.x, itm.y, itm.z ]); }
+                                else if group == &GroupId::Magnetometer  { final_data[data_index + j].magn = Some([ itm.x, itm.y, itm.z ]); }
                             }
                         },
                         _ => ()
