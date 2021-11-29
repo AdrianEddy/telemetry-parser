@@ -75,9 +75,9 @@ impl Runcam {
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Scale, "Accelerometer scale", f64, |v| format!("{:?}", v), accl_scale, vec![]));
         
         let imu_orientation = match self.model.as_deref() {
-            Some("Runcam 5 Orange") => "xzY",
-            Some("iFlight GOCam GR") => "xZy",
-            _ => "xzY"
+            Some("Runcam 5 Orange") => "xZy",
+            Some("iFlight GOCam GR") => "xzY",
+            _ => "xZy"
         };
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.to_string(), Vec::new()));
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.to_string(), Vec::new()));
