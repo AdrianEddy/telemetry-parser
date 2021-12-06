@@ -111,6 +111,13 @@ pub struct ExtraMetadata {
 
     #[serde(serialize_with = "AudioModeType_serializer")]
     #[prost(enumeration="extra_metadata::AudioModeType", tag="61")] pub audio_mode: i32,
+    
+    #[prost(bool, tag="62")] pub is_raw_gyro: bool,
+
+    #[prost(enumeration="extra_metadata::RawCaptureType", tag="63")] pub raw_capture_type: i32,
+    #[prost(enumeration="extra_metadata::VideoPtsType", tag="64")] pub pts_type: i32,
+    #[prost(message, optional, tag="65")] pub gyro_cfg_info: Option<extra_metadata::GyroConfigInfo>,
+
 }
 
 /// Nested message and enum types in `ExtraMetadata`.
@@ -298,6 +305,31 @@ pub mod extra_metadata {
         VideoSuperNormal      = 11,
         VideoLooprecording    = 12,
         PhotoStarlapse        = 13,
+        PhotoPanoMode         = 14,
+        VideoFpv              = 15,
+        VideoMovie            = 16,
+        VideoSlowmotion       = 17,
+    }
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration, ::serde::Serialize)]
+    #[repr(i32)]
+    pub enum RawCaptureType {
+        RawCaptureTypeOff      = 0,
+        RawCaptureTypeDng      = 1,
+        RawCaptureTypeRaw      = 2,
+        RawCaptureTypePureshot = 3,
+    }
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration, ::serde::Serialize)]
+    #[repr(i32)]
+    pub enum VideoPtsType {
+        VideoPtsUnknown       = 0,
+        VideoPtsMp4           = 1,
+        VideoPtsEexposureFile = 2,
+    }
+
+    #[derive(Clone, PartialEq, ::prost::Message, ::serde::Serialize)]
+    pub struct GyroConfigInfo {
+        #[prost(uint32, tag="1")] pub acc_range: u32,
+        #[prost(uint32, tag="2")] pub gyro_range: u32,
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration, ::serde::Serialize)]

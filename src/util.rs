@@ -148,6 +148,12 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
                 .get("first_frame_timestamp")?
                 .as_i64()? as f64 / 1000.0
         }).unwrap_or_default();
+        let is_insta360_raw_gyro = crate::try_block!(bool, {
+            (grouped_tag_map.get(&GroupId::Default)?.get_t(TagId::Metadata) as Option<&serde_json::Value>)?
+                .as_object()?
+                .get("is_raw_gyro")?
+                .as_bool()?
+        }).unwrap_or_default();
 
         for (group, map) in grouped_tag_map {
             if group == &GroupId::Gyroscope || group == &GroupId::Accelerometer {
@@ -202,7 +208,8 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
                                 if v.t < first_frame_ts { continue; } // Skip gyro readings before actual first frame
                                 if final_data.len() <= data_index + j {
                                     final_data.resize_with(data_index + j + 1, Default::default);
-                                    final_data[data_index + j].timestamp_ms = (v.t - first_frame_ts) * 1000.0;
+                                    let timestamp_multiplier = if is_insta360_raw_gyro { 1.0 } else { 1000.0 };
+                                    final_data[data_index + j].timestamp_ms = (v.t - first_frame_ts) * timestamp_multiplier;
                                 }
                                 let itm = v.clone().into_scaled(&raw2unit, &unit2deg).orient(io);
                                      if group == &GroupId::Gyroscope     { final_data[data_index + j].gyro = Some([ itm.x, itm.y, itm.z ]); }

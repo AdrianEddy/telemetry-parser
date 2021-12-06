@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 telemetry-parser = { path = "../../" }
-pyo3 = { version = "0.14", features = ["extension-module"]}
-pythonize = "0.14"
+pyo3 = { version = "0.15", features = ["extension-module"]}
+pythonize = "0.15"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }

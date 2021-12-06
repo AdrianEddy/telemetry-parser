@@ -73,11 +73,15 @@ fn main() {
     csv.push_str(r#""loopIteration","time","gyroADC[0]","gyroADC[1]","gyroADC[2]","accSmooth[0]","accSmooth[1]","accSmooth[2]""#);
     csv.push('\n');
     for v in imu_data {
-        csv.push_str(&format!("{},{:.0},{},{},{},{},{},{}\n", i, (v.timestamp_ms * 1000.0).round(), 
-            -v.gyro[2], v.gyro[1], v.gyro[0],
-            -v.accl[2] * 2048.0, v.accl[1] * 2048.0, v.accl[0] * 2048.0
-        ));
-        i += 1;
+        if v.gyro.is_some() || v.accl.is_some() {
+            let gyro = v.gyro.unwrap_or_default();
+            let accl = v.accl.unwrap_or_default();
+            csv.push_str(&format!("{},{:.0},{},{},{},{},{},{}\n", i, (v.timestamp_ms * 1000.0).round(), 
+                -gyro[2], gyro[1], gyro[0],
+                -accl[2] * 2048.0, accl[1] * 2048.0, accl[0] * 2048.0
+            ));
+            i += 1;
+        }
     }
     std::fs::write(&format!("{}.csv", std::path::Path::new(&opts.input).to_path_buf().to_string_lossy()), csv).unwrap();
 
