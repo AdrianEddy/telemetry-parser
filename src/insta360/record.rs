@@ -74,7 +74,7 @@ impl super::Insta360 {
                 insert_tag(&mut map, tag!(parsed Default, File("thumbnail-ext.h264".into()), "ThumbnailExt", Vec_u8, |v| format!("{} bytes", v.len()), data.to_vec(), vec![]));
             },
             RecordType::Gyro => {
-                let item_size = if self.is_raw_gyro { 8+6*8 } else { 8+6*2 };
+                let item_size = if self.is_raw_gyro { 8+6*2 } else { 8+6*8 };
 
                 let mut acc_vec  = Vec::with_capacity(len as usize / item_size);
                 let mut gyro_vec = Vec::with_capacity(len as usize / item_size);
