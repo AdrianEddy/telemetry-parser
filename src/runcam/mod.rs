@@ -18,6 +18,8 @@ impl Runcam {
                 Some("Runcam 5 Orange".to_owned())
             } else if filename.starts_with("gyroDat") {
                 Some("iFlight GOCam GR".to_owned())
+            } else if filename.starts_with("Thumb") {
+                Some("Thumb".to_owned())
             } else {
                 None
             };
@@ -63,7 +65,10 @@ impl Runcam {
         let mut map = GroupedTagMap::new();
 
         let accl_scale = 32768.0 / 2.0; // ± 2g
-        let gyro_scale = 32768.0 / 500.0; // 500 dps
+        let gyro_scale = 32768.0 / match self.model.as_deref() {
+            Some("Thumb") => 1000.0, // 1000 dps
+            _ => 500.0 // 500 dps default
+        } ; // 500 dps
         
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), accl, vec![]));
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]));
