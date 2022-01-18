@@ -68,7 +68,7 @@ impl Runcam {
         let gyro_scale = 32768.0 / match self.model.as_deref() {
             Some("Thumb") => 1000.0, // 1000 dps
             _ => 500.0 // 500 dps default
-        } ; // 500 dps
+        };
         
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), accl, vec![]));
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]));
@@ -82,6 +82,7 @@ impl Runcam {
         let imu_orientation = match self.model.as_deref() {
             Some("Runcam 5 Orange")  => "xzY",
             Some("iFlight GOCam GR") => "xZy",
+            Some("Thumb")            => "Yxz",
             _ => "xzY"
         };
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.to_string(), Vec::new()));
