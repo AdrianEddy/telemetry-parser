@@ -20,7 +20,7 @@ pub struct SampleInfo {
     pub tag_map: Option<GroupedTagMap>
 }
 
-fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Result<mp4parse::MediaContext> {
+pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Result<mp4parse::MediaContext> {
     if size > 10*1024*1024 {
         // With large files we can save a lot of time by only parsing actual MP4 box structure, skipping track data ifself.
         // We do that by reading 2 MB from each end of the file, then patching `mdat` box to make the 4 MB buffer a correct MP4 file.
@@ -245,9 +245,10 @@ pub fn frame_readout_time(input: &crate::Input) -> Option<f64> {
         }
             
         // GoPro
-        if let Some(val) = crate::try_block!(f32, { *(grouped_tag_map.get(&GroupId::Default)?.get_t(TagId::Unknown(0x53524F54 /*SROT*/)) as Option<&f32>)? }) {
-            return Some(val as f64);
-        }
+        // If gopro reports rolling shutter value, it already applied it, ie. the video is already corrected
+        // if let Some(val) = crate::try_block!(f32, { *(grouped_tag_map.get(&GroupId::Default)?.get_t(TagId::Unknown(0x53524F54 /*SROT*/)) as Option<&f32>)? }) {
+        //     return Some(val as f64);
+        // }
     }
     None
 }

@@ -4,7 +4,7 @@ A tool to parse real-time metadata embedded in video files or telemetry from oth
 Work in progress, the code is already working but I plan to add much more input and output formats.
 
 # Supported formats:
-- [x] Sony (RX0 II, a7s III, RX100 VII, ZV1, a7c, a7r IV, a6600, a9 II, a1, FX3, ZV-E10, FX6)
+- [x] Sony (a1, a6600, a7c, a7r IV, a7 IV, a7s III, a9 II, FX3, FX6, RX0 II, RX100 VII, ZV1, ZV-E10)
 - [x] GoPro (All models with gyro metadata, starting with HERO 5)
 - [x] Insta360 (OneR, SMO 4k, GO2)
 - [x] Betaflight blackbox (CSV and binary)
