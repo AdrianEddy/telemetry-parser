@@ -152,19 +152,23 @@ impl GoPro {
         }
     }
 
-    fn process_samples(&self, samples: &mut Vec<SampleInfo>) {
-        fn get_timestamp(info: &util::SampleInfo) -> Option<i64> {
-            if let Some(ref grouped_tag_map) = info.tag_map {
-                for (group, map) in grouped_tag_map {
-                    if group == &GroupId::CameraOrientation || group == &GroupId::ImageOrientation {
-                        let timestamp_us = *(map.get_t(TagId::TimestampUs) as Option<&u64>).unwrap_or(&0) as i64;
-                        return Some(timestamp_us);
+    fn get_timestamp(info: &util::SampleInfo, group_id: &GroupId) -> Option<i64> {
+        if let Some(ref grouped_tag_map) = info.tag_map {
+            for (group, map) in grouped_tag_map {
+                if group == group_id {
+                    let mut tick = 0i64;
+                    if let Some(t) = map.get_t(TagId::Unknown(0x5449434b /*TICK*/)) as Option<&u32> {
+                        tick = (*t as i64) * 1000;
                     }
+                    let timestamp_us = (map.get_t(TagId::TimestampUs) as Option<&u64>).map(|x| *x as i64).unwrap_or(tick);
+                    return Some(timestamp_us);
                 }
             }
-            None
         }
-        
+        None
+    }
+
+    fn process_samples(&self, samples: &mut Vec<SampleInfo>) {
         // Normalize quaternions
         let mut prev_increment = 0;
         let mut start_timestamp_us = None;
@@ -181,7 +185,7 @@ impl GoPro {
                     let scale = *(map.get_t(TagId::Scale) as Option<&i16>).unwrap_or(&32767) as f64;
                     let mut timestamp_us = *(map.get_t(TagId::TimestampUs) as Option<&u64>).unwrap_or(&0) as i64;
                     // let start_count = *(map.get_t(TagId::Count) as Option<&u32>).unwrap_or(&0);
-                    let next_timestamp_us = samples.get(i + 1).map(get_timestamp).unwrap_or(None);
+                    let next_timestamp_us = samples.get(i + 1).map(|x | Self::get_timestamp(x, &group)).unwrap_or(None);
                     if start_timestamp_us.is_none() {
                         start_timestamp_us = Some(timestamp_us);
                     }
@@ -216,6 +220,46 @@ impl GoPro {
                 let grouped_tag_map = samples[i].tag_map.as_mut().unwrap();
                 util::insert_tag(grouped_tag_map, tag!(parsed GroupId::Quaternion, TagId::Data, "Quaternion data",  Vec_TimeQuaternion_f64, |v| format!("{:?}", v), quat, vec![]));
             }
+        }
+    }
+    pub fn get_avg_sample_duration(samples: &Vec<SampleInfo>, group_id: &GroupId) -> Option<f64> {
+        let mut total_duration_ms = 0.0;
+
+        let mut first_tsus = None;
+        let mut last_tsus = None;
+        let mut count = 0;
+        let mut last_len = 0;
+        for info in samples {
+            total_duration_ms += info.duration_ms;
+            if info.tag_map.is_none() { continue; }
+            for (group, map) in info.tag_map.as_ref().unwrap() {
+                if group == group_id {
+                    if let Some(t) = map.get_t(TagId::TimestampUs) as Option<&u64> {
+                        if first_tsus.is_none() { first_tsus = Some(*t as i64); }
+                        last_tsus = Some(*t as i64);
+                    } else if let Some(t) = map.get_t(TagId::TimestampMs) as Option<&u64> {
+                        if first_tsus.is_none() { first_tsus = Some((*t as i64) * 1000); }
+                        last_tsus = Some((*t as i64) * 1000);
+                    } else if let Some(t) = map.get_t(TagId::Unknown(0x5449434b /*TICK*/)) as Option<&u32> {
+                        if first_tsus.is_none() { first_tsus = Some((*t as i64) * 1000); }
+                        last_tsus = Some((*t as i64) * 1000);
+                    }
+                    if let Some(t) = map.get_t(TagId::Data) as Option<&Vec<Vector3<i16>>> {
+                        count += t.len();
+                        last_len = t.len();
+                    } else if let Some(t) = map.get_t(TagId::Data) as Option<&Vec<Quaternion<i16>>> {
+                        count += t.len();
+                        last_len = t.len();
+                    }
+                }
+            }
+        }
+        if first_tsus.is_some() && last_tsus.is_some() && count > 0 {
+            Some((last_tsus.unwrap() as f64 - first_tsus.unwrap() as f64) / (count - last_len).max(1) as f64 / 1000.0)
+        } else if count > 0 {
+            Some(total_duration_ms / count as f64)
+        } else {
+            None
         }
     }
 

@@ -136,6 +136,8 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
     let mut final_data = Vec::<IMUData>::with_capacity(10000);
     let mut data_index = 0;
 
+    let mut fix_timestamps = false;
+
     for info in input.samples.as_ref().unwrap() {
         if info.tag_map.is_none() { continue; }
 
@@ -189,6 +191,7 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
                         TagValue::Vec_Vector3_i16(arr) => {
                             let arr = arr.get();
                             let reading_duration = info.duration_ms / arr.len() as f64;
+                            fix_timestamps = true;
         
                             for (j, v) in arr.iter().enumerate() {
                                 if final_data.len() <= data_index + j {
@@ -224,6 +227,28 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
         }
         data_index = final_data.len();
     }
+
+    if fix_timestamps && !final_data.is_empty() {
+        let avg_diff = {
+            if input.camera_type() == "GoPro" {
+                crate::gopro::GoPro::get_avg_sample_duration(input.samples.as_ref().unwrap(), &GroupId::Gyroscope)
+            } else {
+                let mut total_duration_ms = 0.0;
+                for info in input.samples.as_ref().unwrap() {
+                    total_duration_ms += info.duration_ms;
+                }
+                Some(total_duration_ms / final_data.len() as f64)
+            }
+        };
+        if let Some(avg_diff) = avg_diff {
+            if avg_diff > 0.0 {
+                for (i, x) in final_data.iter_mut().enumerate() {
+                    x.timestamp_ms = avg_diff * i as f64;
+                }
+            }
+        }
+    }
+
     Ok(final_data)
 }
 
