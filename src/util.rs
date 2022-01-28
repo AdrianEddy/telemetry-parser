@@ -121,7 +121,7 @@ pub fn read_beginning_and_end<T: Read + Seek>(stream: &mut T, stream_size: usize
     Ok(all)
 }
 
-#[derive(Default, serde::Serialize, Clone, Debug)]
+#[derive(Default, serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct IMUData {
     pub timestamp_ms: f64,
     pub gyro: Option<[f64; 3]>,
