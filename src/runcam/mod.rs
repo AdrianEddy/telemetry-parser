@@ -13,7 +13,12 @@ impl Runcam {
         let match_hdr = |line: &[u8]| -> bool {
             &buffer[0..line.len().min(buffer.len())] == line
         };
-        if match_hdr(b"time,x,y,z,ax,ay,az") || match_hdr(b"time,rx,ry,rz,ax,ay,az") || match_hdr(b"time,x,y,z") {
+        if match_hdr(b"time,rx,ry,rz,ax,ay,az,temp") {
+            // Mobius uses same log format as RunCam with an added temp field
+            let model = Some("Mobius Maxi 4K".to_owned());
+            return Some(Self { model }); 
+        }
+        else if match_hdr(b"time,x,y,z,ax,ay,az") || match_hdr(b"time,rx,ry,rz,ax,ay,az") || match_hdr(b"time,x,y,z") {
             let model = if filename.starts_with("RC_") {
                 Some("Runcam 5 Orange".to_owned())
             } else if filename.starts_with("gyroDat") {
@@ -83,6 +88,7 @@ impl Runcam {
             Some("Runcam 5 Orange")  => "xzY",
             Some("iFlight GOCam GR") => "xZy",
             Some("Thumb")            => "Yxz",
+            Some("Mobius Maxi 4K")   => "yxz",
             _ => "xzY"
         };
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.to_string(), Vec::new()));
@@ -100,6 +106,7 @@ impl Runcam {
     pub fn camera_type(&self) -> String {
         match self.model.as_deref() {
             Some("iFlight GOCam GR") => "iFlight",
+            Some("Mobius Maxi 4K") => "Mobius",
             _ => "Runcam"
         }.to_owned()
     }
