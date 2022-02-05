@@ -259,6 +259,11 @@ impl<T: std::convert::Into<f64>> TimeVector3<T> {
     }
 }
 #[derive(Debug, Clone, Serialize, Default)]
+pub struct TimeArray8<T> {
+    pub t: f64,
+    pub v: [T; 8]
+}
+#[derive(Debug, Clone, Serialize, Default)]
 pub struct TimeArray4<T> {
     pub t: f64,
     pub v: [T; 4]

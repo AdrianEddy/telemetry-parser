@@ -12,7 +12,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
     stream.read_to_end(&mut bytes)?;
 
     for index in memmem::find_iter(&bytes, b"H Product:Blackbox") {
-        if let Some(end) = memmem::find(&bytes[index..], b"End of log\0") {
+        if let Some(end) = memmem::find(&bytes[index..], b"End of log") {
             let log = &bytes[index..index+end+11];
 
             let mut bbox = fc_blackbox::BlackboxReader::from_bytes(log).unwrap();
