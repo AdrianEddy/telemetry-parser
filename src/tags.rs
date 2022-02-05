@@ -117,6 +117,7 @@ declare_types! {
     Vec_TimeVector3_i64f64: Vec<TimeVector3<i64, f64>>, 
     Vec_TimeQuaternion_f64: Vec<TimeQuaternion<f64>>, 
 
+    Vec_TimeArray8_f64: Vec<TimeArray8<f64>>,
     Vec_TimeArray4_f64: Vec<TimeArray4<f64>>, 
     Vec_TimeArray2_f64: Vec<TimeArray2<f64>>, 
 }

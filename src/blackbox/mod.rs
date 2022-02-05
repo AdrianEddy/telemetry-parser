@@ -55,8 +55,8 @@ impl BlackBox {
                 "setpoint" | 
                 "motor" | 
                 "rcCommand" | 
-                "rcCommands" | 
-                "debug" => FieldType::Vector4(field[..pos].to_owned(), idx),
+                "rcCommands" => FieldType::Vector4(field[..pos].to_owned(), idx),
+                "debug" => FieldType::Vector8(field[..pos].to_owned(), idx),
 
                 _ => FieldType::Vector3(field[..pos].to_owned(), idx)
             }
@@ -116,6 +116,7 @@ impl BlackBox {
                 FieldType::Vector2(ref hdr, c) => { insert_entry!(c, hdr, Vec_TimeArray2_f64); }
                 FieldType::Vector3(ref hdr, c) => { insert_entry!(c, hdr, Vec_TimeVector3_f64); }
                 FieldType::Vector4(ref hdr, c) => { insert_entry!(c, hdr, Vec_TimeArray4_f64); }
+                FieldType::Vector8(ref hdr, c) => { insert_entry!(c, hdr, Vec_TimeArray8_f64); }
             }
         }
 
@@ -141,6 +142,10 @@ impl BlackBox {
                 0 => vec.get_mut().push(TimeArray4 { t: time, v: [val as f64, 0.0, 0.0, 0.0] }),
                 _ => vec.get_mut().last_mut().unwrap().v[i as usize] = val as f64,
             }
+            TagValue::Vec_TimeArray8_f64(vec) => match i {
+                0 => vec.get_mut().push(TimeArray8 { t: time, v: [val as f64, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] }),
+                _ => vec.get_mut().last_mut().unwrap().v[i as usize] = val as f64,
+            }
             _ => { panic!("Unknown field type"); }
         }
     }
@@ -155,7 +160,8 @@ enum FieldType {
     Single(String),
     Vector2(String, u8),
     Vector3(String, u8),
-    Vector4(String, u8)
+    Vector4(String, u8),
+    Vector8(String, u8)
 }
 struct HeaderTagDesc {
     index: u8,
