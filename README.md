@@ -11,6 +11,7 @@ Work in progress, the code is already working but I plan to add much more input 
 - [x] Runcam CSV (Runcam 5 Orange, iFlight GOCam GR)
 - [x] WitMotion (WT901SDCL binary and *.txt)
 - [x] Mobile apps: `Sensor Logger`, `G-Field Recorder`, `Gyro`
+- [x] Gyroflow [.gcsv log](https://docs.gyroflow.xyz/logging/gcsv/)
 - [ ] TODO DJI flight logs (*.dat, *.txt)
 
 # Example usage

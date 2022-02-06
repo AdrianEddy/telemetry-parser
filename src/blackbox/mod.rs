@@ -28,7 +28,7 @@ impl BlackBox {
                 csv: false
             });
         }
-        if memmem::find(buffer, b"\"loopIteration\",\"time\"").is_some() {
+        if memmem::find(buffer, b"\"loopIteration\",\"time\"").is_some() || memmem::find(buffer, b"loopIteration,time").is_some(){
             return Some(Self {
                 model: util::find_between(buffer, b"\"Firmware revision\",\"", b'"'),
                 csv: true
