@@ -1,5 +1,6 @@
 mod sony;
 mod gopro;
+mod gyroflow;
 mod insta360;
 mod blackbox;
 mod runcam;
@@ -60,6 +61,7 @@ macro_rules! impl_formats {
 impl_formats! {
     GoPro     => gopro::GoPro,
     Sony      => sony::Sony,
+    Gyroflow  => gyroflow::Gyroflow,
     Insta360  => insta360::Insta360,
     BlackBox  => blackbox::BlackBox,
     Runcam    => runcam::Runcam,
