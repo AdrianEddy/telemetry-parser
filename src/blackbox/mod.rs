@@ -52,10 +52,10 @@ impl BlackBox {
                 "GPS_coord" |
                 "GPS_home" => FieldType::Vector2(field[..pos].to_owned(), idx),
 
-                "setpoint" | 
-                "motor" | 
-                "rcCommand" | 
+                "setpoint" |
+                "rcCommand" |
                 "rcCommands" => FieldType::Vector4(field[..pos].to_owned(), idx),
+                "motor" |
                 "debug" => FieldType::Vector8(field[..pos].to_owned(), idx),
 
                 _ => FieldType::Vector3(field[..pos].to_owned(), idx)
