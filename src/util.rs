@@ -132,6 +132,7 @@ pub struct IMUData {
 // TODO: interpolate if gyro and accel have different rates
 pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Result<Vec<IMUData>> {
     let mut timestamp = 0f64;
+    let mut first_timestamp = None;
 
     let mut final_data = Vec::<IMUData>::with_capacity(10000);
     let mut data_index = 0;
@@ -213,6 +214,11 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
                                     final_data.resize_with(data_index + j + 1, Default::default);
                                     let timestamp_multiplier = if is_insta360_raw_gyro { 1.0 } else { 1000.0 };
                                     final_data[data_index + j].timestamp_ms = (v.t - first_frame_ts) * timestamp_multiplier;
+                                    if first_timestamp.is_none() {
+                                        first_timestamp = Some(final_data[data_index + j].timestamp_ms);
+                                    } else {
+                                        final_data[data_index + j].timestamp_ms -= first_timestamp.unwrap();
+                                    }
                                 }
                                 let itm = v.clone().into_scaled(&raw2unit, &unit2deg).orient(io);
                                      if group == &GroupId::Gyroscope     { final_data[data_index + j].gyro = Some([ itm.x, itm.y, itm.z ]); }

@@ -25,6 +25,9 @@ macro_rules! impl_formats {
         impl Input {
             pub fn from_stream<T: Read + Seek>(stream: &mut T, size: usize, filename: &str) -> Result<Input> {
                 let buf = util::read_beginning_and_end(stream, size, 2*1024*1024)?; // 2 MB
+                if buf.is_empty() {
+                    return Err(Error::new(ErrorKind::Other, "File is empty or there was an error trying to load it."));
+                }
                 $(
                     if let Some(mut x) = <$class>::detect(&buf, filename) {
                         return Ok(Input {
