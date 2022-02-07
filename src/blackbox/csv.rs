@@ -32,6 +32,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
                 if let Ok(f) = value.parse::<f64>() {
                     super::BlackBox::insert_value_to_vec(&mut desc, time, f, col.index);
                 } else {
+                    super::BlackBox::insert_value_to_vec(&mut desc, time, f64::NAN, col.index);
                     eprintln!("Invalid float {}", value);
                 }
             }
