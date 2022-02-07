@@ -216,6 +216,7 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
                                     final_data[data_index + j].timestamp_ms = (v.t - first_frame_ts) * timestamp_multiplier;
                                     if first_timestamp.is_none() {
                                         first_timestamp = Some(final_data[data_index + j].timestamp_ms);
+                                        final_data[data_index + j].timestamp_ms = 0.0;
                                     } else {
                                         final_data[data_index + j].timestamp_ms -= first_timestamp.unwrap();
                                     }
