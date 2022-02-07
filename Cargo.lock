@@ -203,7 +203,7 @@ dependencies = [
 [[package]]
 name = "fc-blackbox"
 version = "0.1.1"
-source = "git+https://github.com/ilya-epifanov/fc-blackbox.git#bf493a01e7f8c81ff53ab260d341b027c8b21cfc"
+source = "git+https://github.com/AdrianEddy/fc-blackbox.git#fc9bb236fd550fb942c3e08855d25e48be4ad801"
 dependencies = [
  "chrono",
  "integer-encoding",
