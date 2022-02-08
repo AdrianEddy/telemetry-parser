@@ -58,11 +58,21 @@ impl Runcam {
                 });
             }
             if row.len() >= 7 {
-                accl.push(TimeVector3 {
-                    t: time,
-                    x: row[4].parse::<f64>().map_err(e)?,
-                    y: row[5].parse::<f64>().map_err(e)?,
-                    z: row[6].parse::<f64>().map_err(e)?
+                // Fix RC5 accelerometer orientation
+                accl.push(if self.model.as_deref() == Some("Runcam 5 Orange") {
+                    TimeVector3 {
+                        t: time,
+                        x: row[5].parse::<f64>().map_err(e)?,
+                        y: row[6].parse::<f64>().map_err(e)?,
+                        z: -row[4].parse::<f64>().map_err(e)?
+                    }
+                } else {
+                    TimeVector3 {
+                        t: time,
+                        x: row[4].parse::<f64>().map_err(e)?,
+                        y: row[5].parse::<f64>().map_err(e)?,
+                        z: row[6].parse::<f64>().map_err(e)?
+                    }
                 });
             }
         }
