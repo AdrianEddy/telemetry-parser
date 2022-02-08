@@ -43,6 +43,7 @@ impl Runcam {
         let mut csv = csv::ReaderBuilder::new()
             .has_headers(false)
             .flexible(true)
+            .trim(csv::Trim::All)
             .from_reader(stream);
         for row in csv.records() {
             let row = row?;

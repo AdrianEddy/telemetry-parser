@@ -19,6 +19,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
     let mut csv = csv::ReaderBuilder::new()
         .has_headers(false)
         .flexible(true)
+        .trim(csv::Trim::All)
         .delimiter(b'\t')
         .from_reader(stream);
     

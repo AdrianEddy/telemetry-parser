@@ -202,8 +202,9 @@ dependencies = [
 
 [[package]]
 name = "fc-blackbox"
-version = "0.1.1"
-source = "git+https://github.com/ilya-epifanov/fc-blackbox.git?rev=65405d58bd46404c0a267a2a816c4190eb91f508#65405d58bd46404c0a267a2a816c4190eb91f508"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6616d815efe117378f150e37c1374c650bf52b2380f0159fe3e654162927414e"
 dependencies = [
  "chrono",
  "integer-encoding",

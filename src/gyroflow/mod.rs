@@ -24,7 +24,11 @@ impl Gyroflow {
             // get header block
             let header_block = &buffer[0..buffer.len().min(500)];
 
-            let mut csv = csv::ReaderBuilder::new().has_headers(false).flexible(true).from_reader(header_block);
+            let mut csv = csv::ReaderBuilder::new()
+                .trim(csv::Trim::All)
+                .has_headers(false)
+                .flexible(true)
+                .from_reader(header_block);
 
             for row in csv.records() {
                 let row = row.ok()?;
@@ -56,6 +60,7 @@ impl Gyroflow {
         let mut csv = csv::ReaderBuilder::new()
             .has_headers(false)
             .flexible(true)
+            .trim(csv::Trim::All)
             .from_reader(stream);
 
         let mut passed_header = false;
