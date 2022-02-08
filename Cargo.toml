@@ -18,7 +18,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 argh = "0.1"
 memchr = "2.4"
-fc-blackbox = { version = "*", git = "https://github.com/ilya-epifanov/fc-blackbox.git", rev = "61ce1b4ba9df55978c31d3c9f54a359b6c77204a" }
+fc-blackbox = { version = "*", git = "https://github.com/ilya-epifanov/fc-blackbox.git", rev = "e61ce91e239f2abc6e69a412aefedfe9ad068b4b" }
 csv = "1.1"
 
 quick-xml = { version = "0.22", optional = true }
