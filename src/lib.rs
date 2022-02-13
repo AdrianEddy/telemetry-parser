@@ -7,6 +7,7 @@ mod runcam;
 mod witmotion;
 mod dji;
 mod phone_apps;
+mod ardupilot;
 
 pub mod tags_impl;
 pub mod util;
@@ -68,4 +69,5 @@ impl_formats! {
     WitMotion => witmotion::WitMotion,
     Dji       => dji::Dji,
     PhoneApps => phone_apps::PhoneApps,
+    ArduPilot => ardupilot::ArduPilot,
 }
