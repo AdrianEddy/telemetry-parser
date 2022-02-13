@@ -12,13 +12,12 @@ pub struct ArduPilot {
 // ArduPilot .log format, not native .bin yet, .bin can be converted to .log using mission planner or https://github.com/ArduPilot/pymavlink/blob/master/tools/mavlogdump.py
 
 impl ArduPilot {
-
     pub fn detect(buffer: &[u8], filename: &str) -> Option<Self> {
         if !filename.ends_with(".log") { return None }
 
         if memmem::find(buffer, b"FMT,").is_some() &&
-                memmem::find(buffer, b"PARM,").is_some() &&
-                memmem::find(buffer, b"VSTB,").is_some() {
+           memmem::find(buffer, b"PARM,").is_some() &&
+           memmem::find(buffer, b"VSTB,").is_some() {
             return Some(Self { model: Some(".log".to_owned()) });
         }
         None
@@ -39,7 +38,7 @@ impl ArduPilot {
         let time_scale = 1.0e-6;
         for row in csv.records() {
             let row = row?;
-            if &row[0] != "VSTB" {
+            if &row[0] != "VSTB" || row.len() < 8 {
                 continue;
             }
             let time = row[1].parse::<f64>().map_err(e)? * time_scale;
