@@ -32,7 +32,6 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
         }
         last_timestamp = ts;
         ts -= first_timestamp;
-        ts *= 1000.0; // seconds to milliseconds
 
         crate::try_block!({
             accl.push(TimeVector3 {
