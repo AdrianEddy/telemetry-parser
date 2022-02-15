@@ -15,7 +15,7 @@ pub struct GoPro {
 }
 
 impl GoPro {
-    pub fn detect(buffer: &[u8], _filename: &str) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         let mut ret = None;
     
         if let Some(pos) = memmem::find(buffer, b"GPMFDEVC") {

@@ -31,9 +31,7 @@ fn main() {
     let mut stream = std::fs::File::open(&opts.input).unwrap();
     let filesize = stream.metadata().unwrap().len() as usize;
 
-    let filename = std::path::Path::new(&opts.input).file_name().unwrap().to_str().unwrap();
-
-    let input = Input::from_stream(&mut stream, filesize, filename).unwrap();
+    let input = Input::from_stream(&mut stream, filesize, &opts.input).unwrap();
 
     let mut i = 0;
     println!("Detected camera: {} {}", input.camera_type(), input.camera_model().unwrap_or(&"".into()));

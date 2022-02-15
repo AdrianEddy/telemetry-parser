@@ -25,13 +25,13 @@ macro_rules! impl_formats {
             pub samples: Option<Vec<SampleInfo>>
         }
         impl Input {
-            pub fn from_stream<T: Read + Seek>(stream: &mut T, size: usize, filename: &str) -> Result<Input> {
+            pub fn from_stream<T: Read + Seek, P: AsRef<std::path::Path>>(stream: &mut T, size: usize, filepath: P) -> Result<Input> {
                 let buf = util::read_beginning_and_end(stream, size, 2*1024*1024)?; // 2 MB
                 if buf.is_empty() {
                     return Err(Error::new(ErrorKind::Other, "File is empty or there was an error trying to load it."));
                 }
                 $(
-                    if let Some(mut x) = <$class>::detect(&buf, filename) {
+                    if let Some(mut x) = <$class>::detect(&buf, &filepath) {
                         return Ok(Input {
                             samples: x.parse(stream, size).ok(),
                             inner: SupportedFormats::$name(x)

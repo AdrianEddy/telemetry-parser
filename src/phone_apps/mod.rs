@@ -14,12 +14,15 @@ pub struct PhoneApps {
 }
 
 impl PhoneApps {
-    pub fn detect(buffer: &[u8], filename: &str) -> Option<Self> {
-        if sensor_logger        ::detect(&buffer, filename) { return Some(Self { model: Some("Sensor Logger"            .to_owned()) }); }
-        if gf_recorder          ::detect(&buffer, filename) { return Some(Self { model: Some("GF Recorder"              .to_owned()) }); }
-        if gyro                 ::detect(&buffer, filename) { return Some(Self { model: Some("Gyro"                     .to_owned()) }); }
-        if sensor_logger_android::detect(&buffer, filename) { return Some(Self { model: Some("Sensor Logger Android"    .to_owned()) }); }
-        if sensor_record        ::detect(&buffer, filename) { return Some(Self { model: Some("Sensor Record"            .to_owned()) }); }
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
+        let filename = filepath.as_ref().file_name().map(|x| x.to_string_lossy()).unwrap_or_default();
+
+        if sensor_logger        ::detect(&buffer, &filename) { return Some(Self { model: Some("Sensor Logger"        .to_owned()) }); }
+        if gf_recorder          ::detect(&buffer, &filename) { return Some(Self { model: Some("GF Recorder"          .to_owned()) }); }
+        if gyro                 ::detect(&buffer, &filename) { return Some(Self { model: Some("Gyro"                 .to_owned()) }); }
+        if sensor_logger_android::detect(&buffer, &filename) { return Some(Self { model: Some("Sensor Logger Android".to_owned()) }); }
+        if sensor_record        ::detect(&buffer, &filename) { return Some(Self { model: Some("Sensor Record"        .to_owned()) }); }
+
         None
     }
 

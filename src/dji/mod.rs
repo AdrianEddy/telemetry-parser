@@ -14,7 +14,7 @@ pub struct Dji {
 }
 
 impl Dji {
-    pub fn detect(buffer: &[u8], _filename: &str) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if memmem::find(buffer, b"dbginfo").is_some() && memmem::find(buffer, b"IMX686").is_some() {
             Some(Self {
                 model: Some("Action 2".to_string())

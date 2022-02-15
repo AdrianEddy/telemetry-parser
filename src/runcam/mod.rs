@@ -9,7 +9,9 @@ pub struct Runcam {
 }
 
 impl Runcam {
-    pub fn detect(buffer: &[u8], filename: &str) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
+        let filename = filepath.as_ref().file_name().map(|x| x.to_string_lossy()).unwrap_or_default();
+
         let match_hdr = |line: &[u8]| -> bool {
             &buffer[0..line.len().min(buffer.len())] == line
         };

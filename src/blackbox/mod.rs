@@ -18,7 +18,7 @@ pub struct BlackBox {
 }
 
 impl BlackBox {
-    pub fn detect(buffer: &[u8], _filename: &str) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         // BBL - container format, can contain multiple logs, each starting with "H Product:Blackbox flight data recorder by Nicholas Sherlock." and ending with "End of log\0"
         // BFL - single flight log file
 

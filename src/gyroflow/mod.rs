@@ -12,8 +12,7 @@ pub struct Gyroflow {
 // .gcsv format as described here: https://docs.gyroflow.xyz/logging/gcsv/
 
 impl Gyroflow {
-
-    pub fn detect(buffer: &[u8], _filename: &str) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         let match_hdr = |line: &[u8]| -> bool {
             &buffer[0..line.len().min(buffer.len())] == line
         };

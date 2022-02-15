@@ -20,9 +20,7 @@ impl Parser {
         let mut stream = std::fs::File::open(&path)?;
         let filesize = stream.metadata()?.len() as usize;
 
-        let filename = std::path::Path::new(&path).file_name().unwrap_or_default().to_str().unwrap_or_default();
-
-        let input = Input::from_stream(&mut stream, filesize, filename)?;
+        let input = Input::from_stream(&mut stream, filesize, &path)?;
 
         Ok(Self {
             camera: Some(input.camera_type()),

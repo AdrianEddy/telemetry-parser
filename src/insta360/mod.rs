@@ -21,7 +21,7 @@ pub struct Insta360 {
 }
 
 impl Insta360 {
-    pub fn detect(buffer: &[u8], _filename: &str) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if buffer.len() > MAGIC.len() && &buffer[buffer.len()-MAGIC.len()..] == MAGIC {
             return Some(Insta360::default());
         }

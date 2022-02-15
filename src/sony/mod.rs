@@ -17,7 +17,7 @@ pub struct Sony {
     pub model: Option<String>
 }
 impl Sony {
-    pub fn detect(buffer: &[u8], _filename: &str) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if let Some(p1) = memmem::find(buffer, b"manufacturer=\"Sony\"") {
             return Some(Self {
                 model: util::find_between(&buffer[p1..(p1+1024).min(buffer.len())], b"modelName=\"", b'"')

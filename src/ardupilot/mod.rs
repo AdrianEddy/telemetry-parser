@@ -12,8 +12,8 @@ pub struct ArduPilot {
 // ArduPilot .log format, not native .bin yet, .bin can be converted to .log using mission planner or https://github.com/ArduPilot/pymavlink/blob/master/tools/mavlogdump.py
 
 impl ArduPilot {
-    pub fn detect(buffer: &[u8], filename: &str) -> Option<Self> {
-        if !filename.ends_with(".log") { return None }
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
+        if !filepath.as_ref().ends_with(".log") { return None }
 
         if memmem::find(buffer, b"FMT,").is_some() &&
            memmem::find(buffer, b"PARM,").is_some() &&
