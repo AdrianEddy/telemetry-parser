@@ -6,9 +6,10 @@ Work in progress, the code is already working but I plan to add much more input 
 # Supported formats:
 - [x] Sony (a1, a6600, a7c, a7r IV, a7 IV, a7s III, a9 II, FX3, FX6, RX0 II, RX100 VII, ZV1, ZV-E10)
 - [x] GoPro (All models with gyro metadata, starting with HERO 5)
-- [x] Insta360 (OneR, SMO 4k, GO2)
+- [x] Insta360 (OneR, SMO 4k, Go, GO2)
 - [x] Betaflight blackbox (CSV and binary)
-- [x] Runcam CSV (Runcam 5 Orange, iFlight GOCam GR)
+- [x] Runcam CSV (Runcam 5 Orange, iFlight GOCam GR, Runcam Thumb, Mobius Maxi 4K)
+- [x] Hawkeye Firefly X Lite CSV
 - [x] WitMotion (WT901SDCL binary and *.txt)
 - [x] iOS apps: `Sensor Logger`, [`G-Field Recorder`](https://apps.apple.com/at/app/g-field-recorder/id1154585693), [`Gyro`](https://apps.apple.com/us/app/gyro-record-device-motion-data/id1161532981)
 - [x] Android apps: [`Sensor Logger`](https://play.google.com/store/apps/details?id=com.kelvin.sensorapp&hl=de_AT&gl=US), [`Sensor Record`](https://play.google.com/store/apps/details?id=de.martingolpashin.sensor_record)

@@ -77,6 +77,7 @@ impl Insta360 {
         }
     
         let imu_orientation = match self.model.as_deref() {
+            Some("Insta360 Go")   => "xyZ",
             Some("Insta360 GO 2") => "yXZ",
             Some("Insta360 OneR") => "yXZ",
             _                     => "yXZ"
