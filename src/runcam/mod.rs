@@ -1,29 +1,39 @@
 use std::io::*;
+use std::path::{ Path, PathBuf };
 
 use crate::tags_impl::*;
 use crate::*;
 
 #[derive(Default)]
 pub struct Runcam {
-    pub model: Option<String>
+    pub model: Option<String>,
+    pub gyro_path: Option<PathBuf>
 }
 
 impl Runcam {
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
+    pub fn detect<P: AsRef<Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
         let filename = filepath.as_ref().file_name().map(|x| x.to_string_lossy()).unwrap_or_default();
+        
+        let mut gyro_path = None;
+        if filename.to_ascii_lowercase().ends_with(".mp4") {
+            gyro_path = Self::detect_gyro_path(filepath.as_ref(), &filename);
+        }
+        let gyro_buf = if let Some(gyro) = &gyro_path {
+            std::fs::read(gyro).ok()?
+        } else {
+            buffer.to_vec()
+        };
 
         let match_hdr = |line: &[u8]| -> bool {
-            &buffer[0..line.len().min(buffer.len())] == line
+            &gyro_buf[0..line.len().min(gyro_buf.len())] == line
         };
-        if match_hdr(b"time,rx,ry,rz,ax,ay,az,temp") {
-            // Mobius uses same log format as RunCam with an added temp field
-            let model = Some("Mobius Maxi 4K".to_owned());
-            return Some(Self { model }); 
-        }
-        else if match_hdr(b"time,x,y,z,ax,ay,az") || match_hdr(b"time,rx,ry,rz,ax,ay,az") || match_hdr(b"time,x,y,z") {
-            let model = if filename.starts_with("RC_") {
+        if match_hdr(b"time,x,y,z,ax,ay,az") || match_hdr(b"time,rx,ry,rz,ax,ay,az") || match_hdr(b"time,x,y,z") {
+            let model = if match_hdr(b"time,rx,ry,rz,ax,ay,az,temp") {
+                // Mobius uses same log format as RunCam with an added temp field
+                Some("Mobius Maxi 4K".to_owned())
+            } else if filename.starts_with("RC_") {
                 Some("Runcam 5 Orange".to_owned())
-            } else if filename.starts_with("gyroDat") {
+            } else if filename.starts_with("gyroDat") || filename.starts_with("IF-RC") {
                 Some("iFlight GOCam GR".to_owned())
             } else if filename.starts_with("Thumb") {
                 Some("Thumb".to_owned())
@@ -31,13 +41,50 @@ impl Runcam {
                 None
             };
 
-            return Some(Self { model });
+            return Some(Self { model, gyro_path });
+        }
+        None
+    }
+
+    fn detect_gyro_path(path: &Path, filename: &str) -> Option<PathBuf> {
+        if filename.starts_with("RC_") {
+            let num = filename.split("_").collect::<Vec<&str>>().get(1).cloned().unwrap_or(&"");
+            let gyropath = path.with_file_name(format!("RC_GyroData{}.csv", num));
+            if gyropath.exists() {
+                return Some(gyropath.into());
+            }
+        }
+        if filename.starts_with("IF-RC") {
+            let num = filename.split("_").collect::<Vec<&str>>().get(1).cloned().unwrap_or(&"");
+            let num = num.to_ascii_lowercase().replace(".mp4", "");
+            let gyropath = path.with_file_name(format!("gyroDate{}.csv", num));
+            if gyropath.exists() {
+                return Some(gyropath.into());
+            }
+            let gyropath = path.with_file_name(format!("gyroData{}.csv", num));
+            if gyropath.exists() {
+                return Some(gyropath.into());
+            }
+        }
+        if filename.starts_with("Thumb") {
+            let gyropath = path.with_extension("csv");
+            if gyropath.exists() {
+                return Some(gyropath.into());
+            }
         }
         None
     }
 
     pub fn parse<T: Read + Seek>(&mut self, stream: &mut T, _size: usize) -> Result<Vec<SampleInfo>> {
         let e = |_| -> Error { ErrorKind::InvalidData.into() };
+
+        let gyro_buf = if let Some(gyro) = &self.gyro_path {
+            std::fs::read(gyro)?
+        } else {
+            let mut vec = Vec::new();
+            stream.read_to_end(&mut vec)?;
+            vec
+        };
 
         let mut gyro = Vec::new();
         let mut accl = Vec::new();
@@ -46,7 +93,7 @@ impl Runcam {
             .has_headers(false)
             .flexible(true)
             .trim(csv::Trim::All)
-            .from_reader(stream);
+            .from_reader(Cursor::new(gyro_buf));
         for row in csv.records() {
             let row = row?;
             if &row[0] == "time" { continue; }
