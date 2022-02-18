@@ -184,7 +184,7 @@ pub struct ValueType<T> {
     parsed_value: OnceCell<T>,
     pub raw_data: Vec<u8>
 }
-impl<T> ValueType<T> {
+impl<T: Default> ValueType<T> {
     pub fn new(parse_fn: ParseFn<T>, format_fn: fn(&T) -> String, raw_data: Vec<u8>) -> ValueType<T> {
         ValueType {
             parse_fn: Some(parse_fn),
@@ -206,7 +206,13 @@ impl<T> ValueType<T> {
     pub fn get(&self) -> &T {
         self.parsed_value.get_or_init(|| {
             let mut tag_slice = std::io::Cursor::new(&self.raw_data[..]);
-            (self.parse_fn.expect("value not parsed"))(&mut tag_slice).unwrap()
+            match (self.parse_fn.expect("value not parsed"))(&mut tag_slice) {
+                Ok(v) => { return v; },
+                Err(e) => {
+                    println!("Parsing error {:?}: {}", e, pretty_hex::pretty_hex(&self.raw_data));
+                    return T::default();
+                }
+            }
         })
     }
     pub fn get_mut(&mut self) -> &mut T {

@@ -486,8 +486,11 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
 
             let cc = d.read_u8()?; // confirmed u8
             let dd = d.read_f32::<BigEndian>()?; // confirmed f32
-            let elem_count = d.read_u32::<BigEndian>()?;
+            let mut elem_count = d.read_u32::<BigEndian>()?;
             let _elem_size = d.read_u32::<BigEndian>()?;
+            if elem_count == 0xffffffff {
+                elem_count = 0;
+            }
             let mut ret = Vec::with_capacity(elem_count as usize); // &XAVC::base_Array<unsigned short>
             for _ in 0..elem_count {
                 ret.push(d.read_u16::<BigEndian>()?); // confirmed u16
