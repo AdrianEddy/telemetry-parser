@@ -159,6 +159,9 @@ pub mod extra_metadata {
             DivingWater        = 1,
             DivingAir          = 2,
             StitchOptimization = 3,
+            Protect            = 4,
+            SphereProtect      = 5,
+            FpvProtect         = 6,
         }
     }
     #[derive(Clone, PartialEq, ::prost::Message, ::serde::Serialize)]
@@ -234,13 +237,14 @@ pub mod extra_metadata {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration, ::serde::Serialize)]
     #[repr(i32)]
     pub enum ImageFovType {
-        FovTypeUnknown    = 0,
-        FovTypeWide       = 1,
-        FovTypeLinear     = 2,
-        FovTypeUltrawide  = 3,
-        FovTypeNarrow     = 4,
-        FovTypePov        = 5,
-        FovTypeLinearplus = 6,
+        FovTypeUnknown       = 0,
+        FovTypeWide          = 1,
+        FovTypeLinear        = 2,
+        FovTypeUltrawide     = 3,
+        FovTypeNarrow        = 4,
+        FovTypePov           = 5,
+        FovTypeLinearPlus    = 6,
+        FovTypeLinearHorizon = 7,
     }
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration, ::serde::Serialize)]
     #[repr(i32)]
@@ -287,6 +291,9 @@ pub mod extra_metadata {
         AudioModeFocus   = 1,
         AudioModeStereo  = 2,
         AudioMode360     = 3,
+        RsStereo         = 4,
+        Reserve1         = 5,
+        Reserve2         = 6,
     }
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration, ::serde::Serialize)]
     #[repr(i32)]
@@ -347,6 +354,10 @@ pub enum ExtraType {
     AaaData      = 9,
     Highlight    = 10,
     AaaSim       = 11,
+    ExposureSecondary = 12,
+    Magnetic     = 13,
+    Euler        = 14,
+    SecGyro      = 15,
 }
 
 // ----------------------------------------------------------------------------------------------------------------------

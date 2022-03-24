@@ -23,6 +23,8 @@ mod RecordType {
     pub const AAASimulation      : u8 = 11;
     pub const ExposureSecondary  : u8 = 12;
     pub const Magnetic           : u8 = 13;
+    pub const Euler              : u8 = 14;
+    pub const SecGyro            : u8 = 15;
     pub const TimeMap            : u8 = 128;
 }
 
@@ -243,6 +245,8 @@ impl super::Insta360 {
             RecordType::StarNum | // Unknown format, item size: 11
             RecordType::AAASimulation | // Unknown format
             RecordType::Magnetic | // Unknown format
+            RecordType::Euler | // Unknown format
+            RecordType::SecGyro | // Unknown format
             RecordType::TimeMap | // Unknown format
             _ => {
                 eprintln!("Unknown Insta360 record: {}, format: {}, {}", id, format, pretty_hex::pretty_hex(&data));
