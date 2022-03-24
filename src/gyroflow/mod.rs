@@ -1,34 +1,47 @@
 use std::collections::BTreeMap;
 use std::io::*;
+use std::path::{ Path, PathBuf };
 
 use crate::tags_impl::*;
 use crate::*;
 
 #[derive(Default)]
 pub struct Gyroflow {
-    pub model: Option<String>
+    pub model: Option<String>,
+    pub gyro_path: Option<PathBuf>
 }
 
 // .gcsv format as described here: https://docs.gyroflow.xyz/logging/gcsv/
 
 impl Gyroflow {
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
+    pub fn detect<P: AsRef<Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
+        let filename = filepath.as_ref().file_name().map(|x| x.to_string_lossy()).unwrap_or_default();
+
+        let mut gyro_path = None;
+        if !filename.to_ascii_lowercase().ends_with(".gcsv") && filepath.as_ref().with_extension("gcsv").exists() {
+            gyro_path = Some(filepath.as_ref().with_extension("gcsv").into());
+        }
+        let gyro_buf = if let Some(gyro) = &gyro_path {
+            std::fs::read(gyro).ok()?
+        } else {
+            buffer.to_vec()
+        };
+
         let match_hdr = |line: &[u8]| -> bool {
-            &buffer[0..line.len().min(buffer.len())] == line
+            &gyro_buf[0..line.len().min(gyro_buf.len())] == line
         };
         if match_hdr(b"GYROFLOW IMU LOG") || match_hdr(b"CAMERA IMU LOG"){
-
             let mut header = BTreeMap::new();
 
             // get header block
-            let header_block = &buffer[0..buffer.len().min(500)];
+            let header_block = &gyro_buf[0..gyro_buf.len().min(500)];
 
             let mut csv = csv::ReaderBuilder::new()
-                .trim(csv::Trim::All)
                 .has_headers(false)
                 .flexible(true)
-                .from_reader(header_block);
-
+                .trim(csv::Trim::All)
+                .from_reader(Cursor::new(header_block));
+                
             for row in csv.records() {
                 let row = row.ok()?;
                 if row.len() == 2 {
@@ -42,14 +55,22 @@ impl Gyroflow {
             let id = header.remove("id").unwrap_or("NoID".to_owned()).replace("_", " ");
 
             let model = Some(format!("{} (gcsv v{})", id, version));
-            return Some(Self { model }); 
+            return Some(Self { model, gyro_path });
         }
         None
     }
 
     pub fn parse<T: Read + Seek>(&mut self, stream: &mut T, _size: usize) -> Result<Vec<SampleInfo>> {
         let e = |_| -> Error { ErrorKind::InvalidData.into() };
-        
+
+        let gyro_buf = if let Some(gyro) = &self.gyro_path {
+            std::fs::read(gyro)?
+        } else {
+            let mut vec = Vec::new();
+            stream.read_to_end(&mut vec)?;
+            vec
+        };
+
         let mut header = BTreeMap::new();
 
         let mut gyro = Vec::new();
@@ -60,7 +81,7 @@ impl Gyroflow {
             .has_headers(false)
             .flexible(true)
             .trim(csv::Trim::All)
-            .from_reader(stream);
+            .from_reader(Cursor::new(gyro_buf));
 
         let mut passed_header = false;
 
@@ -84,25 +105,25 @@ impl Gyroflow {
             if row.len() >= 4 {
                 gyro.push(TimeVector3 {
                     t: time,
-                    x: row[1].parse::<f64>().map_err(e)?,
-                    y: row[2].parse::<f64>().map_err(e)?,
-                    z: row[3].parse::<f64>().map_err(e)?
+                    x: row[1].parse::<f64>().unwrap_or_default(),
+                    y: row[2].parse::<f64>().unwrap_or_default(),
+                    z: row[3].parse::<f64>().unwrap_or_default(),
                 });
             }
             if row.len() >= 7 {
                 accl.push(TimeVector3 {
                     t: time,
-                    x: row[4].parse::<f64>().map_err(e)?,
-                    y: row[5].parse::<f64>().map_err(e)?,
-                    z: row[6].parse::<f64>().map_err(e)?
+                    x: row[4].parse::<f64>().unwrap_or_default(),
+                    y: row[5].parse::<f64>().unwrap_or_default(),
+                    z: row[6].parse::<f64>().unwrap_or_default()
                 });
             }
             if row.len() >= 10 {
                 magn.push(TimeVector3 {
                     t: time,
-                    x: row[7].parse::<f64>().map_err(e)?,
-                    y: row[8].parse::<f64>().map_err(e)?,
-                    z: row[9].parse::<f64>().map_err(e)?
+                    x: row[7].parse::<f64>().unwrap_or_default(),
+                    y: row[8].parse::<f64>().unwrap_or_default(),
+                    z: row[9].parse::<f64>().unwrap_or_default()
                 });
             }
         }
