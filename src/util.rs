@@ -1,6 +1,7 @@
 use std::io::*;
 use crate::tags_impl::*;
 use byteorder::{ReadBytesExt, BigEndian};
+use mp4parse::MediaContext;
 use std::collections::BTreeMap;
 use memchr::memmem;
 
@@ -43,7 +44,7 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
     mp4parse::read_mp4(stream)
 }
 
-fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4parse::TrackType, mut callback: F) -> Result<()>
+fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4parse::TrackType, mut callback: F) -> Result<MediaContext>
     where F: FnMut(SampleInfo, &[u8])
 {
 
@@ -53,7 +54,7 @@ fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4par
     // let mut sample_delta = 0u32;
     // let mut timestamp_ms = 0f64;
 
-    for x in ctx.tracks {
+    for x in &ctx.tracks {
         if x.track_type == typ {
             // if let Some(timescale) = x.timescale {
                 // if let Some(ref stts) = x.stts {
@@ -85,15 +86,15 @@ fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4par
             // }
         }
     }
-    Ok(())
+    Ok(ctx)
 }
 
-pub fn get_metadata_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, callback: F) -> Result<()>
+pub fn get_metadata_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, callback: F) -> Result<MediaContext>
     where F: FnMut(SampleInfo, &[u8])
 {
     get_track_samples(stream, size, mp4parse::TrackType::Metadata, callback)
 }
-pub fn get_other_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, callback: F) -> Result<()>
+pub fn get_other_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, callback: F) -> Result<MediaContext>
     where F: FnMut(SampleInfo, &[u8])
 {
     get_track_samples(stream, size, mp4parse::TrackType::Unknown, callback)
@@ -309,6 +310,44 @@ pub fn create_csv_map<'a, 'b>(row: &'b csv::StringRecord, headers: &'a Vec<Strin
 }
 pub fn create_csv_map_hdr<'a, 'b>(row: &'b csv::StringRecord, headers: &'a csv::StringRecord) -> BTreeMap<&'a str, &'b str> {
     headers.iter().zip(row).map(|(a, b)| (a, b)).collect()
+}
+
+pub fn get_fps_from_track(track: &mp4parse::Track) -> Option<f64> {
+    if let Some(ref stts) = track.stts {
+        if !stts.samples.is_empty() {
+            let samples = stts.samples[0].sample_count;
+            let timescale = track.timescale?;
+            let duration = track.duration?;
+            let duration_us = duration.0 as f64 * 1000_000.0 / timescale.0 as f64;
+            let us_per_frame = duration_us / samples as f64;
+            return Some(1000_000.0 / us_per_frame);
+        }
+    }
+    None
+}
+pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Result<(usize, usize, f64)> { // -> (width, height, fps)
+    let mp = parse_mp4(stream, filesize)?;
+    if !mp.tracks.is_empty() {
+        if let Some(ref tkhd) = mp.tracks[0].tkhd {
+            let w = tkhd.width >> 16;
+            let h = tkhd.height >> 16;
+            let matrix = (
+                tkhd.matrix.a >> 16,
+                tkhd.matrix.b >> 16,
+                tkhd.matrix.c >> 16,
+                tkhd.matrix.d >> 16,
+            );
+            let _rotation = match matrix {
+                (0, 1, -1, 0) => 90,   // rotate 90 degrees
+                (-1, 0, 0, -1) => 180, // rotate 180 degrees
+                (0, -1, 1, 0) => 270,  // rotate 270 degrees
+                _ => 0,
+            };
+            let fps = get_fps_from_track(&mp.tracks[0]).unwrap_or_default();
+            return Ok((w as usize, h as usize, fps));
+        }
+    }
+    Err(ErrorKind::Other.into())
 }
 
 #[macro_export]
