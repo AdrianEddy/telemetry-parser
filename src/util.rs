@@ -21,6 +21,36 @@ pub struct SampleInfo {
     pub tag_map: Option<GroupedTagMap>
 }
 
+// Read all boxes and make sure all top-level boxes are named using ascii and have correct size.
+// If there's any garbage at the end of the file, it is removed.
+pub fn verify_and_fix_mp4_structure(bytes: &mut Vec<u8>) {
+    crate::try_block!({
+        let mut good_size = 0;
+        let mut pos = 0;
+        while pos < bytes.len() - 1 {
+            let start_pos = pos;
+            let mut len = (&bytes[pos..]).read_u32::<BigEndian>().ok()? as u64;
+            pos += 4;
+            if len == 1 { // Large box
+                len = (&bytes[pos..]).read_u64::<BigEndian>().ok()?;
+                pos += 8;
+            }
+            let name_good = bytes.len() >= pos + 4 && bytes[pos].is_ascii() && bytes[pos + 1].is_ascii() && bytes[pos + 2].is_ascii() && bytes[pos + 3].is_ascii();
+            pos = start_pos + len as usize;
+            let size_good = bytes.len() >= pos;
+            if name_good && size_good {
+                good_size = pos;
+            } else {
+                break;
+            }
+        }
+        if bytes.len() > good_size {
+            println!("Garbage found at the end of the file, removing {} bytes from the end.", bytes.len() - good_size);
+            bytes.resize(good_size, 0);
+        }
+    });
+}
+
 pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Result<mp4parse::MediaContext> {
     if size > 10*1024*1024 {
         // With large files we can save a lot of time by only parsing actual MP4 box structure, skipping track data ifself.
@@ -37,6 +67,9 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
                 len -= how_much_less;
                 all[pos-4..pos].copy_from_slice(&(len as u32).to_be_bytes());
             }
+
+            verify_and_fix_mp4_structure(&mut all);
+
             let mut c = std::io::Cursor::new(&all);
             return mp4parse::read_mp4(&mut c);
         }
