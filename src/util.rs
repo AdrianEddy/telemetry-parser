@@ -31,11 +31,11 @@ pub fn verify_and_fix_mp4_structure(bytes: &mut Vec<u8>) {
             let start_pos = pos;
             let mut len = (&bytes[pos..]).read_u32::<BigEndian>().ok()? as u64;
             pos += 4;
+            let name_good = bytes.len() >= pos + 4 && bytes[pos].is_ascii() && bytes[pos + 1].is_ascii() && bytes[pos + 2].is_ascii() && bytes[pos + 3].is_ascii();
+            pos += 4;
             if len == 1 { // Large box
                 len = (&bytes[pos..]).read_u64::<BigEndian>().ok()?;
-                pos += 8;
             }
-            let name_good = bytes.len() >= pos + 4 && bytes[pos].is_ascii() && bytes[pos + 1].is_ascii() && bytes[pos + 2].is_ascii() && bytes[pos + 3].is_ascii();
             pos = start_pos + len as usize;
             let size_good = bytes.len() >= pos;
             if name_good && size_good {
