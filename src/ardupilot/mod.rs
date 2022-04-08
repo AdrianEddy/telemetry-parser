@@ -13,7 +13,7 @@ pub struct ArduPilot {
 
 impl ArduPilot {
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
-        if !filepath.as_ref().ends_with(".log") { return None }
+        if !filepath.as_ref().to_str().unwrap_or_default().ends_with(".log") { return None }
 
         if memmem::find(buffer, b"FMT,").is_some() &&
            memmem::find(buffer, b"PARM,").is_some() &&
