@@ -245,6 +245,7 @@ pub mod extra_metadata {
         FovTypePov           = 5,
         FovTypeLinearPlus    = 6,
         FovTypeLinearHorizon = 7,
+        Unknown1             = 8,
     }
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration, ::serde::Serialize)]
     #[repr(i32)]

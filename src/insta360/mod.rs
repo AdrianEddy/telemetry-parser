@@ -77,10 +77,11 @@ impl Insta360 {
         }
     
         let imu_orientation = match self.model.as_deref() {
-            Some("Insta360 Go")   => "xyZ",
-            Some("Insta360 GO 2") => "yXZ",
-            Some("Insta360 OneR") => "yXZ",
-            _                     => "yXZ"
+            Some("Insta360 Go")    => "xyZ",
+            Some("Insta360 GO 2")  => "yXZ",
+            Some("Insta360 OneR")  => "yXZ",
+            Some("Insta360 OneRS") => "yxz",
+            _                      => "yXZ"
         };
     
         if let Some(x) = tag_map.get_mut(&GroupId::Gyroscope) {
