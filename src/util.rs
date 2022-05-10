@@ -348,7 +348,7 @@ pub fn create_csv_map_hdr<'a, 'b>(row: &'b csv::StringRecord, headers: &'a csv::
 pub fn get_fps_from_track(track: &mp4parse::Track) -> Option<f64> {
     if let Some(ref stts) = track.stts {
         if !stts.samples.is_empty() {
-            let samples = stts.samples[0].sample_count;
+            let samples: u32 = stts.samples.iter().map(|v| v.sample_count).sum();
             let timescale = track.timescale?;
             let duration = track.duration?;
             let duration_us = duration.0 as f64 * 1000_000.0 / timescale.0 as f64;
