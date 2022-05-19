@@ -1,4 +1,4 @@
-use std::io::*;
+use std::{io::*, collections::BTreeSet};
 use crate::tags_impl::*;
 use byteorder::{ReadBytesExt, BigEndian};
 use mp4parse::MediaContext;
@@ -115,6 +115,7 @@ fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4par
                             index += 1;
                         }
                     }
+                    break;
                 }
             // }
         }
@@ -295,32 +296,186 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
     Ok(final_data)
 }
 
-// TODO: move to their respective modules
-pub fn frame_readout_time(input: &crate::Input) -> Option<f64> {
+pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<String>) -> Result<Vec<IMUData>> {
+    let mut first_timestamp = None;
+
+    let mut timestamp = (0.0, 0.0, 0.0);
+
+    let mut gyro_map = BTreeMap::new();
+    let mut accl_map = BTreeMap::new();
+    let mut magn_map = BTreeMap::new();
+    
+    let mut all_timestamps = BTreeSet::new();
+
     if let Some(ref samples) = input.samples {
+        let mut reading_duration = 
+        if input.camera_type() == "GoPro" {
+            (
+                crate::gopro::GoPro::get_avg_sample_duration(samples, &GroupId::Gyroscope),
+                crate::gopro::GoPro::get_avg_sample_duration(samples, &GroupId::Accelerometer),
+                crate::gopro::GoPro::get_avg_sample_duration(samples, &GroupId::Magnetometer),
+            )
+        } else {
+            let mut total_len = (0, 0, 0);
+            for grouped_tag_map in samples.iter().filter_map(|v| v.tag_map.as_ref()) {
+                for (group, map) in grouped_tag_map {
+                    if let Some(taginfo) = map.get(&TagId::Data) {
+                        if let TagValue::Vec_Vector3_i16(arr) = &taginfo.value {
+                            match group {
+                                GroupId::Gyroscope     => total_len.0 += arr.get().len(),
+                                GroupId::Accelerometer => total_len.1 += arr.get().len(),
+                                GroupId::Magnetometer  => total_len.2 += arr.get().len(),
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+
+            let mut total_duration_ms = 0.0;
+            for info in samples {
+                total_duration_ms += info.duration_ms;
+            }
+            (
+                if total_len.0 > 0 { Some(total_duration_ms / total_len.0 as f64) } else { None }, 
+                if total_len.1 > 0 { Some(total_duration_ms / total_len.1 as f64) } else { None },
+                if total_len.2 > 0 { Some(total_duration_ms / total_len.2 as f64) } else { None }
+            )
+        };
+        dbg!(reading_duration);
+        if let Some(grd) = reading_duration.0 {
+            if let Some(ard) = reading_duration.1 {
+                if (grd - ard).abs() < 0.1 {
+                    reading_duration.0 = Some(grd.max(ard));
+                    reading_duration.1 = Some(grd.max(ard));
+                }
+            }
+            if let Some(mrd) = reading_duration.2 {
+                if (grd - mrd).abs() < 0.1 {
+                    reading_duration.0 = Some(grd.max(mrd));
+                    reading_duration.2 = Some(grd.max(mrd));
+                }
+            }
+        }
+
         for info in samples {
             if info.tag_map.is_none() { continue; }
 
             let grouped_tag_map = info.tag_map.as_ref().unwrap();
 
             // Insta360
-            if let Some(val) = crate::try_block!(f64, {
+            let first_frame_ts = crate::try_block!(f64, {
                 (grouped_tag_map.get(&GroupId::Default)?.get_t(TagId::Metadata) as Option<&serde_json::Value>)?
                     .as_object()?
-                    .get("rolling_shutter_time")?
-                    .as_f64()?
-                }) {
-                return Some(val);
+                    .get("first_frame_timestamp")?
+                    .as_i64()? as f64 / 1000.0
+            }).unwrap_or_default();
+            let is_insta360_raw_gyro = crate::try_block!(bool, {
+                (grouped_tag_map.get(&GroupId::Default)?.get_t(TagId::Metadata) as Option<&serde_json::Value>)?
+                    .as_object()?
+                    .get("is_raw_gyro")?
+                    .as_bool()?
+            }).unwrap_or_default();
+            let timestamp_multiplier = if is_insta360_raw_gyro { 1.0 } else { 1000.0 };
+
+            for (group, map) in grouped_tag_map {
+                if group == &GroupId::Gyroscope || group == &GroupId::Accelerometer || group == &GroupId::Magnetometer {
+                    let raw2unit = crate::try_block!(f64, {
+                        match &map.get(&TagId::Scale)?.value {
+                            TagValue::i16(v) => *v.get() as f64,
+                            TagValue::f32(v) => *v.get() as f64,
+                            TagValue::f64(v) => *v.get(),
+                            _ => 1.0
+                        }
+                    }).unwrap_or(1.0);
+
+                    let unit2deg = crate::try_block!(f64, {
+                        match (map.get_t(TagId::Unit) as Option<&String>)?.as_str() {
+                            "rad/s" => 180.0 / std::f64::consts::PI, // rad to deg
+                            _ => 1.0
+                        }
+                    }).unwrap_or(1.0);
+
+                    let mut io = match map.get_t(TagId::Orientation) as Option<&String> {
+                        Some(v) => v.clone(),
+                        None => "XYZ".into()
+                    };
+                    io = input.normalize_imu_orientation(io);
+                    if let Some(imuo) = &orientation {
+                        io = imuo.clone();
+                    }
+                    let io = io.as_bytes();
+
+                    if let Some(taginfo) = map.get(&TagId::Data) {
+                        match &taginfo.value {
+                            // Sony and GoPro
+                            TagValue::Vec_Vector3_i16(arr) => {
+                                let arr = arr.get();
+            
+                                for v in arr {
+                                    let itm = v.clone().into_scaled(&raw2unit, &unit2deg).orient(io);
+                                         if group == &GroupId::Gyroscope     { let ts = (timestamp.0 * 1000.0f64).round() as i64; gyro_map.insert(ts, itm); timestamp.0 += reading_duration.0.unwrap(); all_timestamps.insert(ts); }
+                                    else if group == &GroupId::Accelerometer { let ts = (timestamp.1 * 1000.0f64).round() as i64; accl_map.insert(ts, itm); timestamp.1 += reading_duration.1.unwrap(); all_timestamps.insert(ts); }
+                                    else if group == &GroupId::Magnetometer  { let ts = (timestamp.2 * 1000.0f64).round() as i64; magn_map.insert(ts, itm); timestamp.2 += reading_duration.2.unwrap(); all_timestamps.insert(ts); }
+                                }
+                            },
+                            TagValue::Vec_TimeVector3_f64(arr) => {
+                                for v in arr.get() {
+                                    if v.t < first_frame_ts { continue; } // Skip gyro readings before actual first frame
+
+                                    let mut timestamp_ms = (v.t - first_frame_ts) * timestamp_multiplier;
+                                    if first_timestamp.is_none() {
+                                        first_timestamp = Some(timestamp_ms);
+                                    }
+                                    timestamp_ms -= first_timestamp.unwrap();
+                                    
+                                    let timestamp_us = (timestamp_ms * 1000.0).round() as i64;
+                                    all_timestamps.insert(timestamp_us);
+
+                                    let itm = v.clone().into_scaled(&raw2unit, &unit2deg).orient(io);
+                                         if group == &GroupId::Gyroscope     { gyro_map.insert(timestamp_us, itm); }
+                                    else if group == &GroupId::Accelerometer { accl_map.insert(timestamp_us, itm); }
+                                    else if group == &GroupId::Magnetometer  { magn_map.insert(timestamp_us, itm); }
+                                }
+                            },
+                            _ => ()
+                        }
+                    }
+                }
             }
-                
-            // GoPro
-            // If gopro reports rolling shutter value, it already applied it, ie. the video is already corrected
-            // if let Some(val) = crate::try_block!(f32, { *(grouped_tag_map.get(&GroupId::Default)?.get_t(TagId::Unknown(0x53524F54 /*SROT*/)) as Option<&f32>)? }) {
-            //     return Some(val as f64);
-            // }
         }
     }
-    None
+
+    fn get_at_timestamp(ts: i64, map: &BTreeMap<i64, Vector3<f64>>) -> Option<[f64; 3]> {
+        if map.is_empty() { return None; }
+        if let Some(v) = map.get(&ts) { return Some([v.x, v.y, v.z]); }
+
+        if let Some((k1, v1)) = map.range(..=ts).next_back() {
+            if let Some((k2, v2)) = map.range(ts..).next() {
+                let time_delta = (k2 - k1) as f64;
+                let fract = (ts - k1) as f64 / time_delta;
+                // dbg!(&fract);
+                return Some([
+                    v1.x * (1.0 - fract) + (v2.x * fract),
+                    v1.y * (1.0 - fract) + (v2.y * fract),
+                    v1.z * (1.0 - fract) + (v2.z * fract),
+                ]);
+            }
+        }
+        None
+    }
+
+    let mut final_data = Vec::with_capacity(gyro_map.len());
+    for x in &all_timestamps {
+        final_data.push(IMUData {
+            timestamp_ms: *x as f64 / 1000.0,
+            gyro: get_at_timestamp(*x, &gyro_map),
+            accl: get_at_timestamp(*x, &accl_map),
+            magn: get_at_timestamp(*x, &magn_map)
+        });
+    }
+    
+    Ok(final_data)
 }
 
 pub fn find_between_with_offset(buffer: &[u8], from: &[u8], to: u8, offset: i32) -> Option<String> {

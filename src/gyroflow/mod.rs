@@ -166,4 +166,8 @@ impl Gyroflow {
     pub fn camera_type(&self) -> String {
         "gcsv".to_owned()
     }
+    
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        None
+    }
 }

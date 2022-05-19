@@ -112,4 +112,8 @@ impl Sony {
     pub fn camera_type(&self) -> String {
         "Sony".to_owned()
     }
+    
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        None
+    }
 }

@@ -55,6 +55,11 @@ macro_rules! impl_formats {
                     $(SupportedFormats::$name(_) => <$class>::normalize_imu_orientation(v),)*
                 }
             }
+            pub fn frame_readout_time(&self) -> Option<f64> {
+                match &self.inner {
+                    $(SupportedFormats::$name(x) => x.frame_readout_time(),)*
+                }
+            }
         }
     };
 }

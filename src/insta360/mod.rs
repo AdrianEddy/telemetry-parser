@@ -17,7 +17,8 @@ pub struct Insta360 {
     pub model: Option<String>,
     pub is_raw_gyro: bool,
     pub acc_range: Option<f64>,
-    pub gyro_range: Option<f64>
+    pub gyro_range: Option<f64>,
+    pub frame_readout_time: Option<f64>
 }
 
 impl Insta360 {
@@ -90,6 +91,16 @@ impl Insta360 {
         if let Some(x) = tag_map.get_mut(&GroupId::Accelerometer) {
             x.insert(Orientation, tag!(parsed Accelerometer, Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.to_string(), Vec::new()));
         }
+        
+        crate::try_block!({
+            self.frame_readout_time = Some(
+                (tag_map.get(&GroupId::Default)?
+                       .get_t(TagId::Metadata) as Option<&serde_json::Value>)?
+                       .as_object()?
+                       .get("rolling_shutter_time")?
+                       .as_f64()?
+            );
+        });
     }
 
     pub fn normalize_imu_orientation(v: String) -> String {
@@ -98,5 +109,9 @@ impl Insta360 {
     
     pub fn camera_type(&self) -> String {
         "Insta360".to_owned()
+    }
+    
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        self.frame_readout_time
     }
 }

@@ -170,4 +170,8 @@ impl Runcam {
             _ => "Runcam"
         }.to_owned()
     }
+    
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        None
+    }
 }

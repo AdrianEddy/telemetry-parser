@@ -151,7 +151,11 @@ impl BlackBox {
     }
     
     pub fn camera_type(&self) -> String {
-        "BlackBox".to_owned() // TODO: iNAV
+        "BlackBox".to_owned()
+    }
+    
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        None
     }
 }
 

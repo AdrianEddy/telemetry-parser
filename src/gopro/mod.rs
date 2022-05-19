@@ -11,7 +11,8 @@ use memchr::memmem;
 #[derive(Default)]
 pub struct GoPro {
     pub model: Option<String>,
-    extra_gpmf: Option<GroupedTagMap>
+    extra_gpmf: Option<GroupedTagMap>,
+    frame_readout_time: Option<f64>
 }
 
 impl GoPro {
@@ -28,8 +29,11 @@ impl GoPro {
                 for v in map.values() {
                     if let Some(v) = v.get_t(TagId::Unknown(0x4D494E46/*MINF*/)) as Option<&String> {
                         obj.model = Some(v.clone());
-                        break;
                     }
+                    if let Some(v) = v.get_t(TagId::Unknown(0x53524F54/*SROT*/)) as Option<&f32> {
+                        obj.frame_readout_time = Some(*v as f64);
+                    }
+                    if obj.model.is_some() && obj.frame_readout_time.is_some() { break; }
                 }
                 obj.extra_gpmf = Some(map);
             }
@@ -146,13 +150,13 @@ impl GoPro {
                     }
                 } else if let Some(m) = &self.model {
                     if m.contains("HERO6") { imu_orientation = Some("ZyX".to_string()); }
+                    if m.contains("HERO7 Silver") { imu_orientation = Some("YXz".to_string()); }
                     // if m.contains("HERO5") { imu_orientation = Some("XYZ".to_string()); }
                 }
                 if let Some(o) = imu_orientation {
                     v.insert(TagId::Orientation, crate::tag!(parsed g.clone(), TagId::Orientation, "IMUO", String, |v| v.to_string(), o, Vec::new()));
                 }
             }
-
         }
     }
 
@@ -309,5 +313,9 @@ impl GoPro {
     
     pub fn camera_type(&self) -> String {
         "GoPro".to_owned()
+    }
+    
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        self.frame_readout_time
     }
 }
