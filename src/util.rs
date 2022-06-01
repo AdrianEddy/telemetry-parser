@@ -1,7 +1,7 @@
 use std::{io::*, collections::BTreeSet};
 use crate::tags_impl::*;
 use byteorder::{ReadBytesExt, BigEndian};
-use mp4parse::MediaContext;
+use mp4parse::{ MediaContext, TrackType };
 use std::collections::BTreeMap;
 use memchr::memmem;
 
@@ -515,24 +515,26 @@ pub fn get_fps_from_track(track: &mp4parse::Track) -> Option<f64> {
 }
 pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Result<(usize, usize, f64)> { // -> (width, height, fps)
     let mp = parse_mp4(stream, filesize)?;
-    if !mp.tracks.is_empty() {
-        if let Some(ref tkhd) = mp.tracks[0].tkhd {
-            let w = tkhd.width >> 16;
-            let h = tkhd.height >> 16;
-            let matrix = (
-                tkhd.matrix.a >> 16,
-                tkhd.matrix.b >> 16,
-                tkhd.matrix.c >> 16,
-                tkhd.matrix.d >> 16,
-            );
-            let _rotation = match matrix {
-                (0, 1, -1, 0) => 90,   // rotate 90 degrees
-                (-1, 0, 0, -1) => 180, // rotate 180 degrees
-                (0, -1, 1, 0) => 270,  // rotate 270 degrees
-                _ => 0,
-            };
-            let fps = get_fps_from_track(&mp.tracks[0]).unwrap_or_default();
-            return Ok((w as usize, h as usize, fps));
+    for track in mp.tracks {
+        if track.track_type == TrackType::Video {
+            if let Some(ref tkhd) = track.tkhd {
+                let w = tkhd.width >> 16;
+                let h = tkhd.height >> 16;
+                let matrix = (
+                    tkhd.matrix.a >> 16,
+                    tkhd.matrix.b >> 16,
+                    tkhd.matrix.c >> 16,
+                    tkhd.matrix.d >> 16,
+                );
+                let _rotation = match matrix {
+                    (0, 1, -1, 0) => 90,   // rotate 90 degrees
+                    (-1, 0, 0, -1) => 180, // rotate 180 degrees
+                    (0, -1, 1, 0) => 270,  // rotate 270 degrees
+                    _ => 0,
+                };
+                let fps = get_fps_from_track(&track).unwrap_or_default();
+                return Ok((w as usize, h as usize, fps));
+            }
         }
     }
     Err(ErrorKind::Other.into())

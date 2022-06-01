@@ -95,7 +95,7 @@ impl Gyroflow {
             } else if row.len() == 2 && !passed_header {
                 header.insert(row[0].to_owned(), row[1].to_owned());
                 continue;
-            } else if &row[0] == "t" {
+            } else if &row[0] == "t" || &row[0] == "time" {
                 passed_header = true;
                 time_scale =  header.remove("tscale").unwrap_or("0.001".to_owned()).parse::<f64>().unwrap();
                 continue;
@@ -133,6 +133,10 @@ impl Gyroflow {
         let imu_orientation = header.remove("orientation").unwrap_or("xzY".to_owned()); // default
 
         let mut map = GroupedTagMap::new();
+
+        if let Some(lensprofile) = header.remove("lensprofile") {
+            util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::Name, "Lens profile", String, |v| v.to_string(), lensprofile, Vec::new()));
+        }
 
         util::insert_tag(&mut map, 
             tag!(parsed GroupId::Default, TagId::Metadata, "Extra metadata", Json, |v| format!("{:?}", v), serde_json::to_value(header).map_err(|_| Error::new(ErrorKind::Other, "Serialize error"))?, vec![])
