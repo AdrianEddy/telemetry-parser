@@ -1,6 +1,7 @@
 use std::cell::*;
 use std::rc::*;
 use std::io::*;
+use std::sync::{ Arc, atomic::AtomicBool };
 
 use crate::tags_impl::*;
 use crate::*;
@@ -37,11 +38,11 @@ impl BlackBox {
         None
     }
 
-    pub fn parse<T: Read + Seek>(&mut self, stream: &mut T, size: usize) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
         if self.csv {
-            csv::parse(stream, size)
+            csv::parse(stream, size, progress_cb, cancel_flag)
         } else {            
-            binary::parse(stream, size)
+            binary::parse(stream, size, progress_cb, cancel_flag)
         }
     }
 

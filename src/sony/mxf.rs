@@ -1,18 +1,24 @@
 
 use std::io::*;
-use byteorder::{ReadBytesExt, BigEndian};
+use std::sync::{ Arc, atomic::AtomicBool };
+use byteorder::{ ReadBytesExt, BigEndian };
 
 use crate::*;
 use crate::tags_impl::*;
 
-pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleInfo>> {
-    let mut stream = std::io::BufReader::new(stream);
+pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
+    let mut stream = std::io::BufReader::with_capacity(128*1024, stream);
     let mut samples = Vec::new();
 
     let mut index = 0;
     let mut id = [0u8; 16];
     while let Ok(_) = stream.read_exact(&mut id) {
         let length = read_ber(&mut stream)?;
+
+        if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) { break; }
+        if size > 0 {
+            progress_cb(stream.stream_position()? as f64 / size as f64);
+        }
 
         // println!("{}: {}", util::to_hex(&id), length);
         

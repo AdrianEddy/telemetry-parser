@@ -2,7 +2,7 @@
 name = "telemetry-parser-wasm"
 version = "0.1.9"
 authors = ["Adrian <adrian.eddy@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [lib]
 name = "telemetry_parser"
@@ -12,5 +12,5 @@ crate-type = ["cdylib"]
 [dependencies]
 telemetry-parser = { path = "../../" }
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }

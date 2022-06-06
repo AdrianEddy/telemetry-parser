@@ -5,6 +5,7 @@ mod sensor_logger_android;
 mod sensor_record;
 
 use std::io::*;
+use std::sync::{ Arc, atomic::AtomicBool };
 
 use crate::*;
 
@@ -26,7 +27,7 @@ impl PhoneApps {
         None
     }
 
-    pub fn parse<T: Read + Seek>(&mut self, stream: &mut T, size: usize) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, _progress_cb: F, _cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
         match self.model.as_deref() {
             Some("Sensor Logger")           => sensor_logger        ::parse(stream, size),
             Some("GF Recorder")             => gf_recorder          ::parse(stream, size),

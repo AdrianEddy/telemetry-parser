@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 use std::collections::BTreeMap;
 use pythonize::pythonize;
+use std::sync::{ Arc, atomic::AtomicBool };
 
 use telemetry_parser::*;
 
@@ -20,7 +21,7 @@ impl Parser {
         let mut stream = std::fs::File::open(&path)?;
         let filesize = stream.metadata()?.len() as usize;
 
-        let input = Input::from_stream(&mut stream, filesize, &path)?;
+        let input = Input::from_stream(&mut stream, filesize, &path, |_|(), Arc::new(AtomicBool::new(false)))?;
 
         Ok(Self {
             camera: Some(input.camera_type()),

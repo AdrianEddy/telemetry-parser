@@ -1,7 +1,8 @@
 pub mod klv;
 
 use std::io::*;
-use byteorder::{ReadBytesExt, BigEndian};
+use std::sync::{ Arc, atomic::AtomicBool };
+use byteorder::{ ReadBytesExt, BigEndian };
 
 use crate::tags_impl::*;
 use crate::*;
@@ -57,12 +58,15 @@ impl GoPro {
         ret
     }
 
-    pub fn parse<T: Read + Seek>(&mut self, stream: &mut T, size: usize) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
         let mut samples = Vec::new();
         if let Some(extra) = &self.extra_gpmf {
             samples.push(SampleInfo { index: 0, timestamp_ms: 0.0, duration_ms: 0.0, tag_map: Some(extra.clone()) });
         }
-        let ctx = util::get_metadata_track_samples(stream, size, |mut info: SampleInfo, data: &[u8]| {
+        let ctx = util::get_metadata_track_samples(stream, size, |mut info: SampleInfo, data: &[u8], file_position: u64| {
+            if size > 0 {
+                progress_cb(file_position as f64 / size as f64);
+            }
             if Self::detect_metadata(data) {
                 if let Ok(mut map) = GoPro::parse_metadata(&data[8..], GroupId::Default, false) {
                     self.process_map(&mut map);
@@ -70,7 +74,7 @@ impl GoPro {
                     samples.push(info);
                 }
             }
-        })?;
+        }, cancel_flag)?;
         let mut fps = None;
         if !ctx.tracks.is_empty() {
             fps = util::get_fps_from_track(&ctx.tracks[0]);

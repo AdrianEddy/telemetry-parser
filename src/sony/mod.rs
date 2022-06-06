@@ -5,8 +5,9 @@ mod mxf;
 pub mod xml_metadata;
 
 use std::io::*;
+use std::sync::{ Arc, atomic::AtomicBool };
 
-use byteorder::{ReadBytesExt, BigEndian};
+use byteorder::{ ReadBytesExt, BigEndian };
 use rtmd_tags::*;
 use crate::tags_impl::*;
 use crate::*;
@@ -26,23 +27,26 @@ impl Sony {
         None
     }
 
-    pub fn parse<T: Read + Seek>(&mut self, stream: &mut T, size: usize) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
         let mut header = [0u8; 4];
         stream.read_exact(&mut header)?;
         stream.seek(SeekFrom::Start(0))?;
         if header == [0x06, 0x0E, 0x2B, 0x34] { // MXF header
-            return mxf::parse(stream, size);
+            return mxf::parse(stream, size, progress_cb, cancel_flag);
         }
 
         let mut samples = Vec::new();
-        util::get_metadata_track_samples(stream, size, |mut info: SampleInfo, data: &[u8]| {
+        util::get_metadata_track_samples(stream, size, |mut info: SampleInfo, data: &[u8], file_position: u64| {
+            if size > 0 {
+                progress_cb(file_position as f64 / size as f64);
+            }
             if Self::detect_metadata(data) {
                 if let Ok(map) = Sony::parse_metadata(&data[0x1C..]) {
                     info.tag_map = Some(map);
                     samples.push(info);
                 }
             }
-        })?;
+        }, cancel_flag)?;
         Ok(samples)
     }
 

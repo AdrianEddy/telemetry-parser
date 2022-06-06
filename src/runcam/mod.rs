@@ -1,4 +1,5 @@
 use std::io::*;
+use std::sync::{ Arc, atomic::AtomicBool };
 use std::path::{ Path, PathBuf };
 
 use crate::tags_impl::*;
@@ -75,7 +76,7 @@ impl Runcam {
         None
     }
 
-    pub fn parse<T: Read + Seek>(&mut self, stream: &mut T, _size: usize) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, _size: usize, _progress_cb: F, _cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
         let e = |_| -> Error { ErrorKind::InvalidData.into() };
 
         let gyro_buf = if let Some(gyro) = &self.gyro_path {

@@ -1,5 +1,6 @@
 use std::time::Instant;
 use argh::FromArgs;
+use std::sync::{ Arc, atomic::AtomicBool };
 
 use telemetry_parser::*;
 use telemetry_parser::tags_impl::*;
@@ -31,7 +32,7 @@ fn main() {
     let mut stream = std::fs::File::open(&opts.input).unwrap();
     let filesize = stream.metadata().unwrap().len() as usize;
 
-    let input = Input::from_stream(&mut stream, filesize, &opts.input).unwrap();
+    let input = Input::from_stream(&mut stream, filesize, &opts.input, |_|(), Arc::new(AtomicBool::new(false))).unwrap();
 
     let mut i = 0;
     println!("Detected camera: {} {}", input.camera_type(), input.camera_model().unwrap_or(&"".into()));

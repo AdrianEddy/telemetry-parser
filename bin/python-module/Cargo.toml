@@ -2,7 +2,7 @@
 name = "telemetry-parser-py"
 version = "0.1.9"
 authors = ["Adrian <adrian.eddy@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [lib]
 name = "telemetry_parser"
@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 telemetry-parser = { path = "../../" }
-pyo3 = { version = "0.15", features = ["extension-module"]}
-pythonize = "0.15"
-serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
+pyo3 = { version = "0.16", features = ["extension-module"]}
+pythonize = "0.16"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }

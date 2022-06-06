@@ -2,7 +2,8 @@ pub mod extra_info;
 pub mod record;
 
 use std::io::*;
-use byteorder::{ReadBytesExt, LittleEndian};
+use std::sync::{ Arc, atomic::AtomicBool, atomic::Ordering::Relaxed };
+use byteorder::{ ReadBytesExt, LittleEndian };
 
 use crate::{try_block, tag, tags_impl::*};
 use crate::tags_impl::{GroupId::*, TagId::*};
@@ -29,13 +30,13 @@ impl Insta360 {
         None
     }
 
-    pub fn parse<T: Read + Seek>(&mut self, stream: &mut T, _size: usize) -> Result<Vec<SampleInfo>> {
-        let mut tag_map = self.parse_file(stream)?;
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
+        let mut tag_map = self.parse_file(stream, size, progress_cb, cancel_flag)?;
         self.process_map(&mut tag_map);
         Ok(vec![SampleInfo { index: 0, timestamp_ms: 0.0, duration_ms: 0.0, tag_map: Some(tag_map) }])
     }
 
-    fn parse_file<T: Read + Seek>(&mut self, stream: &mut T) -> Result<GroupedTagMap> {
+    fn parse_file<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<GroupedTagMap> {
         let mut buf = vec![0u8; HEADER_SIZE];
         stream.seek(SeekFrom::End(-(HEADER_SIZE as i64)))?;
         stream.read_exact(&mut buf)?;
@@ -48,6 +49,11 @@ impl Insta360 {
             let mut offset = (HEADER_SIZE + 4+1+1) as i64;
             while offset < extra_size {
                 stream.seek(SeekFrom::End(-offset))?;
+
+                if cancel_flag.load(Relaxed) { break; }
+                if size > 0 {
+                    progress_cb(stream.stream_position()? as f64 / size as f64);
+                }
     
                 let format = stream.read_u8()?;
                 let id     = stream.read_u8()?;

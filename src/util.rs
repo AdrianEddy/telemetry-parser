@@ -1,9 +1,10 @@
-use std::{io::*, collections::BTreeSet};
-use crate::tags_impl::*;
-use byteorder::{ReadBytesExt, BigEndian};
+use std::{ io::*, collections::BTreeSet, collections::BTreeMap };
+use std::sync::{ Arc, atomic::AtomicBool };
+use byteorder::{ ReadBytesExt, BigEndian };
 use mp4parse::{ MediaContext, TrackType };
-use std::collections::BTreeMap;
 use memchr::memmem;
+
+use crate::tags_impl::*;
 
 pub fn to_hex(data: &[u8]) -> String {
     let mut ret = String::with_capacity(data.len() * 3);
@@ -77,8 +78,8 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
     mp4parse::read_mp4(stream)
 }
 
-fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4parse::TrackType, mut callback: F) -> Result<MediaContext>
-    where F: FnMut(SampleInfo, &[u8])
+fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4parse::TrackType, mut callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
+    where F: FnMut(SampleInfo, &[u8], u64)
 {
 
     let ctx = parse_mp4(stream, size).or_else(|_| mp4parse::read_mp4(stream))?;
@@ -98,6 +99,8 @@ fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4par
                 if let Some(samples) = mp4parse::unstable::create_sample_table(&x, 0.into()) {
                     let mut sample_data = Vec::new();
                     for x in samples {
+                        if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) { break; }
+
                         let sample_size = (x.end_offset.0 - x.start_offset.0) as usize;
                         let sample_timestamp_ms = x.start_composition.0 as f64 / 1000.0;
                         let sample_duration_ms = (x.end_composition.0 - x.start_composition.0) as f64 / 1000.0;
@@ -109,7 +112,7 @@ fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4par
                             stream.seek(SeekFrom::Start(x.start_offset.0 as u64))?;
                             stream.read_exact(&mut sample_data[..])?;
 
-                            callback(SampleInfo { index, timestamp_ms: sample_timestamp_ms, duration_ms: sample_duration_ms, tag_map: None }, &sample_data);
+                            callback(SampleInfo { index, timestamp_ms: sample_timestamp_ms, duration_ms: sample_duration_ms, tag_map: None }, &sample_data, x.start_offset.0 as u64);
                         
                             //timestamp_ms += duration_ms;
                             index += 1;
@@ -123,15 +126,15 @@ fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4par
     Ok(ctx)
 }
 
-pub fn get_metadata_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, callback: F) -> Result<MediaContext>
-    where F: FnMut(SampleInfo, &[u8])
+pub fn get_metadata_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
+    where F: FnMut(SampleInfo, &[u8], u64)
 {
-    get_track_samples(stream, size, mp4parse::TrackType::Metadata, callback)
+    get_track_samples(stream, size, mp4parse::TrackType::Metadata, callback, cancel_flag)
 }
-pub fn get_other_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, callback: F) -> Result<MediaContext>
-    where F: FnMut(SampleInfo, &[u8])
+pub fn get_other_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
+    where F: FnMut(SampleInfo, &[u8], u64)
 {
-    get_track_samples(stream, size, mp4parse::TrackType::Unknown, callback)
+    get_track_samples(stream, size, mp4parse::TrackType::Unknown, callback, cancel_flag)
 }
 
 pub fn read_beginning_and_end<T: Read + Seek>(stream: &mut T, stream_size: usize, read_size: usize) -> Result<Vec<u8>> {
@@ -427,7 +430,7 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
                                     if first_timestamp.is_none() {
                                         first_timestamp = Some(timestamp_ms);
                                     }
-                                    timestamp_ms -= first_timestamp.unwrap();
+                                    timestamp_ms -= first_timestamp.unwrap(); 
                                     
                                     let timestamp_us = (timestamp_ms * 1000.0).round() as i64;
                                     all_timestamps.insert(timestamp_us);

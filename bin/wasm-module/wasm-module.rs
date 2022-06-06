@@ -1,6 +1,7 @@
 // https://stackoverflow.com/questions/69261657/querying-a-large-dataset-in-browser-using-webassembly
 
 use wasm_bindgen::prelude::*;
+use std::sync::{ Arc, atomic::AtomicBool };
 use std::collections::BTreeMap;
 
 use telemetry_parser::*;
@@ -18,7 +19,7 @@ impl Parser {
     pub fn new(data: &[u8], filename: &str) -> Result<Parser, JsValue> {
         let mut stream = std::io::Cursor::new(&data);
 
-        let input = Input::from_stream(&mut stream, data.len(), filename).map_err(Self::err)?;
+        let input = Input::from_stream(&mut stream, data.len(), filename, |_|(), Arc::new(AtomicBool::new(false))).map_err(Self::err)?;
 
         Ok(Self {
             camera: Some(input.camera_type()),

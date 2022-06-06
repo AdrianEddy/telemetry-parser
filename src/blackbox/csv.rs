@@ -1,11 +1,12 @@
 use std::collections::BTreeMap;
 use std::rc::*;
 use std::io::*;
+use std::sync::{ Arc, atomic::AtomicBool, atomic::Ordering::Relaxed };
 
 use crate::tags_impl::*;
 use crate::*;
 
-pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleInfo>> {
+pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
     let mut metadata = BTreeMap::new();
 
     let mut headers = None;
@@ -16,6 +17,8 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
         .trim(csv::Trim::All)
         .from_reader(stream);
     for row in csv.records() {
+        if cancel_flag.load(Relaxed) { break; }
+
         let row = row?;
         if row.len() == 2 {
             metadata.insert(row[0].to_owned(), row[1].to_owned());
