@@ -1,6 +1,7 @@
 pub mod dbgi;
 
 use std::io::*;
+use std::sync::{ Arc, atomic::AtomicBool };
 
 use crate::tags_impl::*;
 use crate::*;
@@ -24,9 +25,9 @@ impl Dji {
         }
     }
 
-    pub fn parse<T: Read + Seek>(&mut self, stream: &mut T, size: usize) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, _progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
         let mut samples = Vec::new();
-        util::get_other_track_samples(stream, size, |mut info: SampleInfo, data: &[u8]| {
+        util::get_other_track_samples(stream, size, |mut info: SampleInfo, data: &[u8], file_position: u64| {
             if let Ok(parsed) = dbgi::DebugInfoMain::decode(data) {
                 if let Some (frame) = parsed.frames.first() {
 
@@ -53,7 +54,7 @@ impl Dji {
                     samples.push(info);
                 }
             }
-        })?;
+        }, cancel_flag)?;
 
         Ok(samples)
     }
