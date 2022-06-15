@@ -42,7 +42,7 @@ impl Insta360 {
         stream.read_exact(&mut buf)?;
         if &buf[HEADER_SIZE-32..] == MAGIC {
             let mut map = GroupedTagMap::new();
-    
+
             let extra_size = (&buf[32..]).read_u32::<LittleEndian>()? as i64;
             let version    = (&buf[36..]).read_u32::<LittleEndian>()?;
 
@@ -54,50 +54,51 @@ impl Insta360 {
                 if size > 0 {
                     progress_cb(stream.stream_position()? as f64 / size as f64);
                 }
-    
+
                 let format = stream.read_u8()?;
                 let id     = stream.read_u8()?;
                 let size   = stream.read_u32::<LittleEndian>()? as i64;
 
                 buf.resize(size as usize, 0);
-    
+
                 stream.seek(SeekFrom::End(-offset - size))?;
                 stream.read_exact(&mut buf)?;
-                
+
                 for (g, v) in self.parse_record(id, format, version, &buf).unwrap() {
                     let group_map = map.entry(g).or_insert_with(TagMap::new);
                     group_map.extend(v);
                 }
-    
+
                 offset += size + 4+1+1;
             }
             return Ok(map);
         }
         Err(ErrorKind::NotFound.into())
     }
-    
+
     fn process_map(&mut self, tag_map: &mut GroupedTagMap) {
         if let Some(x) = tag_map.get(&GroupId::Default) {
             self.model = try_block!(String, {
                 (x.get_t(TagId::Metadata) as Option<&serde_json::Value>)?.as_object()?.get("camera_type")?.as_str()?.to_owned()
             });
         }
-    
+
         let imu_orientation = match self.model.as_deref() {
             Some("Insta360 Go")    => "xyZ",
             Some("Insta360 GO 2")  => "yXZ",
             Some("Insta360 OneR")  => "yXZ",
             Some("Insta360 OneRS") => "yxz",
+            Some("Insta360 ONE X2")=> "ZXY",
             _                      => "yXZ"
         };
-    
+
         if let Some(x) = tag_map.get_mut(&GroupId::Gyroscope) {
             x.insert(Orientation, tag!(parsed Gyroscope,     Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.to_string(), Vec::new()));
         }
         if let Some(x) = tag_map.get_mut(&GroupId::Accelerometer) {
             x.insert(Orientation, tag!(parsed Accelerometer, Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.to_string(), Vec::new()));
         }
-        
+
         crate::try_block!({
             self.frame_readout_time = Some(
                 (tag_map.get(&GroupId::Default)?
@@ -112,11 +113,11 @@ impl Insta360 {
     pub fn normalize_imu_orientation(v: String) -> String {
         v
     }
-    
+
     pub fn camera_type(&self) -> String {
         "Insta360".to_owned()
     }
-    
+
     pub fn frame_readout_time(&self) -> Option<f64> {
         self.frame_readout_time
     }
