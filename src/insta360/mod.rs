@@ -88,7 +88,7 @@ impl Insta360 {
             Some("Insta360 GO 2")  => "yXZ",
             Some("Insta360 OneR")  => "yXZ",
             Some("Insta360 OneRS") => "yxz",
-            Some("Insta360 ONE X2")=> "ZXY",
+            Some("Insta360 ONE X2")=> "xZy",
             _                      => "yXZ"
         };
 
