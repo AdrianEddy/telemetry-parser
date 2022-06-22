@@ -12,6 +12,9 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress
     let mut bytes = Vec::new();
     stream.read_to_end(&mut bytes)?;
 
+    let mut first_timestamp = None;
+    let mut last_timestamp = None;
+
     for (i, mut bbox) in MultiSegmentBlackboxReader::from_bytes(&bytes).successful_only().enumerate() {
         // Remove acc_1G from `other_headers` because we will have it in Accelerometer/Scale tag, instead of in metadata
         let accl_scale = bbox.header.other_headers.remove("acc_1G").unwrap_or("1.0".to_owned()).parse::<f64>().unwrap();
@@ -27,11 +30,15 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress
 
         let headers = bbox.header.ip_fields_in_order.iter().map(|x| x.name.as_str()).collect::<Vec<&str>>();
         let mut column_struct = super::BlackBox::prepare_vectors_from_headers(&headers);
-        
+
         while let Some(record) = bbox.next() {
             match record {
                 BlackboxRecord::Main(values) => {
                     let time = values[1] as f64 / 1_000_000.0;
+                    if first_timestamp.is_none() {
+                        first_timestamp = Some(time);
+                    }
+                    last_timestamp = Some(time);
                     for (col, &value) in column_struct.columns.iter().zip(values) {
                         let mut desc = col.desc.as_ref().borrow_mut();
                         super::BlackBox::insert_value_to_vec(&mut desc, time, value as f64, col.index);
@@ -51,7 +58,9 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress
             util::insert_tag(&mut map, desc);
         }
 
-        samples.push(SampleInfo { index: i as u64, timestamp_ms: 0.0, duration_ms: 0.0, tag_map: Some(map) });
+        samples.push(SampleInfo { index: i as u64, timestamp_ms: first_timestamp.unwrap_or_default(), duration_ms: last_timestamp.unwrap_or_default() - first_timestamp.unwrap_or_default(), tag_map: Some(map) });
+
+        first_timestamp = None;
     }
 
     Ok(samples)

@@ -6,11 +6,15 @@ Work in progress, the code is already working but I plan to add much more input 
 # Supported formats:
 - [x] Sony (a1, a7c, a7r IV, a7 IV, a7s III, a9 II, FX3, FX6, FX9, RX0 II, RX100 VII, ZV1, ZV-E10)
 - [x] GoPro (All models with gyro metadata, starting with HERO 5)
-- [x] Insta360 (OneR, OneRS, SMO 4k, GO2)
+- [x] Insta360 (OneR, OneRS, SMO 4k, Go, GO2)
 - [x] Betaflight blackbox (CSV and binary)
-- [x] Runcam CSV (Runcam 5 Orange, iFlight GOCam GR)
+- [x] Runcam CSV (Runcam 5 Orange, iFlight GOCam GR, Runcam Thumb, Mobius Maxi 4K)
+- [x] Hawkeye Firefly X Lite CSV
 - [x] WitMotion (WT901SDCL binary and *.txt)
-- [x] Mobile apps: `Sensor Logger`, `G-Field Recorder`, `Gyro`
+- [x] iOS apps: `Sensor Logger`, [`G-Field Recorder`](https://apps.apple.com/at/app/g-field-recorder/id1154585693), [`Gyro`](https://apps.apple.com/us/app/gyro-record-device-motion-data/id1161532981)
+- [x] Android apps: [`Sensor Logger`](https://play.google.com/store/apps/details?id=com.kelvin.sensorapp&hl=de_AT&gl=US), [`Sensor Record`](https://play.google.com/store/apps/details?id=de.martingolpashin.sensor_record)
+- [x] Gyroflow [.gcsv log](https://docs.gyroflow.xyz/logging/gcsv/)
+- [x] ArduPilot logs (*.bin, *.log)
 - [ ] TODO DJI flight logs (*.dat, *.txt)
 
 # Example usage:
@@ -22,13 +26,13 @@ print('Camera: ', tp.camera)
 print('Model: ', tp.model)
 
 # return all telemetry as an array of dicts
-print('Telemetry', tp.telemetry()) 
+print('Telemetry', tp.telemetry())
 
 # format the values with units etc
-print('Telemetry formatted', tp.telemetry(human_readable = True)) 
+print('Telemetry formatted', tp.telemetry(human_readable = True))
 
 # return only gyro and accel with timestamps, normalized to a single orientation and scaled to deg/s and m/s2
-print('Normalized IMU', tp.normalized_imu()) 
+print('Normalized IMU', tp.normalized_imu())
 ```
 
 # Building

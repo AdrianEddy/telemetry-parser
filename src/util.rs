@@ -113,7 +113,7 @@ fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4par
                             stream.read_exact(&mut sample_data[..])?;
 
                             callback(SampleInfo { index, timestamp_ms: sample_timestamp_ms, duration_ms: sample_duration_ms, tag_map: None }, &sample_data, x.start_offset.0 as u64);
-                        
+
                             //timestamp_ms += duration_ms;
                             index += 1;
                         }
@@ -144,7 +144,7 @@ pub fn read_beginning_and_end<T: Read + Seek>(stream: &mut T, stream_size: usize
 
     if stream_size > read_size * 2 {
         let read1 = stream.read(&mut all[..read_size])?;
-    
+
         stream.seek(SeekFrom::End(-(read_size as i64)))?;
         let read2 = stream.read(&mut all[read1..])?;
 
@@ -232,7 +232,7 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
                                 let arr = arr.get();
                                 let reading_duration = info.duration_ms / arr.len() as f64;
                                 fix_timestamps = true;
-            
+
                                 for (j, v) in arr.iter().enumerate() {
                                     if final_data.len() <= data_index + j {
                                         final_data.resize_with(data_index + j + 1, Default::default);
@@ -244,7 +244,7 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
                                     else if group == &GroupId::Accelerometer { final_data[data_index + j].accl = Some([ itm.x, itm.y, itm.z ]); }
                                     else if group == &GroupId::Magnetometer  { final_data[data_index + j].magn = Some([ itm.x, itm.y, itm.z ]); }
                                 }
-                            }, 
+                            },
                             // Insta360
                             TagValue::Vec_TimeVector3_f64(arr) => {
                                 for (j, v) in arr.get().iter().enumerate() {
@@ -307,11 +307,11 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
     let mut gyro_map = BTreeMap::new();
     let mut accl_map = BTreeMap::new();
     let mut magn_map = BTreeMap::new();
-    
+
     let mut all_timestamps = BTreeSet::new();
 
     if let Some(ref samples) = input.samples {
-        let mut reading_duration = 
+        let mut reading_duration =
         if input.camera_type() == "GoPro" {
             (
                 crate::gopro::GoPro::get_avg_sample_duration(samples, &GroupId::Gyroscope),
@@ -340,7 +340,7 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
                 total_duration_ms += info.duration_ms;
             }
             (
-                if total_len.0 > 0 { Some(total_duration_ms / total_len.0 as f64) } else { None }, 
+                if total_len.0 > 0 { Some(total_duration_ms / total_len.0 as f64) } else { None },
                 if total_len.1 > 0 { Some(total_duration_ms / total_len.1 as f64) } else { None },
                 if total_len.2 > 0 { Some(total_duration_ms / total_len.2 as f64) } else { None }
             )
@@ -414,7 +414,7 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
                             // Sony and GoPro
                             TagValue::Vec_Vector3_i16(arr) => {
                                 let arr = arr.get();
-            
+
                                 for v in arr {
                                     let itm = v.clone().into_scaled(&raw2unit, &unit2deg).orient(io);
                                          if group == &GroupId::Gyroscope     { let ts = (timestamp.0 * 1000.0f64).round() as i64; gyro_map.insert(ts, itm); timestamp.0 += reading_duration.0.unwrap(); all_timestamps.insert(ts); }
@@ -430,8 +430,8 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
                                     if first_timestamp.is_none() {
                                         first_timestamp = Some(timestamp_ms);
                                     }
-                                    timestamp_ms -= first_timestamp.unwrap(); 
-                                    
+                                    timestamp_ms -= first_timestamp.unwrap();
+
                                     let timestamp_us = (timestamp_ms * 1000.0).round() as i64;
                                     all_timestamps.insert(timestamp_us);
 
@@ -477,8 +477,17 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
             magn: get_at_timestamp(*x, &magn_map)
         });
     }
-    
+
     Ok(final_data)
+}
+
+pub fn multiply_quats(p: (f64, f64, f64, f64), q: (f64, f64, f64, f64)) -> Quaternion<f64> {
+    Quaternion {
+        w: p.0*q.0 - p.1*q.1 - p.2*q.2 - p.3*q.3,
+        x: p.0*q.1 + p.1*q.0 + p.2*q.3 - p.3*q.2,
+        y: p.0*q.2 - p.1*q.3 + p.2*q.0 + p.3*q.1,
+        z: p.0*q.3 + p.1*q.2 - p.2*q.1 + p.3*q.0
+    }
 }
 
 pub fn find_between_with_offset(buffer: &[u8], from: &[u8], to: u8, offset: i32) -> Option<String> {

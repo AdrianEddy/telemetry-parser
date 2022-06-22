@@ -21,12 +21,12 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_c
         }
 
         // println!("{}: {}", util::to_hex(&id), length);
-        
+
         if id == [0x06, 0x0e, 0x2b, 0x34, 0x01, 0x02, 0x01, 0x01, 0x0d, 0x01, 0x03, 0x01, 0x17, 0x01, 0x02, 0x01] { // Metadata, Ancillary, SMPTE ST 436
             let mut data = vec![0; length];
             stream.read_exact(&mut data)?;
             let data = parse_ancillary(&data)?;
-            
+
             if let Ok(map) = super::Sony::parse_metadata(&data) {
                 let mut frame_rate = 25.0; // Probably wrong assumption, but it's better than 0 (at least we'll have some timestamps)
                 if let Some(group) = map.get(&GroupId::Default) {
@@ -43,9 +43,9 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_c
                 // println!("Index: {}, Duration: {}, Frame rate: {}, Timestamp: {}", index, duration_ms, frame_rate, index as f64 * duration_ms);
 
                 samples.push(SampleInfo {
-                    index, 
+                    index,
                     duration_ms,
-                    timestamp_ms: index as f64 * duration_ms, 
+                    timestamp_ms: index as f64 * duration_ms,
                     tag_map: Some(map)
                 });
                 index += 1;
@@ -100,7 +100,7 @@ fn parse_ancillary(buffer: &[u8]) -> Result<Vec<u8>> {
             // let size = array_data[2] as usize;
             // let idx = array_data[3];
             let payload = &array_data[4..];
-            
+
             full_data.extend_from_slice(&payload);
         }
         slice.seek(SeekFrom::Current(array_size as i64))?;

@@ -223,7 +223,7 @@ impl<T: Default> ValueType<T> {
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct Vector3<T> {
     pub x: T,
-    pub y: T, 
+    pub y: T,
     pub z: T,
 }
 impl<T: std::convert::Into<f64>> Vector3<T> {
@@ -241,7 +241,7 @@ impl Vector3<f64> {
             match o as char {
                 'X' => self.x, 'x' => -self.x,
                 'Y' => self.y, 'y' => -self.y,
-                'Z' => self.z, 'z' => -self.z, 
+                'Z' => self.z, 'z' => -self.z,
                 err => { panic!("Invalid orientation {}", err); }
             }
         };
@@ -252,7 +252,7 @@ impl Vector3<f64> {
 pub struct TimeVector3<T, TT = T> {
     pub t: TT,
     pub x: T,
-    pub y: T, 
+    pub y: T,
     pub z: T,
 }
 impl<T: std::convert::Into<f64>> TimeVector3<T> {
@@ -288,7 +288,7 @@ pub struct TimeScalar<T> {
 pub struct Quaternion<T> {
     pub w: T,
     pub x: T,
-    pub y: T, 
+    pub y: T,
     pub z: T,
 }
 impl<T: Copy + std::ops::Mul<Output = T> + std::ops::Sub<Output = T> + std::ops::Add<Output = T>> std::ops::Mul for Quaternion<T> {

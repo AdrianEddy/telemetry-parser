@@ -41,7 +41,7 @@ impl BlackBox {
     pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
         if self.csv {
             csv::parse(stream, size, progress_cb, cancel_flag)
-        } else {            
+        } else {
             binary::parse(stream, size, progress_cb, cancel_flag)
         }
     }
@@ -68,7 +68,7 @@ impl BlackBox {
 
     fn tag_id(name: &str) -> TagId {
         match name {
-            "gyroADC" | 
+            "gyroADC" |
             "accSmooth" => TagId::Data,
 
             _ => TagId::Custom(name.to_owned())
@@ -96,12 +96,12 @@ impl BlackBox {
                 if $c == 0 {
                     let group = Self::group_from_key(&$name);
                     let tag = Self::tag_id(&$name);
-    
+
                     let tag_desc = tag!(parsed group, tag, $name, $entry_type, |v| format!("{:?}", v), Vec::with_capacity(10000), vec![]);
-    
+
                     columns.descriptions.push(Rc::new(RefCell::new(tag_desc)));
                 }
-                
+
                 // Take last created TagDescription and store the reference for it
                 // `columns` will have len() equal to CSV headers count
                 columns.columns.push(HeaderTagDesc {
@@ -150,11 +150,11 @@ impl BlackBox {
             _ => { panic!("Unknown field type"); }
         }
     }
-    
+
     pub fn camera_type(&self) -> String {
         "BlackBox".to_owned()
     }
-    
+
     pub fn frame_readout_time(&self) -> Option<f64> {
         None
     }
