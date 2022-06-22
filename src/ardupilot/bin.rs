@@ -282,16 +282,15 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_c
             }
         }
     }
-    let ev = Vec::new();
 
     // Prefer VSTB, then IMU, and then GYR/ACC. Don't add all of them because the data is duplicated then
-    let gyro = gyro.get("VSTB").unwrap_or_else(|| gyro.get("IMU").unwrap_or_else(|| gyro.get("GYR").unwrap_or(&ev)));
-    let accl = accl.get("VSTB").unwrap_or_else(|| accl.get("IMU").unwrap_or_else(|| accl.get("ACC").unwrap_or(&ev)));
+    let gyro = [&gyro["VSTB"], &gyro["IMU"], &gyro["GYR"]].iter().find(|v| !v.is_empty()).map(|v| v.to_vec()).unwrap_or_default();
+    let accl = [&accl["VSTB"], &accl["IMU"], &accl["ACC"]].iter().find(|v| !v.is_empty()).map(|v| v.to_vec()).unwrap_or_default();
 
     let mut map = GroupedTagMap::new();
 
-    util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), accl.to_vec(), vec![]));
-    util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro.to_vec(), vec![]));
+    util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), accl, vec![]));
+    util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]));
     util::insert_tag(&mut map, tag!(parsed GroupId::Quaternion,    TagId::Data, "Quaternion data",    Vec_TimeQuaternion_f64, |v| format!("{:?}", v), quats, vec![]));
 
     util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "m/s²".into(),  Vec::new()));
