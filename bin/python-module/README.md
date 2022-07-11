@@ -15,7 +15,7 @@ Work in progress, the code is already working but I plan to add much more input 
 - [x] Android apps: [`Sensor Logger`](https://play.google.com/store/apps/details?id=com.kelvin.sensorapp&hl=de_AT&gl=US), [`Sensor Record`](https://play.google.com/store/apps/details?id=de.martingolpashin.sensor_record)
 - [x] Gyroflow [.gcsv log](https://docs.gyroflow.xyz/logging/gcsv/)
 - [x] ArduPilot logs (*.bin, *.log)
-- [x] Blackmagic BRAW (*.braw)
+- [x] Blackmagic RAW (*.braw)
 - [ ] TODO DJI flight logs (*.dat, *.txt)
 
 # Example usage:
