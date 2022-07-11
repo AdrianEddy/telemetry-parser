@@ -96,28 +96,28 @@ declare_types! {
     Json:                serde_json::Value,
     Vec_Json:            Vec<serde_json::Value>,
     Vec_TimeScalar_Json: Vec<TimeScalar<serde_json::Value>>,
-    
+
     Vector3_i8: Vector3<i8>,
     Vector3_i16: Vector3<i16>,
     Vector3_i32: Vector3<i32>,
 
-    Vec_String: Vec<String>, 
+    Vec_String: Vec<String>,
 
-    Vec_i8:  Vec<i8>,  Vec_Vec_i8:  Vec<Vec<i8>>,  Vec_Vector3_i8:  Vec<Vector3<i8>>,  Vec_TimeVector3_i8:  Vec<TimeVector3<i8>>, 
+    Vec_i8:  Vec<i8>,  Vec_Vec_i8:  Vec<Vec<i8>>,  Vec_Vector3_i8:  Vec<Vector3<i8>>,  Vec_TimeVector3_i8:  Vec<TimeVector3<i8>>,
     Vec_u8:  Vec<u8>,  Vec_Vec_u8:  Vec<Vec<u8>>,  Vec_Vector3_u8:  Vec<Vector3<u8>>,  Vec_TimeVector3_u8:  Vec<TimeVector3<u8>>,
-    Vec_i16: Vec<i16>, Vec_Vec_i16: Vec<Vec<i16>>, Vec_Vector3_i16: Vec<Vector3<i16>>, Vec_TimeVector3_i16: Vec<TimeVector3<i16>>, 
-    Vec_u16: Vec<u16>, Vec_Vec_u16: Vec<Vec<u16>>, Vec_Vector3_u16: Vec<Vector3<u16>>, Vec_TimeVector3_u16: Vec<TimeVector3<u16>>, 
-    Vec_i32: Vec<i32>, Vec_Vec_i32: Vec<Vec<i32>>, Vec_Vector3_i32: Vec<Vector3<i32>>, Vec_TimeVector3_i32: Vec<TimeVector3<i32>>, 
-    Vec_u32: Vec<u32>, Vec_Vec_u32: Vec<Vec<u32>>, Vec_Vector3_u32: Vec<Vector3<u32>>, Vec_TimeVector3_u32: Vec<TimeVector3<u32>>, 
-    Vec_f32: Vec<f32>, Vec_Vec_f32: Vec<Vec<f32>>, Vec_Vector3_f32: Vec<Vector3<f32>>, Vec_TimeVector3_f32: Vec<TimeVector3<f32>>, 
-    Vec_f64: Vec<f64>, Vec_Vec_f64: Vec<Vec<f64>>, Vec_Vector3_f64: Vec<Vector3<f64>>, Vec_TimeVector3_f64: Vec<TimeVector3<f64>>, 
-    Vec_i64: Vec<i64>, Vec_Vec_i64: Vec<Vec<i64>>, Vec_Vector3_i64: Vec<Vector3<i64>>, Vec_TimeVector3_i64: Vec<TimeVector3<i64>>, 
-    Vec_u64: Vec<u64>, Vec_Vec_u64: Vec<Vec<u64>>, Vec_Vector3_u64: Vec<Vector3<u64>>, Vec_TimeVector3_u64: Vec<TimeVector3<u64>>, 
+    Vec_i16: Vec<i16>, Vec_Vec_i16: Vec<Vec<i16>>, Vec_Vector3_i16: Vec<Vector3<i16>>, Vec_TimeVector3_i16: Vec<TimeVector3<i16>>,
+    Vec_u16: Vec<u16>, Vec_Vec_u16: Vec<Vec<u16>>, Vec_Vector3_u16: Vec<Vector3<u16>>, Vec_TimeVector3_u16: Vec<TimeVector3<u16>>,
+    Vec_i32: Vec<i32>, Vec_Vec_i32: Vec<Vec<i32>>, Vec_Vector3_i32: Vec<Vector3<i32>>, Vec_TimeVector3_i32: Vec<TimeVector3<i32>>,
+    Vec_u32: Vec<u32>, Vec_Vec_u32: Vec<Vec<u32>>, Vec_Vector3_u32: Vec<Vector3<u32>>, Vec_TimeVector3_u32: Vec<TimeVector3<u32>>,
+    Vec_f32: Vec<f32>, Vec_Vec_f32: Vec<Vec<f32>>, Vec_Vector3_f32: Vec<Vector3<f32>>, Vec_TimeVector3_f32: Vec<TimeVector3<f32>>,
+    Vec_f64: Vec<f64>, Vec_Vec_f64: Vec<Vec<f64>>, Vec_Vector3_f64: Vec<Vector3<f64>>, Vec_TimeVector3_f64: Vec<TimeVector3<f64>>,
+    Vec_i64: Vec<i64>, Vec_Vec_i64: Vec<Vec<i64>>, Vec_Vector3_i64: Vec<Vector3<i64>>, Vec_TimeVector3_i64: Vec<TimeVector3<i64>>,
+    Vec_u64: Vec<u64>, Vec_Vec_u64: Vec<Vec<u64>>, Vec_Vector3_u64: Vec<Vector3<u64>>, Vec_TimeVector3_u64: Vec<TimeVector3<u64>>,
 
-    Vec_TimeVector3_i64f64: Vec<TimeVector3<i64, f64>>, 
-    Vec_TimeQuaternion_f64: Vec<TimeQuaternion<f64>>, 
+    Vec_TimeVector3_i64f64: Vec<TimeVector3<i64, f64>>,
+    Vec_TimeQuaternion_f64: Vec<TimeQuaternion<f64>>,
 
     Vec_TimeArray8_f64: Vec<TimeArray8<f64>>,
-    Vec_TimeArray4_f64: Vec<TimeArray4<f64>>, 
-    Vec_TimeArray2_f64: Vec<TimeArray2<f64>>, 
+    Vec_TimeArray4_f64: Vec<TimeArray4<f64>>,
+    Vec_TimeArray2_f64: Vec<TimeArray2<f64>>,
 }

@@ -8,6 +8,7 @@ mod witmotion;
 mod dji;
 mod phone_apps;
 mod ardupilot;
+mod blackmagic;
 
 pub mod tags_impl;
 pub mod util;
@@ -76,4 +77,5 @@ impl_formats! {
     Dji       => dji::Dji,
     PhoneApps => phone_apps::PhoneApps,
     ArduPilot => ardupilot::ArduPilot,
+    BlackmagicBraw => blackmagic::BlackmagicBraw,
 }

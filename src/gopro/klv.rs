@@ -157,10 +157,10 @@ impl KLV {
         let mut ret = Vec::with_capacity(repeat);
         for v in d.get_ref()[8..].chunks(size) {
             let end = v.iter().position(|&c| c == 0).unwrap_or(v.len());
-            
+
             ret.push(String::from_utf8(v[0..end].to_vec()).map_err(e)?);
         }
-        
+
         Ok(ret)
     }
     fn parse_utcdate(x: &mut Cursor::<&[u8]>) -> Result<u64> {
@@ -201,7 +201,7 @@ impl KLV {
     }
     fn parse_quaternion<T>(d: &mut Cursor<&[u8]>, read_fn: fn(&mut Cursor<&[u8]>) -> Result<T>) -> Result<Vec<Quaternion<T>>> {
         let repeat = Self::parse_header(d)?.repeat;
-        
+
         (0..repeat).map(|_| Ok(Quaternion {
             w: read_fn(d)?,
             x: read_fn(d)?,
@@ -221,7 +221,7 @@ impl KLV {
     }
     fn parse_nested<T>(d: &mut Cursor<&[u8]>, read_fn: fn(&mut Cursor<&[u8]>) -> Result<T>) -> Result<Vec<Vec<T>>> {
         let (repeat, items_in_chunk) = Self::parse_header(d)?.get_repeat_count::<T>();
-        
+
         (0..repeat).map(|_| {
             (0..items_in_chunk).map(|_| read_fn(d)).collect()
         }).collect()
@@ -229,7 +229,7 @@ impl KLV {
 
     pub fn orientations_to_matrix(orin: &str, orio: &str) -> Option<Vec<f32>> {
         if orin.is_empty() || (orin.len() != orio.len()) { return None; }
-    
+
         Some(orio.chars()
             .flat_map(|o| orin.chars().map(move |i|
                      if i == o                     {  1.0 }

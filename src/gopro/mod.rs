@@ -19,13 +19,13 @@ pub struct GoPro {
 impl GoPro {
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         let mut ret = None;
-    
+
         if let Some(pos) = memmem::find(buffer, b"GPMFDEVC") {
             let mut obj = Self::default();
             let mut buf = &buffer[pos-4..];
             let len = buf.read_u32::<BigEndian>().unwrap() as usize;
             let gpmf_box = &buf[..len];
-            
+
             if let Ok(map) = Self::parse_metadata(&gpmf_box[8+8..], GroupId::Default, true) {
                 for v in map.values() {
                     if let Some(v) = v.get_t(TagId::Unknown(0x4D494E46/*MINF*/)) as Option<&String> {
@@ -42,7 +42,7 @@ impl GoPro {
         } else if memmem::find(buffer, b"GoPro MET").is_some() {
             ret = Some(Self::default());
         }
-        
+
         if ret.is_none() || ret.as_ref().unwrap().model.is_none() {
             // Find model name in GPRO section in `mdat` at the beginning of the file
             if let Some(p1) = memmem::find(buffer, b"GPRO") {
@@ -63,7 +63,7 @@ impl GoPro {
         if let Some(extra) = &self.extra_gpmf {
             samples.push(SampleInfo { index: 0, timestamp_ms: 0.0, duration_ms: 0.0, tag_map: Some(extra.clone()) });
         }
-        let ctx = util::get_metadata_track_samples(stream, size, |mut info: SampleInfo, data: &[u8], file_position: u64| {
+        let ctx = util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64| {
             if size > 0 {
                 progress_cb(file_position as f64 / size as f64);
             }
@@ -136,10 +136,10 @@ impl GoPro {
             if v.contains_key(&TagId::OrientationIn) && v.contains_key(&TagId::OrientationOut) && !v.contains_key(&TagId::Matrix) {
                 crate::try_block!({
                     let m = KLV::orientations_to_matrix(
-                        (v.get_t(TagId::OrientationIn)  as Option<&String>)?, 
+                        (v.get_t(TagId::OrientationIn)  as Option<&String>)?,
                         (v.get_t(TagId::OrientationOut) as Option<&String>)?
                     )?;
-                    v.insert(TagId::Matrix, 
+                    v.insert(TagId::Matrix,
                         crate::tag!(parsed g.clone(), TagId::Matrix, "MTRX", Vec_Vec_f32, |v| format!("{:?}", v), vec![m], Vec::new())
                     );
                 });
@@ -190,9 +190,9 @@ impl GoPro {
         for i in 0..samples.len() {
             let info = &samples[i];
             if info.tag_map.is_none() { continue; }
-        
+
             let grouped_tag_map = info.tag_map.as_ref().unwrap();
-    
+
             let mut cori = Vec::new();
             let mut iori = Vec::new();
             for (group, map) in grouped_tag_map.iter() {
@@ -222,9 +222,9 @@ impl GoPro {
                             }
                             let aout = if group == &GroupId::CameraOrientation { &mut cori } else { &mut iori };
                             aout.push((
-                                ts, 
+                                ts,
                                 Quaternion {
-                                    w: v.w as f64 / scale, 
+                                    w: v.w as f64 / scale,
                                     x: -v.x as f64 / scale,
                                     y: v.y as f64 / scale,
                                     z: v.z as f64 / scale
@@ -241,7 +241,7 @@ impl GoPro {
                     t: c.0 as f64 / 1000.0,
                     v: c.1 * i.1
                 }).collect();
-                
+
                 let grouped_tag_map = samples[i].tag_map.as_mut().unwrap();
                 util::insert_tag(grouped_tag_map, tag!(parsed GroupId::Quaternion, TagId::Data, "Quaternion data",  Vec_TimeQuaternion_f64, |v| format!("{:?}", v), quat, vec![]));
             }
@@ -314,11 +314,11 @@ impl GoPro {
     pub fn normalize_imu_orientation(v: String) -> String {
         v
     }
-    
+
     pub fn camera_type(&self) -> String {
         "GoPro".to_owned()
     }
-    
+
     pub fn frame_readout_time(&self) -> Option<f64> {
         self.frame_readout_time
     }

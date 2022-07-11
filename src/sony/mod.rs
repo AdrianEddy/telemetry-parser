@@ -36,7 +36,7 @@ impl Sony {
         }
 
         let mut samples = Vec::new();
-        util::get_metadata_track_samples(stream, size, |mut info: SampleInfo, data: &[u8], file_position: u64| {
+        util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64| {
             if size > 0 {
                 progress_cb(file_position as f64 / size as f64);
             }
@@ -105,18 +105,18 @@ impl Sony {
         }
         assert!(v.len() == 3);
         let mut v = v.chars().collect::<Vec<char>>();
-        
+
         // Normalize to common orientation - swap X/Y and invert Z
         v.swap(0, 1);
         v[2] = invert_case(v[2]);
-    
+
         v.iter().collect()
     }
-    
+
     pub fn camera_type(&self) -> String {
         "Sony".to_owned()
     }
-    
+
     pub fn frame_readout_time(&self) -> Option<f64> {
         None
     }

@@ -52,6 +52,18 @@ pub fn verify_and_fix_mp4_structure(bytes: &mut Vec<u8>) {
     });
 }
 
+// wave box in .braw files can't be parsed by `mp4parse-rust` - rename it to wav_
+pub fn hide_wave_box(all: &mut Vec<u8>) {
+    let mut offs = 0;
+    while let Some(pos) = memchr::memmem::find(&all[offs..], b"wave") {
+        if all.len() > offs+pos+12 && &all[offs+pos+8..offs+pos+12] == b"frma" {
+            all[offs + pos + 3] = b'_';
+            return;
+        }
+        offs += pos + 4;
+    }
+}
+
 pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Result<mp4parse::MediaContext> {
     if size > 10*1024*1024 {
         // With large files we can save a lot of time by only parsing actual MP4 box structure, skipping track data ifself.
@@ -70,6 +82,7 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
             }
 
             verify_and_fix_mp4_structure(&mut all);
+            hide_wave_box(&mut all);
 
             let mut c = std::io::Cursor::new(&all);
             return mp4parse::read_mp4(&mut c);
@@ -78,11 +91,11 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
     mp4parse::read_mp4(stream)
 }
 
-fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4parse::TrackType, mut callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
+pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4parse::TrackType, single: bool, mut callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
     where F: FnMut(SampleInfo, &[u8], u64)
 {
 
-    let ctx = parse_mp4(stream, size).or_else(|_| mp4parse::read_mp4(stream))?;
+    let ctx = parse_mp4(stream, size).or_else(|_| mp4parse::read_mp4(stream)).unwrap();
 
     let mut index = 0u64;
     // let mut sample_delta = 0u32;
@@ -118,7 +131,9 @@ fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4par
                             index += 1;
                         }
                     }
-                    break;
+                    if single {
+                        break;
+                    }
                 }
             // }
         }
@@ -126,15 +141,15 @@ fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4par
     Ok(ctx)
 }
 
-pub fn get_metadata_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
+pub fn get_metadata_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, single: bool, callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
     where F: FnMut(SampleInfo, &[u8], u64)
 {
-    get_track_samples(stream, size, mp4parse::TrackType::Metadata, callback, cancel_flag)
+    get_track_samples(stream, size, mp4parse::TrackType::Metadata, single, callback, cancel_flag)
 }
-pub fn get_other_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
+pub fn get_other_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, single: bool, callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
     where F: FnMut(SampleInfo, &[u8], u64)
 {
-    get_track_samples(stream, size, mp4parse::TrackType::Unknown, callback, cancel_flag)
+    get_track_samples(stream, size, mp4parse::TrackType::Unknown, single, callback, cancel_flag)
 }
 
 pub fn read_beginning_and_end<T: Read + Seek>(stream: &mut T, stream_size: usize, read_size: usize) -> Result<Vec<u8>> {

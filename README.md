@@ -13,6 +13,7 @@ A tool to parse real-time metadata embedded in video files or telemetry from oth
 - [x] Android apps: [`Sensor Logger`](https://play.google.com/store/apps/details?id=com.kelvin.sensorapp&hl=de_AT&gl=US), [`Sensor Record`](https://play.google.com/store/apps/details?id=de.martingolpashin.sensor_record)
 - [x] Gyroflow [.gcsv log](https://docs.gyroflow.xyz/logging/gcsv/)
 - [x] ArduPilot logs (*.bin, *.log)
+- [x] Blackmagic BRAW (*.braw)
 - [ ] TODO DJI flight logs (*.dat, *.txt)
 
 # Example usage

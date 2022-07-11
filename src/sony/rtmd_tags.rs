@@ -141,7 +141,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         0x8104 => tag!(Default, SensorWidth,  "Imager Dimension (Effective Width)",              f32, "{:.2}mm", |d| Ok(d.read_u16::<BigEndian>()? as f32 / 1000.0), tag_data),
         0x8105 => tag!(Default, SensorHeight, "Imager Dimension (Effective Height)",             f32, "{:.2}mm", |d| Ok(d.read_u16::<BigEndian>()? as f32 / 1000.0), tag_data),
         0x8106 => tag!(Default, FrameRate,    "Capture Frame Rate",                              f64, "{:.3}fps", |d| read_rational(d), tag_data),
-        
+
         0x8107 => tag!(Default, SensorReadoutMode, "Image Sensor Readout Mode", u8, |v| { match v {
             0 => "Interlaced field" .into(),
             1 => "Interlaced frame" .into(),
@@ -155,7 +155,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         0x810A => tag!(Exposure, TagId::Custom("MasterGainAdjustment".into()), "Camera Master Gain Adjustment",           f32,  "{:.2}%", |d| Ok(d.read_u16::<BigEndian>()? as f32 / 100.0), tag_data),
         0x810B => tag!(Exposure, ISOValue, "ISO Sensitivity",                                     u16, "{}",     |d| d.read_u16::<BigEndian>(), tag_data),
         0x810C => tag!(Default, TagId::Custom("ElectricalExtenderMagnification".into()), "Electrical Extender Magnification",               u16, "{}%",    |d| d.read_u16::<BigEndian>(), tag_data),
-        
+
         0x810D => tag!(Colors, AutoWBMode, "Auto White Balance Mode", u8, |v| { match v {
             0 => "Preset"   .into(),
             1 => "Automatic".into(),
@@ -172,7 +172,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         0x8113 => tag!(Default, TagId::Custom("SettingFileURI".into()), "Camera Setting File URI",String, |v| v.to_string(), |d| read_utf8(d), tag_data),
         0x8114 => tag!(Default, CameraAttributes, "Camera Attributes",                            String, |v| v.to_string(), |d| read_utf8(d), tag_data),
         0x8115 => tag!(Exposure, TagId::Custom("ISOValue2".into()), "Exposure Index of Photo Meter", u16, "{}",   |d| d.read_u16::<BigEndian>(), tag_data),
-        
+
         0x8116 => tag!(Colors, TagId::Custom("GammaforCDL".into()), "Gamma for CDL", u8, |v| { match v {
             0 => "Same as Capture Gamma".into(),
             1 => "Scene Linear"         .into(),
@@ -226,7 +226,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
 
         // -------------- UserDefinedAcquisitionMetadata --------------
         0xe000 => tag!(Default, GroupIdentifier, "UDAM Set Identifier", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
-        
+
         0xe101 => tag!(Default, TagId::Custom("EffectiveMarkerCoverage".into()),         "Effective marker coverage",       u32x2, |v| format!("{} x {}", v.0, v.1), |d| Ok((d.read_u32::<BigEndian>()?, d.read_u32::<BigEndian>()?)), tag_data),
         0xe102 => tag!(Default, TagId::Custom("EffectiveMarkerAspectRatio".into()),      "Effective marker aspect ratio",   u32x2, |v| format!("{} x {}", v.0, v.1), |d| Ok((d.read_u32::<BigEndian>()?, d.read_u32::<BigEndian>()?)), tag_data),
         0xe103 => tag!(Default, TagId::Custom("CameraProcessDiscriminationCode".into()), "Camera process discrimination code", u16,|v| { match v {
@@ -235,11 +235,11 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             0x0103 => "F65 RAW High Frame Rate Mode released in July 2012".into(),
             _ => format!("0x{:04x}", v)
         } }, |d| d.read_u16::<BigEndian>(), tag_data),
-        0xe104 => tag!(Default, TagId::Custom("RotaryShutterMode".into()),               "Rotary shutter mode",             bool,   "{}", |d| Ok(d.read_u8()? != 0), tag_data), 
-        0xe105 => tag!(Default, TagId::Custom("RawBlackCodeValue".into()),               "RawBlack code value",             u16,    "{}", |d| d.read_u16::<BigEndian>(), tag_data), 
-        0xe106 => tag!(Default, TagId::Custom("RawGrayCodeValue".into()),                "RawGray code value",              u16,    "{}", |d| d.read_u16::<BigEndian>(), tag_data), 
-        0xe107 => tag!(Default, TagId::Custom("RawWhiteCodeValue".into()),               "RawWhite code value",             u16,    "{}", |d| d.read_u16::<BigEndian>(), tag_data), 
-        0xe109 => tag!(Default, TagId::Custom("MonitoringDescriptions".into()),          "Monitoring descriptions",         String, "{}", |d| read_utf8(d), tag_data), 
+        0xe104 => tag!(Default, TagId::Custom("RotaryShutterMode".into()),               "Rotary shutter mode",             bool,   "{}", |d| Ok(d.read_u8()? != 0), tag_data),
+        0xe105 => tag!(Default, TagId::Custom("RawBlackCodeValue".into()),               "RawBlack code value",             u16,    "{}", |d| d.read_u16::<BigEndian>(), tag_data),
+        0xe106 => tag!(Default, TagId::Custom("RawGrayCodeValue".into()),                "RawGray code value",              u16,    "{}", |d| d.read_u16::<BigEndian>(), tag_data),
+        0xe107 => tag!(Default, TagId::Custom("RawWhiteCodeValue".into()),               "RawWhite code value",             u16,    "{}", |d| d.read_u16::<BigEndian>(), tag_data),
+        0xe109 => tag!(Default, TagId::Custom("MonitoringDescriptions".into()),          "Monitoring descriptions",         String, "{}", |d| read_utf8(d), tag_data),
         0xe10B => tag!(Default, TagId::Custom("MonitoringBaseCurve".into()),             "Monitoring base curve",           Uuid, |v| { match v.3 {
             0x01010000 => "BT.470"                    .into(),
             0x01020000 => "BT.709"                    .into(),
@@ -309,7 +309,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             "NormalizedZoomValue",
             "LensSerialNumber",
         }, tag_data), */
-        0xe202 => tag!(Default, TagId::Custom("CookeProtocol_UserMetadata".into()),    "CookeProtocol_UserMetadata",      String, "{}", |d| read_utf8(d), tag_data), 
+        0xe202 => tag!(Default, TagId::Custom("CookeProtocol_UserMetadata".into()),    "CookeProtocol_UserMetadata",      String, "{}", |d| read_utf8(d), tag_data),
         0xe203 => tag!(Default, TagId::Custom("CookeProtocol_CalibrationType".into()), "CookeProtocol_CalibrationType",   u8, |v| { match v {
             0 => "mm".into(),
             1 => "in".into(),
@@ -319,7 +319,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         0xe10d => tag!(Default, Unknown(0xe10d), "Unknown_e10d", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
         0xe10e => tag!(Default, Unknown(0xe10e), "Unknown_e10e", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
         0xe10f => tag!(Default, Unknown(0xe10f), "Unknown_e10f", u32x2, |v| format!("{} x {}", v.0, v.1), |d| Ok((d.read_u32::<BigEndian>()?, d.read_u32::<BigEndian>()?)), tag_data),
-        
+
         0xe111 => tag!(Default, Unknown(0xe111), "Unknown_e111", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
         0xe112 => tag!(Default, Unknown(0xe112), "Unknown_e112", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
         0xe113 => tag!(Default, Unknown(0xe113), "Unknown_e113", String, "{}", |d| read_utf8(d), tag_data),
@@ -526,7 +526,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         0xe424 => tag!(GroupId::Custom("MeshCorrection".into()), Enabled, "MeshCorrection::Mesh bool", bool, "{}", |d| Ok(d.read_u8()? != 0), tag_data),
         0xe42f => tag!(GroupId::Custom("MeshCorrection".into()), Data,    "MeshCorrection::Mesh", Json, |v| v.to_string(), |x| {
             let aa = x.read_i16::<BigEndian>()?; // confirmed i16
-            
+
             let bb = x.read_u32::<BigEndian>()?; // confirmed i32
             let cc = x.read_u32::<BigEndian>()?; // confirmed i32
 
@@ -668,7 +668,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         0x8504 => tag!(GPS, TagId::Custom("GPSLongitude".into()), "GPS longitude", f64x3, |v| format!("{}:{}:{}", v.0, v.1, v.2), |d| Ok((read_rational(d)?, read_rational(d)?, read_rational(d)?)), tag_data), // TODO: ToDegrees, ToDMS
         0x8505 => tag!(GPS, TagId::Custom("GPSAltitudeRef".into()), "GPS altitude ref", u8, "{}", |d| d.read_u8(), tag_data),
         0x8506 => tag!(GPS, TagId::Custom("GPSAltitude".into()), "GPS altitude", f64, "{}", |d| read_rational(d), tag_data),
-        
+
         0x8507 => tag!(GPS, TagId::Custom("GPSTimeStamp".into()), "GPS timestamp", f64x3, |v| format!("{}:{}:{}", v.0, v.1, v.2), |d| Ok((read_rational(d)?, read_rational(d)?, read_rational(d)?)), tag_data), // TODO: ConvertTimeStamp, PrintTimeStamp
         0x8509 => tag!(GPS, TagId::Custom("GPSStatus".into()), "GPS status", u8, |v| match v {
             b'A' => "Active".into(),
