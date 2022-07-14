@@ -14,6 +14,7 @@ A tool to parse real-time metadata embedded in video files or telemetry from oth
 - [x] Gyroflow [.gcsv log](https://docs.gyroflow.xyz/logging/gcsv/)
 - [x] ArduPilot logs (*.bin, *.log)
 - [x] Blackmagic RAW (*.braw)
+- [x] RED RAW (*.r3d)
 - [ ] TODO DJI flight logs (*.dat, *.txt)
 
 # Example usage

@@ -9,6 +9,7 @@ mod dji;
 mod phone_apps;
 mod ardupilot;
 mod blackmagic;
+mod red;
 
 pub mod tags_impl;
 pub mod util;
@@ -78,4 +79,5 @@ impl_formats! {
     PhoneApps => phone_apps::PhoneApps,
     ArduPilot => ardupilot::ArduPilot,
     BlackmagicBraw => blackmagic::BlackmagicBraw,
+    RedR3d    => red::RedR3d,
 }

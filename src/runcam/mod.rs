@@ -14,7 +14,7 @@ pub struct Runcam {
 impl Runcam {
     pub fn detect<P: AsRef<Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
         let filename = filepath.as_ref().file_name().map(|x| x.to_string_lossy()).unwrap_or_default();
-        
+
         let mut gyro_path = None;
         if filename.to_ascii_lowercase().ends_with(".mp4") {
             gyro_path = Self::detect_gyro_path(filepath.as_ref(), &filename);
@@ -135,7 +135,7 @@ impl Runcam {
             Some("Thumb") => 1000.0, // 1000 dps
             _ => 500.0 // 500 dps default
         };
-        
+
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), accl, vec![]));
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]));
 
@@ -144,7 +144,7 @@ impl Runcam {
 
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Scale, "Gyroscope scale",     f64, |v| format!("{:?}", v), gyro_scale, vec![]));
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Scale, "Accelerometer scale", f64, |v| format!("{:?}", v), accl_scale, vec![]));
-        
+
         let imu_orientation = match self.model.as_deref() {
             Some("Runcam 5 Orange")  => "xzY",
             Some("iFlight GOCam GR") => "xZy",
@@ -163,7 +163,7 @@ impl Runcam {
     pub fn normalize_imu_orientation(v: String) -> String {
         v
     }
-    
+
     pub fn camera_type(&self) -> String {
         match self.model.as_deref() {
             Some("iFlight GOCam GR") => "iFlight",
@@ -171,7 +171,7 @@ impl Runcam {
             _ => "Runcam"
         }.to_owned()
     }
-    
+
     pub fn frame_readout_time(&self) -> Option<f64> {
         None
     }

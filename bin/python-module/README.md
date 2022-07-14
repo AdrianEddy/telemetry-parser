@@ -16,6 +16,7 @@ Work in progress, the code is already working but I plan to add much more input 
 - [x] Gyroflow [.gcsv log](https://docs.gyroflow.xyz/logging/gcsv/)
 - [x] ArduPilot logs (*.bin, *.log)
 - [x] Blackmagic RAW (*.braw)
+- [x] RED RAW (*.r3d)
 - [ ] TODO DJI flight logs (*.dat, *.txt)
 
 # Example usage:
