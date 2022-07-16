@@ -112,7 +112,7 @@ impl RedR3d {
 
                 if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) { break; }
                 if filesize > 0 {
-                    progress_cb((stream.stream_position()? as f64 / filesize as f64) * ((i as f64 + 1.0) / total_count));
+                    progress_cb((i as f64 + (stream.stream_position()? as f64 / filesize as f64)) / total_count);
                 }
             }
         }
@@ -225,7 +225,7 @@ impl RedR3d {
                 let v = match d[0] {
                     0x10 => serde_json::to_value(std::str::from_utf8(&d[2..]).unwrap_or(&"")),
                     0x20 => serde_json::to_value((&d[2..]).read_f32::<BigEndian>()? as f64),
-                    0x30 => serde_json::to_value((&d[2..]).read_u8()? as f64),
+                    0x30 => serde_json::to_value((&d[2..]).read_u8()?),
                     0x40 => serde_json::to_value((&d[2..]).read_i16::<BigEndian>()?),
                     0x60 => serde_json::to_value((&d[2..]).read_u32::<BigEndian>()?),
                     _ => {
