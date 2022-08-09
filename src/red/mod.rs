@@ -74,21 +74,21 @@ impl RedR3d {
                     data.resize(aligned_size, 0);
                     stream.seek(SeekFrom::Current(-8))?;
                     stream.read_exact(&mut data)?;
-                    if data.len() > 4096 {
+                    if (4096..=size as usize).contains(&data.len()) {
                         let mut data = &data[4096..size as usize];
 
                         crate::try_block!({
-                            while let Ok(mut timestamp) = data.read_u64::<BigEndian>() {
+                            while let Ok(timestamp) = data.read_u64::<BigEndian>() {
                                 if first_timestamp.is_none() {
                                     first_timestamp = Some(timestamp);
                                 }
-                                timestamp -= first_timestamp.unwrap();
-                                accl.push(TimeVector3 { t: timestamp as f64 / 1000000.0,
+                                let t = (timestamp - first_timestamp.unwrap()) as f64 / 1000000.0;
+                                accl.push(TimeVector3 { t,
                                     x: -data.read_i16::<BigEndian>().ok()? as f64 / 100.0,
                                     y: -data.read_i16::<BigEndian>().ok()? as f64 / 100.0,
                                     z: -data.read_i16::<BigEndian>().ok()? as f64 / 100.0
                                 });
-                                gyro.push(TimeVector3 { t: timestamp as f64 / 1000000.0,
+                                gyro.push(TimeVector3 { t,
                                     x: data.read_i16::<BigEndian>().ok()? as f64 / 10.0,
                                     y: data.read_i16::<BigEndian>().ok()? as f64 / 10.0,
                                     z: data.read_i16::<BigEndian>().ok()? as f64 / 10.0
