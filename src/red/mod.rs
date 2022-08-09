@@ -74,7 +74,7 @@ impl RedR3d {
                     data.resize(aligned_size, 0);
                     stream.seek(SeekFrom::Current(-8))?;
                     stream.read_exact(&mut data)?;
-                    if (4096..=size as usize).contains(&data.len()) {
+                    if data.len() > 4096 && (size as usize) <= data.len() {
                         let mut data = &data[4096..size as usize];
 
                         crate::try_block!({
