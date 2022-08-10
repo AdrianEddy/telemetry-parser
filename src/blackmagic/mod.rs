@@ -56,13 +56,13 @@ impl BlackmagicBraw {
                 crate::try_block!({
                     d.seek(SeekFrom::Start(8)).ok()?;
                     if &data[4..8] == b"mogy" {
-                        gyro.push(TimeVector3 { t: info.timestamp_ms / 1000.0,
+                        gyro.push(TimeVector3 { t: (info.timestamp_ms - 11.0) / 1000.0,
                             x: d.read_f32::<LittleEndian>().ok()? as f64,
                             y: d.read_f32::<LittleEndian>().ok()? as f64,
                             z: d.read_f32::<LittleEndian>().ok()? as f64
                         });
                     } else if &data[4..8] == b"moac" {
-                        accl.push(TimeVector3 { t: info.timestamp_ms / 1000.0,
+                        accl.push(TimeVector3 { t: (info.timestamp_ms - 11.0) / 1000.0,
                             x: d.read_f32::<LittleEndian>().ok()? as f64,
                             y: d.read_f32::<LittleEndian>().ok()? as f64,
                             z: d.read_f32::<LittleEndian>().ok()? as f64
