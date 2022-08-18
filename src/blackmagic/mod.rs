@@ -63,9 +63,9 @@ impl BlackmagicBraw {
                         });
                     } else if &data[4..8] == b"moac" {
                         accl.push(TimeVector3 { t: (info.timestamp_ms - 11.0) / 1000.0,
-                            x: d.read_f32::<LittleEndian>().ok()? as f64,
-                            y: d.read_f32::<LittleEndian>().ok()? as f64,
-                            z: d.read_f32::<LittleEndian>().ok()? as f64
+                            x: -d.read_f32::<LittleEndian>().ok()? as f64,
+                            y: -d.read_f32::<LittleEndian>().ok()? as f64,
+                            z: -d.read_f32::<LittleEndian>().ok()? as f64
                         });
                     }
                 });
