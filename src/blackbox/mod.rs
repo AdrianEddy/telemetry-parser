@@ -125,8 +125,8 @@ impl BlackBox {
     }
 
     fn insert_value_to_vec(desc: &mut TagDescription, time: f64, val: f64, i: u8) {
-        if desc.group == GroupId::Gyroscope     && val.abs() > 3600.0   { println!("Rejecting gyro {val}"); return; }
-        if desc.group == GroupId::Accelerometer && val.abs() > 100000.0 { println!("Rejecting accl {val}"); return; }
+        if desc.group == GroupId::Gyroscope     && val.abs() > 3600.0   { log::warn!("Rejecting gyro {val}"); return; }
+        if desc.group == GroupId::Accelerometer && val.abs() > 100000.0 { log::warn!("Rejecting accl {val}"); return; }
 
         match &mut desc.value {
             TagValue::Vec_TimeScalar_i64(vec) => {

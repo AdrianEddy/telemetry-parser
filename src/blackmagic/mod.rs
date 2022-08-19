@@ -158,7 +158,7 @@ impl BlackmagicBraw {
                                 77 => serde_json::to_value(d.read_u32::<BigEndian>()?),
                                 78 => serde_json::to_value(d.read_u64::<BigEndian>()?),
                                 _ => {
-                                    println!("{}({}): {}", key, typ, pretty_hex::pretty_hex(&d[..128.min(d.len() - 1)].to_vec()));
+                                    log::debug!("{}({}): {}", key, typ, pretty_hex::pretty_hex(&d[..128.min(d.len() - 1)].to_vec()));
                                     Err(serde_json::Error::io(ErrorKind::InvalidData.into()))
                                 }
                             };
@@ -207,7 +207,7 @@ impl BlackmagicBraw {
                     "dsnc" => (Some("distance"),             serde_json::to_value(get_str(d)?)),
                     "fcln" => (Some("focal_length"),         serde_json::to_value(get_str(d)?)),
                     _ => {
-                        // println!("{name}: {}", pretty_hex::pretty_hex(&d));
+                        // log::debug!("{name}: {}", pretty_hex::pretty_hex(&d));
                         (None, Err(serde_json::Error::io(ErrorKind::InvalidData.into())))
                     }
                 };

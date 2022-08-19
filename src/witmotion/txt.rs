@@ -12,7 +12,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
     let mut angl = Vec::new();
     let mut magn = Vec::new();
     let mut quat = Vec::new();
-    
+
     let mut last_timestamp = 0.0;
     let mut first_timestamp = 0.0;
 
@@ -22,7 +22,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
         .trim(csv::Trim::All)
         .delimiter(b'\t')
         .from_reader(stream);
-    
+
     for row in csv.records() {
         let row = row?;
         if let Some(ref h) = headers {
@@ -63,7 +63,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
                     t: ts as f64,
                     x: map.get("hx")?.parse::<i64>().ok()?,
                     y: map.get("hy")?.parse::<i64>().ok()?,
-                    z: map.get("hz")?.parse::<i64>().ok()? 
+                    z: map.get("hz")?.parse::<i64>().ok()?
                 });
             });
             crate::try_block!({
@@ -73,7 +73,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
                         map.get("q0")?.replace(',', ".").parse::<f64>().ok()?,
                         map.get("q1")?.replace(',', ".").parse::<f64>().ok()?,
                         map.get("q2")?.replace(',', ".").parse::<f64>().ok()?,
-                        map.get("q3")?.replace(',', ".").parse::<f64>().ok()? 
+                        map.get("q3")?.replace(',', ".").parse::<f64>().ok()?
                     ]
                 });
             });
@@ -87,7 +87,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
     util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), accl, vec![]));
     util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]));
 
-    util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "m/s²".into(),  Vec::new()));
+    util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(), Vec::new()));
     util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Unit, "Gyroscope unit",     String, |v| v.to_string(), "deg/s".into(), Vec::new()));
 
     let imu_orientation = "ZYx";

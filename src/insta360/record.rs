@@ -125,7 +125,7 @@ impl super::Insta360 {
                 insert_tag(&mut map, tag!(parsed Accelerometer, Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), acc_vec, vec![]));
                 insert_tag(&mut map, tag!(parsed Gyroscope,     Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro_vec, vec![]));
 
-                insert_tag(&mut map, tag!(parsed Accelerometer, Unit, "Accelerometer unit", String, |v| v.to_string(), "m/s²".into(),  Vec::new()));
+                insert_tag(&mut map, tag!(parsed Accelerometer, Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(),  Vec::new()));
             },
             RecordType::Exposure | RecordType::ExposureSecondary => {
                 insert_tag(&mut map, tag!(Exposure, Data, "Shutter speed", Vec_TimeScalar_f64, |v| format!("{:?}", v), |d| {
@@ -155,7 +155,7 @@ impl super::Insta360 {
                     let len = d.get_ref().len();
                     let mut gps = Vec::with_capacity(len as usize / 53); // item size: 53 bytes
                     while d.position() < len as u64 {
-                        let unix_timestamp = (d.read_u64::<LittleEndian>()? as f64) 
+                        let unix_timestamp = (d.read_u64::<LittleEndian>()? as f64)
                                         + (d.read_u16::<LittleEndian>()? as f64) / 1000.0;
                         let fix      = d.read_u8()? as char; // A - Acquired / V - Void
                         let mut lat  = d.read_f64::<LittleEndian>()?;
@@ -204,7 +204,7 @@ impl super::Insta360 {
                                 "ev_target":    ev_target,
                                 "exp_time":     exp_time,
                                 "data_stat":    data_stat,
-        
+
                                 "luma_wg_grid": luma_wg_grid,
                                 "luma_wg_y":    luma_wg_y,
                                 "sum_wg_y":     sum_wg_y,
@@ -229,7 +229,7 @@ impl super::Insta360 {
                                     list.push(vec![d.read_u64::<LittleEndian>()?]);
                                 } else {
                                     list.push(vec![d.read_u64::<LittleEndian>()?, d.read_u64::<LittleEndian>()?]);
-                                } 
+                                }
                             }
                             anchors.push(serde_json::json!({
                                 "type": type_,
@@ -249,7 +249,7 @@ impl super::Insta360 {
             RecordType::SecGyro | // Unknown format
             RecordType::TimeMap | // Unknown format
             _ => {
-                eprintln!("Unknown Insta360 record: {}, format: {}, {}", id, format, pretty_hex::pretty_hex(&data));
+                log::warn!("Unknown Insta360 record: {}, format: {}, {}", id, format, pretty_hex::pretty_hex(&data));
             }
         }
         Ok(map)

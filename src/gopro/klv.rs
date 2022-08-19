@@ -26,7 +26,7 @@ impl KLV {
         klv.repeat    = d.read_u16::<BigEndian>()? as usize;
 
         if klv.data_len() > (d.get_ref().len() - d.position() as usize) {
-            eprintln!("Tag: {}, len: {}, Available: {}", String::from_utf8_lossy(&klv.key), klv.data_len(), (d.get_ref().len() - d.position() as usize));
+            log::error!("Invalid tag: {}, len: {}, Available: {}", String::from_utf8_lossy(&klv.key), klv.data_len(), (d.get_ref().len() - d.position() as usize));
             return Err(ErrorKind::UnexpectedEof.into());
         }
 

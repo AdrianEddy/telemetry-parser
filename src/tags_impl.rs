@@ -209,7 +209,7 @@ impl<T: Default> ValueType<T> {
             match (self.parse_fn.expect("value not parsed"))(&mut tag_slice) {
                 Ok(v) => { return v; },
                 Err(e) => {
-                    println!("Parsing error {:?}: {}", e, pretty_hex::pretty_hex(&self.raw_data));
+                    log::error!("Parsing error {:?}: {}", e, pretty_hex::pretty_hex(&self.raw_data));
                     return T::default();
                 }
             }

@@ -41,7 +41,10 @@ impl Sony {
                 progress_cb(file_position as f64 / size as f64);
             }
             if Self::detect_metadata(data) {
-                if let Ok(map) = Sony::parse_metadata(&data[0x1C..]) {
+                if let Ok(mut map) = Sony::parse_metadata(&data[0x1C..]) {
+                    if map.contains_key(&GroupId::Accelerometer) {
+                        util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(), Vec::new()));
+                    }
                     info.tag_map = Some(map);
                     samples.push(info);
                 }
@@ -63,7 +66,7 @@ impl Sony {
             let tag = slice.read_u16::<BigEndian>()?;
             if tag == 0x060e {
                 /*let uuid = &data[slice.position() as usize - 2..slice.position() as usize + 14];
-                println!("--- {} ---", match &uuid[..16] {
+                log::debug!("--- {} ---", match &uuid[..16] {
                     &hex_literal::hex!("060E2B34 02530101 0C020101 01010000") => "LensUnitMetadata",
                     &hex_literal::hex!("060E2B34 02530101 0C020101 02010000") => "CameraUnitMetadata",
                     &hex_literal::hex!("060E2B34 02530101 0C020101 7F010000") => "UserDefinedAcquisitionMetadata",
@@ -76,8 +79,8 @@ impl Sony {
             let len = slice.read_u16::<BigEndian>()? as usize;
             let pos = slice.position() as usize;
             if pos + len > datalen {
-                eprintln!("Tag: {:02x}, len: {}, Available: {}", tag, len, datalen - pos);
-                //println!("{}", crate::util::to_hex(&data[pos-4..]));
+                log::warn!("Invalid tag: {:02x}, len: {}, Available: {}", tag, len, datalen - pos);
+                // log::warn!("{}", crate::util::to_hex(&data[pos-4..]));
                 break;
             }
             let tag_data = &data[pos..(pos + len)];

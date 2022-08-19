@@ -42,7 +42,7 @@ impl Gyroflow {
                 .flexible(true)
                 .trim(csv::Trim::All)
                 .from_reader(Cursor::new(header_block));
-                
+
             for row in csv.records() {
                 let row = row.ok()?;
                 if row.len() == 2 {
@@ -139,7 +139,7 @@ impl Gyroflow {
             util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::Name, "Lens profile", String, |v| v.to_string(), lensprofile, Vec::new()));
         }
 
-        util::insert_tag(&mut map, 
+        util::insert_tag(&mut map,
             tag!(parsed GroupId::Default, TagId::Metadata, "Extra metadata", Json, |v| format!("{:?}", v), serde_json::to_value(header).map_err(|_| Error::new(ErrorKind::Other, "Serialize error"))?, vec![])
         );
 
@@ -147,7 +147,7 @@ impl Gyroflow {
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]));
         util::insert_tag(&mut map, tag!(parsed GroupId::Magnetometer,  TagId::Data, "Magnetometer data",  Vec_TimeVector3_f64, |v| format!("{:?}", v), magn, vec![]));
 
-        util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "m/s²".into(),  Vec::new()));
+        util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(),  Vec::new()));
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Unit, "Gyroscope unit",     String, |v| v.to_string(), "deg/s".into(), Vec::new()));
         util::insert_tag(&mut map, tag!(parsed GroupId::Magnetometer,  TagId::Unit, "Magnetometer unit",  String, |v| v.to_string(), "μT".into(), Vec::new()));
 
@@ -167,11 +167,11 @@ impl Gyroflow {
     pub fn normalize_imu_orientation(v: String) -> String {
         v
     }
-    
+
     pub fn camera_type(&self) -> String {
         "gcsv".to_owned()
     }
-    
+
     pub fn frame_readout_time(&self) -> Option<f64> {
         None
     }

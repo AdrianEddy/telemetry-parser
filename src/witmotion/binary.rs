@@ -12,7 +12,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
     let mut angl = Vec::new();
     let mut magn = Vec::new();
     let mut quat = Vec::new();
-    
+
     let mut last_timestamp = 0.0;
     let mut first_timestamp = 0.0;
     while let Ok(tag) = stream.read_u16::<BigEndian>() {
@@ -93,17 +93,17 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
                 }
             }
             _ => {
-                println!("Unknown tag! 0x{:02x}", tag);
+                log::warn!("Unknown tag! 0x{:02x}", tag);
             }
         }
     }
-    
+
     let mut map = GroupedTagMap::new();
 
     util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), accl, vec![]));
     util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]));
 
-    util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "m/s²".into(),  Vec::new()));
+    util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(), Vec::new()));
     util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Unit, "Gyroscope unit",     String, |v| v.to_string(), "deg/s".into(), Vec::new()));
 
     let imu_orientation = "ZYx";
@@ -130,11 +130,11 @@ fn checksum<T: Read + Seek>(tag: u16, stream: &mut T, item_size: u64) -> Result<
 
     let init: u8 = ((tag & 0xff) as u8) + ((tag >> 8) & 0xff) as u8;
     let calculated_sum = buf.iter().fold(init, |sum, &x| sum.wrapping_add(x));
-    
+
     if calculated_sum == sum {
         Ok(Cursor::new(buf))
     } else {
-        eprintln!("Invalid checksum! {} != {} | {:04x} {}", calculated_sum, sum, tag, crate::util::to_hex(&buf));
+        log::error!("Invalid checksum! {} != {} | {:04x} {}", calculated_sum, sum, tag, crate::util::to_hex(&buf));
         Err(Error::from(ErrorKind::InvalidData))
     }
 }

@@ -8,7 +8,7 @@ pub fn parse_from_file(stream: &mut std::fs::File) -> std::io::Result<Metadata> 
     if let Some(Ok(md)) = ctx.metadata {
         if let Some(mp4parse::XmlBox::StringXmlBox(x)) = md.xml {
             let parsed_md = parse(&x[..]);
-            println!("Model: {} {}, frames: {}", parsed_md.manufacturer, parsed_md.model, parsed_md.frame_count);
+            log::info!("Model: {} {}, frames: {}", parsed_md.manufacturer, parsed_md.model, parsed_md.frame_count);
             return Ok(parsed_md);
         }
     }

@@ -46,7 +46,7 @@ pub fn verify_and_fix_mp4_structure(bytes: &mut Vec<u8>) {
             }
         }
         if bytes.len() > good_size {
-            println!("Garbage found at the end of the file, removing {} bytes from the end.", bytes.len() - good_size);
+            log::warn!("Garbage found at the end of the file, removing {} bytes from the end.", bytes.len() - good_size);
             bytes.resize(good_size, 0);
         }
     });
@@ -182,7 +182,7 @@ pub struct IMUData {
     pub magn: Option<[f64; 3]>
 }
 
-// TODO: interpolate if gyro and accel have different rates
+
 pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Result<Vec<IMUData>> {
     let mut timestamp = 0f64;
     let mut first_timestamp = None;
@@ -226,6 +226,7 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
                     let unit2deg = crate::try_block!(f64, {
                         match (map.get_t(TagId::Unit) as Option<&String>)?.as_str() {
                             "rad/s" => 180.0 / std::f64::consts::PI, // rad to deg
+                            "g" => 9.80665, // g to m/s²
                             _ => 1.0
                         }
                     }).unwrap_or(1.0);
@@ -360,7 +361,7 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
                 if total_len.2 > 0 { Some(total_duration_ms / total_len.2 as f64) } else { None }
             )
         };
-        dbg!(reading_duration);
+        log::debug!("Reading duration: {:?}", reading_duration);
         if let Some(grd) = reading_duration.0 {
             if let Some(ard) = reading_duration.1 {
                 if (grd - ard).abs() < 0.1 {
@@ -410,6 +411,7 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
                     let unit2deg = crate::try_block!(f64, {
                         match (map.get_t(TagId::Unit) as Option<&String>)?.as_str() {
                             "rad/s" => 180.0 / std::f64::consts::PI, // rad to deg
+                            "g" => 9.80665, // g to m/s²
                             _ => 1.0
                         }
                     }).unwrap_or(1.0);

@@ -20,7 +20,7 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_c
             progress_cb(stream.stream_position()? as f64 / size as f64);
         }
 
-        // println!("{}: {}", util::to_hex(&id), length);
+        // log::debug!("{}: {}", util::to_hex(&id), length);
 
         if id == [0x06, 0x0e, 0x2b, 0x34, 0x01, 0x02, 0x01, 0x01, 0x0d, 0x01, 0x03, 0x01, 0x17, 0x01, 0x02, 0x01] { // Metadata, Ancillary, SMPTE ST 436
             let mut data = vec![0; length];
@@ -40,7 +40,7 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_c
                 }
                 let duration_ms = 1000.0 / frame_rate;
 
-                // println!("Index: {}, Duration: {}, Frame rate: {}, Timestamp: {}", index, duration_ms, frame_rate, index as f64 * duration_ms);
+                // log::debug!("Index: {}, Duration: {}, Frame rate: {}, Timestamp: {}", index, duration_ms, frame_rate, index as f64 * duration_ms);
 
                 samples.push(SampleInfo {
                     index,

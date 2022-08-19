@@ -28,6 +28,8 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Scale, "Gyroscope scale",     f64, |v| format!("{:?}", v), gyro_scale, vec![]));
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Scale, "Accelerometer scale", f64, |v| format!("{:?}", v), accl_scale, vec![]));
 
+        util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit,  "Accelerometer unit", String, |v| v.to_string(), "g".into(),  Vec::new()));
+
         let headers = bbox.header.ip_fields_in_order.iter().map(|x| x.name.as_str()).collect::<Vec<&str>>();
         let mut column_struct = super::BlackBox::prepare_vectors_from_headers(&headers);
 

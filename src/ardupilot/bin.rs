@@ -170,7 +170,7 @@ pub fn parse_full<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progr
                                 'q' => Some(FieldType::i64(stream.read_i64::<LittleEndian>()?)),
                                 'Q' => Some(FieldType::u64(stream.read_u64::<LittleEndian>()?)),
                                 _ => {
-                                    println!("Invalid format {}", f);
+                                    log::error!("Invalid format {}", f);
                                     None
                                 }
                             };
@@ -179,7 +179,7 @@ pub fn parse_full<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progr
                             }
                             Ok(())
                         })() {
-                            println!("error parsing data: {e:?}")
+                            log::error!("error parsing data: {e:?}")
                         }
                     }
                     match desc.name.as_ref() {
@@ -203,7 +203,7 @@ pub fn parse_full<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progr
                         },
                         _ => { }
                     }
-                    // println!("{}: {:?}", desc.name, msg);
+                    // log::debug!("{}: {:?}", desc.name, msg);
                     log.push(LogItem {
                         typ: desc.typ,
                         name: desc.name.clone(),
@@ -211,7 +211,7 @@ pub fn parse_full<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progr
                     });
                 }
             } else {
-                println!("Unknown msg: {}", id);
+                log::warn!("Unknown msg: {}", id);
             }
         }
         if !update_format.is_empty() {

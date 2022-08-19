@@ -68,7 +68,7 @@ impl RedR3d {
                 let mut name = [0u8; 4];
                 stream.read_exact(&mut name)?;
                 let aligned_size = ((size as f64 / 4096.0).ceil() * 4096.0) as usize;
-                // println!("Name: {}{}{}{}, size: {}", name[0] as char, name[1] as char, name[2] as char, name[3] as char, aligned_size);
+                // log::debug!("Name: {}{}{}{}, size: {}", name[0] as char, name[1] as char, name[2] as char, name[3] as char, aligned_size);
                 if &name == b"RDX\x02" {
                     let mut data = Vec::with_capacity(aligned_size);
                     data.resize(aligned_size, 0);
@@ -229,7 +229,7 @@ impl RedR3d {
                     0x40 => serde_json::to_value((&d[2..]).read_i16::<BigEndian>()?),
                     0x60 => serde_json::to_value((&d[2..]).read_u32::<BigEndian>()?),
                     _ => {
-                        // println!("Type: {}, id: {}, hex: {}", d[0], id, pretty_hex::pretty_hex(&d));
+                        // log::debug!("Type: {}, id: {}, hex: {}", d[0], id, pretty_hex::pretty_hex(&d));
                         Err(serde_json::Error::io(ErrorKind::InvalidData.into()))
                     }
                 };
@@ -238,7 +238,7 @@ impl RedR3d {
                     if id == "record_framerate" { self.record_framerate = v.as_f64(); }
 
                     md.insert(id, v);
-                    // println!("{}: {:?}", id, v);
+                    // log::debug!("{}: {:?}", id, v);
                 }
             } else {
                 break;

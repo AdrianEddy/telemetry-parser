@@ -27,7 +27,7 @@ impl WitMotion {
     pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, _progress_cb: F, _cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
         if self.txt {
             txt::parse(stream, size)
-        } else {            
+        } else {
             binary::parse(stream, size)
         }
     }
@@ -39,7 +39,7 @@ impl WitMotion {
     pub fn camera_type(&self) -> String {
         "WitMotion".to_owned()
     }
-    
+
     pub fn frame_readout_time(&self) -> Option<f64> {
         None
     }
