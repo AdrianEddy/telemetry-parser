@@ -54,7 +54,7 @@ impl Gyroflow {
                 if &row[0] == "t" { break; }
             }
 
-            let version = header.remove("version").unwrap_or("1.0".to_owned());
+            // let version = header.remove("version").unwrap_or("1.0".to_owned());
             let id = header.remove("id").unwrap_or("NoID".to_owned()).replace("_", " ");
             let vendor = header.remove("vendor").unwrap_or("gcsv".to_owned());
             let frame_readout_time = if header.contains_key("frame_readout_time") {
@@ -65,12 +65,12 @@ impl Gyroflow {
                     "0" => Some(readout_time), // top -> bottom
                     "1" => Some(-readout_time), // bottom -> top
                     "2" => None, // left/right not supported
-                    "3" => None, 
+                    "3" => None,
                     _ => None
                 }
             } else { None };
 
-            let model = Some(format!("{} (gcsv v{})", id, version));
+            let model = Some(id);
             return Some(Self { model, gyro_path, vendor, frame_readout_time });
         }
         None
