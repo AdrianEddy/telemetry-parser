@@ -9,7 +9,9 @@ use crate::*;
 #[derive(Default)]
 pub struct Gyroflow {
     pub model: Option<String>,
-    pub gyro_path: Option<PathBuf>
+    pub gyro_path: Option<PathBuf>,
+    vendor: String,
+    frame_readout_time: Option<f64>
 }
 
 // .gcsv format as described here: https://docs.gyroflow.xyz/logging/gcsv/
@@ -54,9 +56,22 @@ impl Gyroflow {
 
             let version = header.remove("version").unwrap_or("1.0".to_owned());
             let id = header.remove("id").unwrap_or("NoID".to_owned()).replace("_", " ");
+            let vendor = header.remove("vendor").unwrap_or("gcsv".to_owned());
+            let frame_readout_time = if header.contains_key("frame_readout_time") {
+                // assume top down if not given
+                let readout_direction = header.remove("frame_readout_direction").unwrap_or("0".to_owned());
+                let readout_time = header.remove("frame_readout_time").unwrap_or("0.0".to_owned()).parse::<f64>().unwrap_or_default();
+                match readout_direction.as_str() {
+                    "0" => Some(readout_time), // top -> bottom
+                    "1" => Some(-readout_time), // bottom -> top
+                    "2" => None, // left/right not supported
+                    "3" => None, 
+                    _ => None
+                }
+            } else { None };
 
             let model = Some(format!("{} (gcsv v{})", id, version));
-            return Some(Self { model, gyro_path });
+            return Some(Self { model, gyro_path, vendor, frame_readout_time });
         }
         None
     }
@@ -169,10 +184,10 @@ impl Gyroflow {
     }
 
     pub fn camera_type(&self) -> String {
-        "gcsv".to_owned()
+        self.vendor.to_owned()
     }
 
     pub fn frame_readout_time(&self) -> Option<f64> {
-        None
+        self.frame_readout_time
     }
 }
