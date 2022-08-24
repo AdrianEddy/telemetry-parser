@@ -542,10 +542,16 @@ pub fn get_fps_from_track(track: &mp4parse::Track) -> Option<f64> {
     }
     None
 }
-pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Result<(usize, usize, f64)> { // -> (width, height, fps)
+pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Result<(usize, usize, f64, f64)> { // -> (width, height, fps, duration_s)
     let mp = parse_mp4(stream, filesize)?;
     for track in mp.tracks {
         if track.track_type == TrackType::Video {
+            let mut duration_sec = 0.0;
+            if let Some(d) = track.duration {
+                if let Some(ts) = track.timescale {
+                    duration_sec = d.0 as f64 / ts.0 as f64;
+                }
+            }
             if let Some(ref tkhd) = track.tkhd {
                 let w = tkhd.width >> 16;
                 let h = tkhd.height >> 16;
@@ -562,7 +568,7 @@ pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Re
                     _ => 0,
                 };
                 let fps = get_fps_from_track(&track).unwrap_or_default();
-                return Ok((w as usize, h as usize, fps));
+                return Ok((w as usize, h as usize, fps, duration_sec));
             }
         }
     }
