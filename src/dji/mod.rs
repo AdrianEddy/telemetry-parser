@@ -1,4 +1,4 @@
-pub mod dbgi;
+pub mod dvtm_wm169;
 
 use std::io::*;
 use std::sync::{ Arc, atomic::AtomicBool };
@@ -12,49 +12,153 @@ use prost::Message;
 #[derive(Default)]
 pub struct Dji {
     pub model: Option<String>,
+    pub frame_readout_time: Option<f64>
 }
 
 impl Dji {
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
-        if memmem::find(buffer, b"dbginfo").is_some() && memmem::find(buffer, b"IMX686").is_some() {
+        if memmem::find(buffer, b"djmd").is_some() && memmem::find(buffer, b"DJI meta").is_some() {
             Some(Self {
-                model: Some("Action 2".to_string())
+                model: None,
+                frame_readout_time: None
             })
         } else {
             None
         }
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, _progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
         let mut samples = Vec::new();
-        util::get_other_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64| {
-            if let Ok(parsed) = dbgi::DebugInfoMain::decode(data) {
-                if let Some (frame) = parsed.frames.first() {
+        let mut first_timestamp = 0;
 
-                    let mut tag_map = GroupedTagMap::new();
+        let mut focal_length = None;
+        let mut distortion_coeffs = None;
+        let mut exposure_time = 0.0;
+        let mut fps = 59.94;
+        let mut sensor_fps = 59.969295501708984;
+        let mut sample_rate = 2000.0;
 
-                    let frame_data = frame.inner.as_ref().unwrap();
-                    let imu_data = frame_data.frame_data5_imu.as_ref().unwrap();
+        let mut first_vsync = 0;
+        let mut prev_ts = 0.0;
 
-                    insert_tag(&mut tag_map, tag!(parsed GroupId::Gyroscope, TagId::Data, "Gyroscope data",  Vec_u8, |v| format!("{}", v.len()), imu_data.data.to_vec(), vec![]));
-                    
-                    let mut v = serde_json::to_value(&frame_data).map_err(|_| Error::new(ErrorKind::Other, "Serialize error"));
-                    if let Ok(vv) = &mut v {
-                        if let Some(obj) = vv.as_object_mut() {
-                            if let Ok(x) = dbgi::parse_floats(&frame_data.frame_data4.as_ref().unwrap().floats32_bin1) { obj["frame_data4"]["floats32_bin1"] = x; }
-                            if let Ok(x) = dbgi::parse_floats(&frame_data.frame_data4.as_ref().unwrap().floats32_bin2) { obj["frame_data4"]["floats32_bin2"] = x; }
-                        }
+        let ctx = util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64| {
+            if size > 0 {
+                progress_cb(file_position as f64 / size as f64);
+            }
+
+            if let Ok(parsed) = dvtm_wm169::ProductMeta::decode(data) {
+
+                let mut tag_map = GroupedTagMap::new();
+
+                if let Some(ref clip) = parsed.clip_meta {
+                    self.model              = clip.clip_meta_header       .as_ref().map(|h| h.product_name.replace("DJI ", ""));
+                    self.frame_readout_time = clip.sensor_readout_time    .as_ref().map(|h| h.readout_time as f64 / 1000_000.0);
+                    focal_length            = clip.digital_focal_length   .as_ref().map(|h| h.focal_length as f64);
+                    distortion_coeffs       = clip.distortion_coefficients.as_ref().map(|h| h.coeffients.clone());
+
+                    if let Some(v) = clip.sensor_fps.as_ref().map(|h| h.sensor_frame_rate as f64) {
+                        sensor_fps = v;
                     }
+                    if let Some(v) = clip.imu_sampling_rate.as_ref().map(|h| h.imu_sampling_rate as f64) {
+                        sample_rate = v;
+                    }
+
+                    let v = serde_json::to_value(&clip).map_err(|_| Error::new(ErrorKind::Other, "Serialize error"));
                     if let Ok(vv) = v {
+                        log::debug!("Metadata: {:?}", &vv);
                         insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), vv, vec![]));
                     }
-                    
-                    info.tag_map = Some(tag_map);
-
-                    samples.push(info);
                 }
+                if let Some(ref stream) = parsed.stream_meta {
+                    if let Some(ref meta) = stream.video_stream_meta {
+                        fps = meta.framerate as f64;
+                    }
+                }
+
+                let fps_ratio = fps / sensor_fps;
+
+                let mut quats = Vec::new();
+                if let Some(ref frame) = parsed.frame_meta {
+                    let frame_ts = frame.frame_meta_header.as_ref().unwrap().frame_timestamp as i64;
+                    if info.index == 0 { first_timestamp = frame_ts; }
+                    let frame_relative_ts = frame_ts - first_timestamp;
+
+                    if let Some(ref e) = frame.camera_frame_meta {
+                        exposure_time = e.exposure_time.as_ref().and_then(|v| Some(*v.exposure_time.get(0)? as f64 / *v.exposure_time.get(1)? as f64)).unwrap_or_default() * 1000.0;
+
+                        // log::debug!("Exposure time: {:?}", &exposure_time);
+                    }
+
+                    if let Some(ref imu) = frame.imu_frame_meta {
+                        if let Some(ref attitude) = imu.imu_attitude_after_fusion {
+                            // let ts = attitude.timestamp as i64;
+                            // println!("{} {} {} {}, vsync: {}", frame_ts, ts, frame_relative_ts, ts - frame_ts, attitude.vsync);
+                            let len = attitude.attitude.len() as f64;
+
+                            let vsync_duration = 1000.0 / fps.max(1.0);
+                            if first_vsync == 0 {
+                                first_vsync = attitude.vsync;
+                            }
+
+                            let frame_timestamp = (frame_relative_ts as f64 / fps_ratio) / 1000.0;
+
+                            // let frame_timestamp = (attitude.vsync - first_vsync) as f64 * vsync_duration;
+                            // println!("fps: {fps}, sensor_fps: {sensor_fps}, ratio: {fps_ratio}, exp: {exposure_time}, ts: {frame_timestamp}, diff: {}", frame_timestamp);
+                            // println!("vsync: {}, ts: {:.3}, ts2: {:.3}, diff: {:.3}", (attitude.vsync - first_vsync), frame_timestamp * 1000.0, (frame_relative_ts as f64 / ratio), (frame_relative_ts as f64 / ratio) - (frame_timestamp * 1000.0));
+
+                            // let frame_ratio = self.frame_readout_time.unwrap() / vsync_duration;
+
+                            for (i, q) in attitude.attitude.iter().enumerate() {
+                                let index = i as f64 - attitude.offset as f64;
+                                let t = (index / len) * vsync_duration;
+                                // println!("t: {:.3}, o: {:.3}", t, attitude.offset);
+                                let ts = frame_timestamp + t - (exposure_time / 2.0);
+                                // println!("ts: {:.2}, diff: {:.4}, vsync: {}, frame_timestamp: {}, fts: {frame_timestamp}, fts2: {frame_timestamp2}", ts, ts - prev_ts, attitude.vsync, frame_ts);
+                                prev_ts = ts;
+
+                                let quat = util::multiply_quats(
+                                    (q.quaternion_w as f64,
+                                    q.quaternion_x as f64,
+                                    q.quaternion_y as f64,
+                                    q.quaternion_z as f64),
+                                    (0.5, -0.5, -0.5, 0.5),
+                                );
+                                // Rotate Y axis 180 deg for horizon lock
+                                let quat = util::multiply_quats((0.0, 0.0, 1.0, 0.0), (quat.w, quat.x, quat.y, quat.z));
+
+                                quats.push(TimeQuaternion {
+                                    t: ts,
+                                    v: quat,
+                                });
+                            }
+
+                            if info.index == 0 { log::debug!("Quaternions: {:?}", &quats); }
+                            util::insert_tag(&mut tag_map, tag!(parsed GroupId::Quaternion, TagId::Data, "Quaternion data",  Vec_TimeQuaternion_f64, |v| format!("{:?}", v), quats, vec![]));
+                        }
+                    }
+                }
+
+                // if info.index == 0 { dbg!(&parsed); }
+
+                info.tag_map = Some(tag_map);
+
+                samples.push(info);
             }
         }, cancel_flag)?;
+
+        match (samples.first_mut(), focal_length, distortion_coeffs) {
+            (Some(sample), Some(focal_length), Some(coeffs)) if coeffs.len() >= 4 => {
+                if let Some(tkhd) = ctx.tracks.iter().filter(|x| x.track_type == mp4parse::TrackType::Video).filter_map(|x| x.tkhd.as_ref()).next() {
+                    let (w, h) = (tkhd.width >> 16, tkhd.height >> 16);
+
+                    let profile = self.get_lens_profile(w, h, focal_length, &coeffs);
+                    if let Some(ref mut tag_map) = sample.tag_map {
+                        insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::Data, "Lens profile", Json, |v| serde_json::to_string(v).unwrap(), profile, vec![]));
+                    }
+                }
+            },
+            _ => { }
+        }
 
         Ok(samples)
     }
@@ -62,12 +166,36 @@ impl Dji {
     pub fn normalize_imu_orientation(v: String) -> String {
         v
     }
-    
+
     pub fn camera_type(&self) -> String {
         "DJI".to_owned()
     }
-    
+
     pub fn frame_readout_time(&self) -> Option<f64> {
-        None
+        self.frame_readout_time
+    }
+
+    fn get_lens_profile(&self, width: u32, height: u32, focal_length: f64, coeffs: &[f32]) -> serde_json::Value {
+        let model = self.model.clone().unwrap_or_default();
+        let half_width = width as f64 / 2.0;
+        let half_height = height as f64 / 2.0;
+        serde_json::json!({
+            "calibrated_by": "DJI",
+            "camera_brand": "DJI",
+            "camera_model": model,
+            "calib_dimension": { "w": width, "h": height },
+            "orig_dimension":  { "w": width, "h": height },
+            "frame_readout_time": self.frame_readout_time,
+            "official": true,
+            "fisheye_params": {
+              "camera_matrix": [
+                [ focal_length, 0.0, half_width ],
+                [ 0.0, focal_length, half_height ],
+                [ 0.0, 0.0, 1.0 ]
+              ],
+              "distortion_coeffs": coeffs
+            },
+            "calibrator_version": "---"
+        })
     }
 }

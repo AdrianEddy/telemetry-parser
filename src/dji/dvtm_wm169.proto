@@ -1,0 +1,69 @@
+/** DJI Video Metadata For Specific Product */
+
+// version = 2.0.3
+
+syntax = "proto3";
+
+import "dvtm_library.proto";
+
+/**
+ * Represents the proto entry when we do the encoding or decoding.
+ */
+message ProductMeta {
+    ClipMeta   clip_meta = 1;
+    StreamMeta stream_meta = 2;
+    FrameMeta  frame_meta = 3;
+}
+
+/**
+ * Represents the metadata about video clip.
+ */
+message ClipMeta {
+    ClipMetaHeader          clip_meta_header = 1;
+    ClipStreamsMeta         clip_streams_meta = 2;
+    LensDistortionCoefficients distortion_coefficients = 3;
+    SensorFrameReadOutTime  sensor_readout_time = 4;
+    SensorReadDirection     sensor_read_direction = 5;
+    DigitalFocalLength      digital_focal_length         = 8;
+    EisStatus               eis_status = 9;
+    IMUSamplingRate         imu_sampling_rate = 10;
+    SensorFrameRate         sensor_fps = 11;
+}
+
+/**
+ * Represents the metadata about video stream.
+ */
+message StreamMeta {
+    StreamMetaHeader            stream_meta_header = 1;
+    VideoStreamMeta             video_stream_meta = 3;
+}
+
+/**
+ * Represents the metadata about video frame.
+ */
+message FrameMeta {
+    FrameMetaHeader   frame_meta_header = 1;
+    FrameMetaOfCamera camera_frame_meta = 2;
+    FrameMetaOfIMU    imu_frame_meta = 3;
+}
+
+/**
+ * Represents the frame metadata of camera device.
+ */
+message FrameMetaOfCamera {
+    MetaHeaderOfDevice         camera_dev_header    = 1;
+    ExposureIndex              exposure_index       = 2;
+    ISO                        iso                  = 3;
+    ExposureTime               exposure_time        = 4;
+    DigitalZoomRatio           digital_zoom_ratio   = 5;
+    WhiteBalanceCCT            white_balance_cct    = 6;
+    Orientation                orientation          = 7;
+}
+
+/**
+ * Represents the frame metadata of IMU device.
+ */
+ message FrameMetaOfIMU {
+    MetaHeaderOfDevice      IMU_dev_header = 1;
+    DeviceAttitude          IMU_attitude_after_fusion = 2;               /* camera attitude samples within video frame interval. processed after motion estimation */
+}

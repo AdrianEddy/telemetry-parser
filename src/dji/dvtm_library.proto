@@ -1,0 +1,1000 @@
+/** DJI Video Metadata Library */
+
+// version = 02.00.01
+
+syntax = "proto3";
+
+/**
+ * About the detailed definition of some messages, please refer to the websites as follow:
+ * DNG Specification: https://www.adobe.com/content/dam/acom/en/products/photoshop/pdfs/dng_spec_1.5.0.0.pdf
+ * Standard Exif Specification: https://www.cipa.jp/std/documents/e/DC-008-2012_E.pdf
+ * TIFF Specification: https://www.adobe.io/content/dam/udp/en/open/standards/tiff/TIFF6.pdf
+ *
+ * About the length of the repeated message and string, please refer to the dvtm_library.options file.
+ */
+
+
+/**
+ * One clip can be part of the video file or part of the remote transfering content. It would include some essential
+ * messages which are used to describe the basic information and to distinguish different clips. About the detailed
+ * properties of the clip, we shall put them in a clip metadata message after ClipMetaHeader and shall not put them in
+ * the header part. Note that this message shall be included in the ClipMeta.
+ */
+message ClipMetaHeader {
+    string proto_file_name = 1;                         /** The name of the product proto file. The max string length of
+                                                            it is 32 bytes (including ending symbol). */
+    string library_proto_version = 2;                   /** The version of the library proto file. The max string length
+                                                            of it is 32 bytes (including ending symbol). */
+    string product_proto_version = 3;                   /** The version of the product proto file. The max string length
+                                                            of it is 32 bytes (including ending symbol). */
+    string product_sn = 5;                              /** The serial number of the product producing this clip. The
+                                                            max string length of it is 32 bytes (including ending
+                                                            symbol). */
+    string product_firmware_version = 6;                /** The firmware version of the product producing this clip. The
+                                                            max string length of it is 32 bytes (including ending
+                                                            symbol). */
+    enum MetaEncryptionType {
+        META_ENCRYPTION_TYPE_NONE = 0;                  /** No encryption on metadata messages. */
+    }
+    MetaEncryptionType meta_encryption_type = 7;        /** The encryption type for encrypting metadata messages. */
+    enum MetaCompressionType {
+        META_COMPRESSION_TYPE_NONE = 0;                 /** No compression on metadata messages. */
+    }
+    MetaCompressionType meta_compression_type = 8;      /** The compression type for compressing metadata messages. */
+    uint64 clip_timestamp = 9;                          /** The timestamp is the duration starting from the power-up
+                                                            time to the time that the first frame of this clip comes.
+                                                            Unit: micro-second. */
+    string product_name = 10;                           /** The name of this product. The max string length of it is 64
+                                                            bytes (including ending symbol). */
+}
+
+/**
+ * It would include some essential messages which are used to describe the basic information and to distinguish
+ * different streams. About the detailed properties of the stream, we shall put them in a stream metadata message after
+ * StreamMetaHeader and shall not put them in the header part. Note that this message shall be included in the
+ * StreamMeta.
+ */
+message StreamMetaHeader {
+    uint32 stream_id = 1;                               /** The unique ID which is used to distinguish different streams
+                                                            having the same stream type. */
+    enum StreamType {
+        STREAM_TYPE_VIDEO = 0;                          /** The stream type is video. */
+        STREAM_TYPE_AUDIO = 1;                          /** The stream type is audio. */
+    }
+    StreamType stream_type = 2;                         /** The type of this stream. */
+    string stream_name = 3;                             /** The stream alias name which is used to distinguish different
+                                                            streams intuitively for people. The max string length of it
+                                                            is 32 bytes (including ending symbol). */
+}
+
+/**
+ * It would include some essential messages which are used to describe the basic information and to distinguish
+ * different frames. About the detailed properties of the frame, we shall put them in a frame metadata message after
+ * FrameMetaHeader and shall not put them in the header part. Note that this message shall be included in the FrameMeta.
+ */
+message FrameMetaHeader {
+    uint64 frame_seq_num = 1;                           /** The frame sequence number which is used to distinguish the
+                                                            different frame in a stream. */
+    uint64 frame_timestamp = 2;                         /** The timestamp is the duration starting from the power-up
+                                                            time to the time that the this frame comes.
+                                                            Unit: micro-second. */
+
+    uint32 stream_id = 3;                               /** The stream id which this frame belongs to, to avoid the same
+                                                            frame sequence number in different stream. */
+    bool check_code_enable = 4;                         /** The check code for metadata messages is enable or not. */
+    enum CheckCodeType {
+        CHECK_CODE_TYPE_NONE = 0;                       /** No check code is used. */
+        CHECK_CODE_TYPE_CRC32 = 1;                      /** The check code type is CRC32 (32-bit Cyclic Redundancy
+                                                            Check). */
+    }
+    CheckCodeType check_code_type = 5;                  /** The check code type for checking metadata messages. */
+    uint64 check_code = 6;                              /** The check code of this frame which does not include messages
+                                                            in FrameMetaHeader. When the type is CRC32, the CRC32 value
+                                                            will be filled in the low 32-bits and the high 32-bits is
+                                                            zero. */
+}
+
+/**
+ * It would include some essential messages which are used to distinguish the different devices. About the device
+ * properties, we shall put them in a message after the metadata header of device and shall not put them in the header
+ * part.
+ */
+message MetaHeaderOfDevice {
+    uint32 device_id = 1;                               /** The unique ID for distinguishing the different device. */
+    enum DeviceType {
+        DEVICE_TYPE_UNDEFINED = 0;                      /** The device type is undefined. */
+        DEVICE_TYPE_PHYSICAL = 1;                       /** The device type is physical. */
+        DEVICE_TYPE_VIRTUAL = 2;                        /** The device type is virtual. */
+    }
+    DeviceType device_type = 2;                         /** The type of this device is physical or virtual. */
+    enum DeviceSubType {
+        DEVICE_SUB_TYPE_UNDEFINED = 0;                  /** The device sub-type is undefined. */
+        DEVICE_SUB_TYPE_CAMERA_BODY = 1;                /** The device sub-type is camera body. */
+        DEVICE_SUB_TYPE_DRONE = 2;                      /** The device sub-type is drone. */
+        DEVICE_SUB_TYPE_GIMBAL = 3;                     /** The device sub-type is gimbal. */
+        DEVICE_SUB_TYPE_GIMBAL_ZAXIS = 4;               /** The device sub-type is gimbal z-axis. */
+        DEVICE_SUB_TYPE_RECORDER = 5;                   /** The device sub-type is recorder. */
+        DEVICE_SUB_TYPE_LASER_RANGING = 6;              /** The device sub-type is laser ranging. */
+    }
+    DeviceSubType device_sub_type = 3;                  /** The specific type of this device such as camera body and
+                                                            drone. */
+    string device_name = 4;                             /** The device alias name which is used to distinguish different
+                                                            devices intuitively for people. The max string length of it
+                                                            is 32 bytes (including ending symbol). */
+    float device_frequency = 5;                         /** The metadata generated frequency of this device.
+                                                            Unit: Hz. */
+    uint64 device_timestamp = 6;                        /** The timestamp is the duration starting from the power-up
+                                                            time to the time that the current frame included in this
+                                                            device comes. Unit: micro-second. */
+}
+
+/**
+ * It would include some essential messages which are used to distinguish the different sub-devices. About the
+ * sub-device properties, we shall put them in a message after the metadata header of sub-device and shall not put them
+ * in the header part.
+ */
+message MetaHeaderOfSubDevice {
+    uint32 sub_dev_id = 1;                              /** The unique ID for distinguishing the different
+                                                            sub-devices. */
+    enum SubDeviceType {
+        SUB_DEVICE_TYPE_UNDEFINED = 0;                  /** The sub-device type is undefined. */
+        SUB_DEVICE_TYPE_PHYSICAL = 1;                   /** The sub-device type is physical. */
+        SUB_DEVICE_TYPE_VIRTUAL = 2;                    /** The sub-device type is virtual. */
+    }
+    SubDeviceType sub_device_type = 2;                  /** The type of this sub-device is physical or virtual. */
+    enum SubDeviceSubType {
+        SUB_DEVICE_SUB_TYPE_UNDEFINED = 0;              /** The sub-device sub-type is undefined. */
+        SUB_DEVICE_SUB_TYPE_LENS = 1;                   /** The sub-device sub-type is lens. */
+    }
+    SubDeviceSubType sub_device_sub_type = 3;           /** The specific type of this sub-device such as lens. */
+    string sub_device_name = 4;                         /** The sub-device alias name which is used to distinguish
+                                                            different sub-devices intuitively for people. The max string
+                                                            length of it is 32 bytes (including ending symbol). */
+    float sub_device_frequency = 5;                     /** The metadata generated frequency of this sub-device.
+                                                            Unit: Hz. */
+    uint64 sub_device_timestamp = 6;                    /** The timestamp is the duration starting from the power-up
+                                                            time to the time that the current frame included in this
+                                                            sub-device comes. Unit: micro-second. */
+}
+
+/**
+ * The fixed feature of the specified video stream.
+ * If it has been filled, it always follows the message StreamMetaHeader.
+ */
+message VideoStreamMeta {
+    uint32 resolution_width = 1;                        /** The width of the resolution. Unit: pixel. */
+    uint32 resolution_height = 2;                       /** The height of the resolution. Unit: pixel. */
+    float framerate = 3;                                /** The rate of video data sampling. Unit: frame/second. */
+    uint32 bit_depth = 5;                               /** The number of bits used for each color component. */
+    enum BitFormatType {
+        BIT_FORMAT_TYPE_UNKNOWN = 0;                    /** The bit format is unknown. */
+        BIT_FORMAT_TYPE_RAW = 1;                        /** The bit format is raw. */
+        BIT_FORMAT_TYPE_RGB = 2;                        /** The bit format is RGB. */
+        BIT_FORMAT_TYPE_RGBA = 3;                       /** The bit format is RGBA. */
+        BIT_FORMAT_TYPE_YUV420 = 4;                     /** The bit format is YUV420. */
+        BIT_FORMAT_TYPE_YUV422 = 5;                     /** The bit format is YUV422. */
+        BIT_FORMAT_TYPE_YUV444 = 6;                     /** The bit format is YUV444. */
+    }
+    BitFormatType bit_format = 6;                       /** The bit format used for each color component. */
+    enum VideoStreamType {
+        VIDEO_STREAM_TYPE_NORMAL = 0;                   /** The video stream type is normal. */
+        VIDEO_STREAM_TYPE_DELAY = 1;                    /** The video stream type is delay. */
+        VIDEO_STREAM_TYPE_SLOW_MOTION = 2;              /** The video stream type is slow motion. */
+        VIDEO_STREAM_TYPE_QUICK_MOVIE = 3;              /** The video stream type is quick movie. */
+        VIDEO_STREAM_TYPE_TIMELAPSE = 4;                /** The video stream type is timeslapse. */
+        VIDEO_STREAM_TYPE_MOTIONLAPSE = 5;              /** The video stream type is motionlapse. */
+        VIDEO_STREAM_TYPE_HYPERLAPSE = 6;               /** The video stream type is hyperlapse. */
+        VIDEO_STREAM_TYPE_HDR = 7;                      /** The video stream type is HDR. */
+        VIDEO_STREAM_TYPE_LOOP_RECORD = 8;              /** The video stream type is loop record. */
+    }
+    VideoStreamType video_stream_type = 7;              /** The user-specified type of this video stream such as slow
+                                                            motion and quick movie. */
+    enum VideoCodecType {
+        VIDEO_CODEC_TYPE_H264 = 0;                      /** The video codec type is H264. */
+        VIDEO_CODEC_TYPE_H265 = 1;                      /** The video codec type is H265. */
+        VIDEO_CODEC_TYPE_PRORES = 2;                    /** The video codec type is prores. */
+        VIDEO_CODEC_TYPE_PRORESRAW = 3;                 /** The video codec type is prores raw. */
+        VIDEO_CODEC_TYPE_JPEG = 4;                      /** The video codec type is JPEG. */
+        VIDEO_CODEC_TYPE_JPEG2000 = 5;                  /** The video codec type is JPEG 2000. */
+        VIDEO_CODEC_TYPE_JPEG_LOSSLESS = 6;             /** The video codec type is JPEG lossless. */
+    }
+    VideoCodecType video_codec_type = 8;                /** The compression format used for this video stream. */
+}
+
+message ImageProcessingQuality {
+    enum ImageProcessingQualityType {
+        IMAGE_PROCESSING_QUALITY_TYPE_NORMAL = 0;       /** The image processing quality type is normal. */
+        IMAGE_PROCESSING_QUALITY_TYPE_HIGH = 1;         /** The image processing quality type is high. */
+    }
+    ImageProcessingQualityType image_processing_quality = 1; /** It is defined by DJI, which indicates different image
+                                                                 processing in the ISP (Image Signal Processor)
+                                                                 pipeline that represents different image quality. */
+}
+
+message ProresCodecQuality {
+    enum ProresCodecQualityType {
+        PRORES_CODEC_QUALITY_TYPE_UNDEFINED = 0;        /** The prores codec quality is undefined. */
+        PRORES_CODEC_QUALITY_TYPE_PROXY = 1;            /** The prores codec quality is proxy. */
+        PRORES_CODEC_QUALITY_TYPE_LT = 2;               /** The prores codec quality is LT. */
+        PRORES_CODEC_QUALITY_TYPE_SD = 3;               /** The prores codec quality is standard. */
+        PRORES_CODEC_QUALITY_TYPE_HQ = 4;               /** The prores codec quality is HQ. */
+        PRORES_CODEC_QUALITY_TYPE_XQ = 5;               /** The prores codec quality is XQ. */
+    }
+    ProresCodecQualityType prores_codec_quality = 1;    /** The value will be filled only when the video codec type is
+                                                            prores or prores raw. */
+}
+
+/**
+ * The multiple streams description in one clip.
+ */
+message ClipStreamsMeta {
+    uint32 video_stream_num = 1;                        /** The number of video stream track in this clip. */
+    uint32 audio_stream_num = 2;                        /** The number of audio stream track in this clip. */
+}
+
+message DeviceSN {
+    string device_sn = 1;                               /** The serial number of this device. The max string length of
+                                                            it is 32 bytes (including ending symbol). */
+}
+
+message DeviceVersion {
+    string device_hw_version = 1;                       /** The hardware version of this device. The max string length
+                                                            of it is 32 bytes (including ending symbol). */
+    string device_sw_version = 2;                       /** The software version of this device. The max string length
+                                                            of it is 32 bytes (including ending symbol). */
+}
+
+/**
+ * The user-specified cinema production information.
+ */
+message CinemaProductionInfo {
+    string production = 1;                              /** The user-specified name of the production. The max string
+                                                            length of it is 64 bytes (including ending symbol). */
+    string production_company = 2;                      /** The user-specified name of the company producing the
+                                                            content. The max string length of it is 64 bytes (including
+                                                            ending symbol). */
+    string director = 3;                                /** The user-specified name of the director of the
+                                                            production. The max string length of it is 64 bytes
+                                                            (including ending symbol). */
+    string cinematographer = 4;                         /** The user-specified name of the cinematographer directing the
+                                                            recording. The max string length of it is 64 bytes
+                                                            (including ending symbol). */
+    string cinema_operator = 5;                         /** The user-specified name of the camera operator. The max
+                                                            string length of it is 64 bytes (including ending
+                                                            symbol). */
+    string location = 6;                                /** The user-specified name of the capturing location. The max
+                                                            string length of it is 64 bytes (including ending
+                                                            symbol). */
+    uint32 scene = 7;                                   /** The user-specified number of the scene being captured. */
+    uint32 take = 8;                                    /** The user-specified number of the take being captured. */
+}
+
+/**
+ * The cinema naming information of this clip.
+ * For example, there is a video file A001C0001_190101_ABCD_001.MOV included in the directory A001_ABCD:
+ *     Camera index is A
+ *     Reel name is A001_ABCD
+ *     Camera ID is ABCD
+ *     Clip name is A001C0001_190101_ABCD.MOV
+ *     Spin name is A001C0001_190101_ABCD_001.MOV
+ * Refer to each field of this message for more details.
+ */
+message CinemaClipNaming {
+    string camera_index = 1;                            /** The user-specified camera index for identifying the
+                                                            individual camera unit (A - Z). The max string length of it
+                                                            is 8 bytes (including ending symbol). */
+    string reel_name = 2;                               /** The name of the virtual reel which this clip belongs to. The
+                                                            max string length of it is 16 bytes (including ending
+                                                            symbol). */
+    string camera_id = 3;                               /** The name of the camera ID (or unique code) indicates that
+                                                            this clip is recoded by which camera. The max string length
+                                                            of it is 8 bytes (including ending symbol). */
+    string clip_name = 4;                               /** The name of this clip. The max string length of it is 32
+                                                            bytes (including ending symbol). */
+    string spin_name = 5;                               /** If a clip file is divided into multiple files, the spin name
+                                                            can indicate the different divided files. It will be the
+                                                            same as the clip name when there is no division. The max
+                                                            string length of it is 32 bytes (including ending
+                                                            symbol). */
+}
+
+message ProjectFps {
+    float project_fps = 1;                              /** The user-specified framerate which the recoding project
+                                                            used. Unit: frame/second. */
+}
+
+message ImageSizeType {
+    enum ImageSizeType {
+        IMAGE_SIZE_TYPE_DEFAULT = 0;                    /** The user-specified image size is default. */
+        IMAGE_SIZE_TYPE_OPEN_GATE = 1;                  /** The user-specified image size is open gate. */
+        IMAGE_SIZE_TYPE_FULL_FRAME = 2;                 /** The user-specified image size is full frame. */
+        IMAGE_SIZE_TYPE_S35 = 3;                        /** The user-specified image size is super 35. */
+        IMAGE_SIZE_TYPE_43 = 4;                         /** The user-specified image size is 4/3 inches. */
+    }
+    ImageSizeType image_size_type = 1;                  /** The user-specified image size which is the maximum area of a
+                                                            sample that the camera can image. */
+}
+
+message FOVType {
+    enum FOVType {
+        FOV_TYPE_DEFAULT = 0;                           /** The user-specified FOV is default. */
+        FOV_TYPE_NORMAL = 1;                            /** The user-specified FOV is normal. */
+        FOV_TYPE_NARROW = 2;                            /** The user-specified FOV is narrow. */
+        FOV_TYPE_WIDE = 3;                              /** The user-specified FOV is wide. */
+        FOV_TYPE_SNARROW = 4;                           /** The user-specified FOV is snarrow. */
+    }
+    FOVType fov_type = 1;                               /** The user-specified FOV (Field of View), which is the maximum
+                                                            area of a sample that the camera can image. */
+}
+
+/**
+ * It will be filled only when the video format is raw.
+ */
+message ImageArea {
+    repeated uint32 active_image_area = 1;              /** A rectangle zone of valid pixel in photosite data array used
+                                                            in recording, composed of the left-top location (horizonal
+                                                            first), width and height of the area in order. */
+    repeated uint32 full_image_area = 2;                /** A rectangle zone of whole photosite data array used in
+                                                            recording, including active image area and any extra
+                                                            photosite data, composed of the left-top location (horizonal
+                                                            first), width and height of the area in order. */
+}
+
+/**
+ * It will be filled only when the video format is raw.
+ */
+message CFAPattern {
+    enum CFAPatternType {
+        CFA_PATTERN_TYPE_RGGB = 0;                      /** The CFA pattern is RGGB. */
+        CFA_PATTERN_TYPE_GRBG = 1;                      /** The CFA pattern is GRBG. */
+        CFA_PATTERN_TYPE_BGGR = 2;                      /** The CFA pattern is BGGR. */
+        CFA_PATTERN_TYPE_GBRG = 3;                      /** The CFA pattern is GBRG. */
+    }
+    CFAPatternType cfa_pattern = 1;                     /** The Bayer arrangement of color filters on a square grid of
+                                                            photosensors. */
+}
+
+message BayerGreenSplit {
+    float bayer_green_split = 1;                        /** The difference between the values of the green pixels in the
+                                                            blue/green rows and the values of the green pixels in the
+                                                            red/green rows. Usually it only be available for CFA images
+                                                            from the Bayer pattern filter array. Refer to the DNG
+                                                            specification for more details, and only the type is
+                                                            different (type is long in the DNG specification) for higher
+                                                            precision. */
+}
+
+message ColorSpace {
+    enum ColorSpaceType {
+        COLOR_SPACE_TYPE_DEFAULT = 0;                   /** The color space is default. */
+        COLOR_SPACE_TYPE_DGAMUT = 1;                    /** The color space is D-Gamut. */
+        COLOR_SPACE_TYPE_REC709 = 2;                    /** The color space is REC709. */
+        COLOR_SPACE_TYPE_BT2020 = 3;                    /** The color space is BT2020. */
+        COLOR_SPACE_TYPE_BT2100 = 4;                    /** The color space is BT2100. */
+    }
+    ColorSpaceType color_space = 1;                     /** The specific transformation of image data will be used in
+                                                            the nominal processing algorithm. */
+}
+
+/**
+ * This is a sub-message only quoted by the message ColorMatrix.
+ */
+message ColorMatrixBox {
+    repeated float color_matrix = 1;                    /** It stores 3x3 matrix in row-major order. Refer to the
+                                                            message ColorMatrix for more detail about the definition of
+                                                            the color matrix. */
+}
+
+/**
+ * It will contains the message ColorMatrixBox.
+ */
+message ColorMatrix {
+    repeated ColorMatrixBox color_matrix_box = 1;       /** Each box will contain a color matrix, which transforms
+                                                            linear RGB pixel values in the camera native color space to
+                                                            CIE 1931 XYZ values relative to the D65 illuminant under the
+                                                            specified illuminant described in the message
+                                                            CalibrationIlluminant. */
+}
+
+message CalibrationIlluminant {
+    repeated int32 calibration_illuminant = 1;          /** The illuminants used in color calibration with the message
+                                                            ColorMatrix in order. Unit: Kelvin. */
+}
+
+message NoiseReductionApplied {
+    float noise_reduction_applied = 1;                  /** The denoise strength applied on the image with range from
+                                                            -10.0 to +10.0. 0 is the default strength. */
+}
+
+message Saturation {
+    float saturation = 1;                               /** The factor by which the saturation of the image is altered
+                                                            in the conversion to the target color space with range from
+                                                            -10.0 to +10.0. 0 is the default strength. For raw image, it
+                                                            will be only applied on liveview or while for yuv image, it
+                                                            will be applied on image data. */
+}
+
+message Sharpness {
+    float sharpness = 1;                                /** The factor by which the sharpness of the image is altered in
+                                                            the conversion to the target color space with range from
+                                                            -10.0 to +10.0. 0 is the default strength. For raw image, it
+                                                            will be only applied on liveview or while for yuv image, it
+                                                            will be applied on image data. */
+}
+
+message PixelAspectRatio {
+    float pixel_aspect_ratio = 1;                       /** The factor be used to stretch reconstructed pixel data
+                                                            horizontally to compensate for anamorphic distortion. */
+}
+
+/**
+ * It stores the specific or custom three-dimensional look up table (3D LUT) file.
+ */
+message LookUpTable3DFile {
+    string lut3d_file_name = 1;                         /** The name of the 3D-LUT file. The max string length of it is
+                                                            256 bytes (including ending symbol). */
+    bytes lut3d_file_data = 2;                          /** The data of the 3D-LUT file. The actual value type of it is
+                                                            32-bits float, so you should convert from byte array to
+                                                            float array. For example, if you use the functions
+                                                            ParseFromString() and MessageToDict() in python for decoding
+                                                            protobuf, you should do b64decode() first and then convert
+                                                            four bytes to one float by the little-endian mode. */
+}
+
+/**
+ * It will be filled only when the video format is raw.
+ */
+message ColorProcessingVersion {
+    string color_processing_version = 1;                /** The color processing version of reference image processing
+                                                            flows, which describes specific op groups shoule be applied
+                                                            at the appropriate stages in the image processing pipeline.
+                                                            Each op group can include several ops which should be
+                                                            processed sequentially. For version 1.0.0.0, there are 4 op
+                                                            groups defined. */
+}
+
+/**
+ * Once op(operation) which contains type and data in the op group.
+ * This is a sub-message only quoted by the message OpGroup.
+ */
+message OpBox {
+    enum OpType {
+        OP_TYPE_WARP_RECTILINEAR = 0;                   /** The operation type is the warp rectilinear. */
+        OP_TYPE_WARP_FISHEYE = 1;                       /** The operation type is the warp fisheye. */
+        OP_TYPE_FIX_VIGNETTE_RADIAL = 2;                /** The operation type is the fix vignette radial. */
+        OP_TYPE_TRIM_BOUNDS = 3;                        /** The operation type is the trim bounds. */
+        OP_TYPE_MAP_TABLE = 4;                          /** The operation type is the map table. */
+        OP_TYPE_MAP_POLYNOMIAL = 5;                     /** The operation type is the map polynomial. */
+        OP_TYPE_GAIN_MAP = 6;                           /** The operation type is the gain map. */
+        OP_TYPE_DELTA_PER_ROW = 7;                      /** The operation type is the delta per row. */
+        OP_TYPE_DELTA_PER_COLUMN = 8;                   /** The operation type is the delta per column. */
+        OP_TYPE_SCALE_PER_ROW = 9;                      /** The operation type is the scale per row. */
+        OP_TYPE_SCALE_PER_COLUMN = 10;                  /** The operation type is the scale per column. */
+    }
+    OpType type = 1;                                    /** The type of this operation which is used. */
+    bytes data = 2;                                     /** The data of this operation which is used. The actual value
+                                                            type of it is 32-bits float, so you should convert from byte
+                                                            array to float array. For example, if you use the functions
+                                                            ParseFromString() and MessageToDict() in python for decoding
+                                                            protobuf, you should do b64decode() first and then convert
+                                                            four bytes to one float by the little-endian mode. */
+}
+
+/**
+ * Every op(operation) group defines several ops should be applied in specific locations of normal image processing
+ * pipeline sequentially.
+ * It will contains the message OpBox.
+ * It will be filled only when the video format is raw.
+ */
+message OpGroup {
+    repeated OpBox op_group1 = 1;                       /** The op group1 includes operation(op)s that should applied
+                                                            sequentially to the raw image as read directly from the
+                                                            file. */
+    repeated OpBox op_group2 = 2;                       /** The op group2 includes operation(op)s that should applied
+                                                            sequentially to the raw image after linear mapping (always
+                                                            before the demosaicing). */
+    repeated OpBox op_group3 = 3;                       /** The op group3 includes operation(op)s that should applied
+                                                            sequentially to image just after demosaicing process. */
+    repeated OpBox op_group4 = 4;                       /** The op group4 includes operation(op)s that should applied
+                                                            sequentially to image after normal image processing (always
+                                                            after tone mapping and in yuv domain). */
+}
+
+/**
+ * It will be filled only when the video format is raw.
+ */
+message NoiseProfile {
+    repeated double noise_profile = 1;                  /** The amount of noise in a raw image at time of capture. */
+}
+
+message ImageDataSize {
+    uint32 image_data_size = 1;                         /** The size in bytes of stored frame data. */
+}
+
+message ExposureIndex {
+    float exposure_index = 1;                           /** The index of effective exposure selected on camera at time
+                                                            of image data capture. */
+}
+
+message ISO {
+    float iso = 1;                                      /** The sensitivity (the signal gain) of the camera system. */
+}
+
+message ExposureTime {
+    repeated int32 exposure_time = 1;                   /** The exposure time (or the shutter speed) is the length of
+                                                            time that the camera sensor is exposed to light. Its value
+                                                            will be described as rational type, so for example, when
+                                                            exposure time is 1/50, its value will be [1, 50]. It is the
+                                                            real value and its denominator is rounded to the integer, so
+                                                            it has slightly different from the user-specified value.
+                                                            When the message ExposureTime and ShutterAngle are both
+                                                            filled and user-specified shutter unit is shutter angle, its
+                                                            value can be calculated by the formula:
+                                                            ExposureTime = ShutterAngle / (framerate * 360).
+                                                            Unit: second. */
+}
+
+message FNumber {
+    repeated uint32 f_number = 1;                       /** The ratio of the focal length to the aperture in an optical
+                                                            system. Its value will be described as rational type, so for
+                                                            example, when F-number is F2.8, its value will be [28, 10].
+                                                            [0, 0] means the F-number is invalid or unknown. It is the
+                                                            real value so it has slightly different from the
+                                                            user-specified value. */
+}
+
+message ApertureValue {
+    repeated uint32 aperture_value = 1;                 /** The lens aperture in the APEX (Additive System of
+                                                            Photographic Exposure) value unit. The relation of the
+                                                            aperture value to F-number follows the formula:
+                                                            ApertureValue = 2 * log2(FNumber).
+                                                            Its value will be described as rational type, so for
+                                                            example, when aperture value is 3.61, its value will be
+                                                            [361, 100]. */
+}
+
+message ShutterAngle {
+    float shutter_angle = 1;                            /** The shutter angle is exposure period expressed as an angle
+                                                            in seconds. When the message ExposureTime and ShutterAngle
+                                                            are both filled and user-specified shutter unit is exposure
+                                                            time, its value can be calculated by the formula:
+                                                            ShutterAngle = (framerate * 360) * ExposureTime.
+                                                            Unit: degree. */
+}
+
+message FocusDistance {
+    enum FocusUnit {
+        FOCUS_UNIT_1000_INCH = 0;                       /** The focus distance unit is in thousandths of an inch. */
+        FOCUS_UNIT_MILLIMETRE = 1;                      /** The focus distance unit is millimeter. */
+    }
+    FocusUnit focus_unit = 1;                           /** The specified unit for the focus distance. */
+    int32 focus_distance = 2;                           /** The focus distance in the specified focus unit, which
+                                                            indicates current distance at that the lens focuses. 0 means
+                                                            the focus distance is invalid or unknown. */
+}
+
+message FocalLength {
+    repeated int32 focal_length = 1;                    /** The distance from the center of the lens to the focal points
+                                                            of the lens. 0 means the focal length is invalid or unknown.
+                                                            Its value will be described as rational type, so for
+                                                            example, when focal length is 35, its value will be
+                                                            [35000, 1000]. Unit: milli-meter. */
+}
+
+message DigitalZoomRatio {
+    float digital_zoom_ratio = 1;                       /** The digital zoom ratio of current frame. */
+}
+
+message WhiteBalanceCCT {
+    uint32 white_balance_cct = 1;                       /** The white balance color temperature (CCT), selected at the
+                                                            time of capture. Unit: Kelvin. */
+}
+
+message WhiteBalanceTint {
+    float white_balance_tint = 1;                       /** The deviation from blackbody radiator, with range from -99.0
+                                                            to +99.0. */
+}
+
+message AsShotNeutral {
+    repeated float as_shot_neutral = 1;                 /** The white balance in the normalized coordinates of a
+                                                            perfectly neutral color in linear reference space values. */
+}
+
+message NDFilter {
+    bool  nd_filter_enable = 1;                         /** The flag indicates whether the ND filter is enable. */
+    float nd_density = 2;                               /** The optical density of ND filter. Unit: reciprocal of the
+                                                            attenuation ratio. 1.0 means a clear filter. */
+}
+
+/**
+ * It will be filled only when the video format is raw.
+ */
+message BlackLevel {
+    repeated float black_level = 1;                     /** The offset of the raw sample values. */
+}
+
+/**
+ * It will be filled only when the video format is raw.
+ */
+message WhiteLevel {
+    float white_level = 1;                              /** The fully saturated encoding level for the raw sample
+                                                            value. */
+}
+
+message TimeCode {
+    enum TimecodeRunMode {
+        TIMECODE_RUN_MODE_FREE = 0;                     /** The timecode run mode is free run. */
+        TIMECODE_RUN_MODE_RECORD = 1;                   /** The timecode run mode is record run. */
+    }
+    TimecodeRunMode timecode_run_mode = 1;              /** The user-specified run mode of the timecode which includes
+                                                            free run mode and record run mode. */
+
+    string timecode = 2;                                /** A sequence of numeric codes generated at regular intervals
+                                                            by a timing synchronization system. The max string length of
+                                                            it is 12 bytes (including ending symbol). */
+    uint32 sub_second_frame_count = 3;                  /** The zero-based count of frame within the current second’s
+                                                            worth of timecode, in support of frame rates higher than
+                                                            those which can be encoded in SMPTE timecode. */
+}
+
+message Orientation {
+    enum OrientationType {
+        ORIENTATION_NO_REVERSE = 0;                     /** No flipping or flopping is desired. */
+        ORIENTATION_H_REVERSE = 1;                      /** Any displayed image are flopped (horizontally reversed
+                                                            relative to original scene). */
+        ORIENTATION_V_REVERSE = 2;                      /** Any displayed image are flipped (vertically reversed
+                                                            relative to original scene). */
+        ORIENTATION_HV_REVERSE = 3;                     /** Any displayed image are rotated 180° (that is, vertically
+                                                            and horizontally reversed relative to original scene). */
+    }
+    OrientationType orientation = 1;                    /** Any top-to-bottom reversals (flips) or left-to-right
+                                                            reversals (flops) that are performed on image data for
+                                                            evaluative viewing. Note that it just effects reference
+                                                            display method. */
+}
+
+message ColorMode {
+    enum ColorModeType {
+        COLOR_MODE_DEFAULT = 0;                         /** The color mode is default. */
+        COLOR_MODE_D_CINELIKE = 1;                      /** The color mode is D-Cinelike. */
+        COLOR_MODE_D_LOG = 2;                           /** The color mode is D-Log. */
+        COLOR_MODE_FILM_A = 3;                          /** The color mode is film A. */
+        COLOR_MODE_FILM_B = 4;                          /** The color mode is film B. */
+        COLOR_MODE_FILM_C = 5;                          /** The color mode is film C. */
+        COLOR_MODE_FILM_D = 6;                          /** The color mode is film D. */
+        COLOR_MODE_FILM_E = 7;                          /** The color mode is film E. */
+        COLOR_MODE_FILM_F = 8;                          /** The color mode is film F. */
+        COLOR_MODE_HLG = 9;                             /** The color mode is HLG. */
+        COLOR_MODE_ART = 10;                            /** The color mode is art. */
+        COLOR_MODE_BW = 11;                             /** The color mode is black & white. */
+        COLOR_MODE_VIVID = 12;                          /** The color mode is vivid. */
+        COLOR_MODE_BEACH = 13;                          /** The color mode is beach. */
+        COLOR_MODE_DREAM = 14;                          /** The color mode is dream. */
+        COLOR_MODE_SRGB = 15;                           /** The color mode is sRGB. */
+        COLOR_MODE_ADOBERGB = 16;                       /** The color mode is adobe RGB. */
+        COLOR_MODE_IR_CUT = 17;                         /** The color mode is IR cut. */
+        COLOR_MODE_RACING = 18;                         /** The color mode is racing. */
+    }
+    ColorModeType color_mode = 1;                       /** The user-specified color profile for video recording. */
+}
+
+message ExposureIndexMode {
+    enum ExposureIndexModeType {
+        EI_MODE_OFF = 0;                                /** The exposure index mode is off. */
+        EI_MODE_ON = 1;                                 /** The exposure index mode is on. */
+    }
+    ExposureIndexModeType exposure_index_mode = 1;      /** If the exposure index mode is on, it means that the exposure
+                                                            index value is valid. */
+}
+
+message GainMode {
+    enum GainModeType {
+        GAIN_MODE_TYPE_AUTO = 0;                        /** The gain mode is auto. */
+        GAIN_MODE_TYPE_LOW_GAIN = 1;                    /** The gain mode is low gain. */
+        GAIN_MODE_TYPE_HIGH_GAIN = 2;                   /** The gain mode is high gain. */
+    }
+    GainModeType gain_mode = 1;                         /** The user-specified gain mode which will determining the
+                                                            sensor conversion gain mode. */
+}
+
+/**
+ * It will be filled only when the video format is raw.
+ */
+message BaselineExposure {
+    float baseline_exposure = 1;                        /** The amount in EV units to move the zero point for exposure
+                                                            compensation */
+}
+
+/**
+ * The quaternion provides a convenient mathematical notation for representing spatial orientations and rotations of
+ * elements in three dimensional space. It can be converted to the Euler angle.
+ */
+message Quaternion {
+    float quaternion_w = 1;                             /** The w value of quaternion. */
+    float quaternion_x = 2;                             /** The x value of quaternion. */
+    float quaternion_y = 3;                             /** The y value of quaternion. */
+    float quaternion_z = 4;                             /** The z value of quaternion. */
+}
+
+/**
+ * The velocity of the device on the XYZ.
+ */
+message Velocity {
+    float velocity_x = 1;                               /** The velocity value on the X-axis. Unit: meter/second. */
+    float velocity_y = 2;                               /** The velocity value on the Y-axis. Unit: meter/second. */
+    float velocity_z = 3;                               /** The velocity value on the Z-axis. Unit: meter/second. */
+}
+
+/**
+ * The position of the device on the XYZ. The definition of origins may be different when this message is included in
+ * different device, so refer to the specific product proto file for more details.
+ */
+message Position {
+    float position_x = 1;                               /** The position value on the X-axis. Unit: meter. */
+    float position_y = 2;                               /** The position value on the Y-axis. Unit: meter. */
+    float position_z = 3;                               /** The position value on the Z-axis. Unit: meter. */
+}
+
+message AbsoluteAltitude {
+    float absolute_altitude = 1;                        /** The absolute altitude of this device. It may come from the
+                                                            visual odometer. Unit: meter. */
+}
+
+message RelativeAltitude {
+    float relative_altitude = 1;                        /** The relative altitude of this device. It may come from the
+                                                            visual odometer. Unit: millimeter. */
+    bool is_relative_altitude_valid = 2;                /** The flag to indicate whether the relative altitude value is
+                                                            valid. */
+}
+
+/**
+ * Represents the relative distance.
+ */
+message RelativeDistance {
+    int32 relative_distance = 1;                        /** The relative distance between two points. Unit: millimeter */
+}
+
+message GimbalInstallPosition {
+    enum GimbalInstallPositionType {
+        GIMBAL_INSTALL_POSITION_TYPE_NORMAL = 0;        /** The install position of gimbal is normal. */
+        GIMBAL_INSTALL_POSITION_TYPE_REVERSE = 1;       /** The install position of gimbal is reversed. */
+    }
+    GimbalInstallPositionType gimbal_install_position = 1; /** The install position of the gimbal which means the gimbal
+                                                               can be installed reversed or normally. */
+}
+
+message GimbalMode {
+    enum GimbalModeType {
+        GIMBAL_MODE_OFF = 0;                            /** The gimbal mode is off. */
+        GIMBAL_MODE_LOCK = 1;                           /** The gimbal mode is lock (or called free). */
+        GIMBAL_MODE_FOLLOW = 2;                         /** The gimbal mode is follow. If the product supports to set
+                                                            pan/tilt/roll follow mode separately, refer to the message
+                                                            GimbalModeFollowSubStatus for more details. */
+    }
+    GimbalModeType gimbal_mode = 1;                     /** The user-specified gimbal mode. */
+}
+
+message GimbalModeFollowSubStatus {
+    bool pan_follow = 1;                                /** The flag to indicate whether the pan follow is on. */
+    bool tilt_follow = 2;                               /** The flag to indicate whether the tilt follow is on. */
+    bool roll_follow = 3;                               /** The flag to indicate whether the roll follow is on. */
+}
+
+/**
+ * The Euler angles of gimbal relative to the NED (North, East, Down) coordinate system. Rotation sequence of the Euler
+ * angle is ZXY (yaw, roll, pitch), intrinsic. For upward gimbal, the Euler angles translate from the real quaternion
+ * of gimbal after rotate 180 degree around the X axis of moving body.
+ */
+message EulerAngle {
+    int32 pitch_decidegree = 1;                         /** The Euler angles of Pitch. Unit: deci-degree. */
+    int32 roll_decidegree = 2;                          /** The Euler angles of Roll. Unit: deci-degree. */
+    int32 yaw_decidegree = 3;                           /** The Euler angles of Yaw. Unit: deci-degree. */
+}
+
+/**
+ * Represents the positioning coordinates expressed in latitude and longitude.
+ */
+message PositionCoord {
+    enum PositionCoordUnit {
+        UNIT_RAD = 0;                                   /** The unit of positioning coordinates is radian. */
+        UNIT_DEG = 1;                                   /** The unit of positioning coordinates is degree. */
+    }
+    PositionCoordUnit position_coord_unit = 1;          /** The unit of positioning coordinates. */
+    double latitude = 2;                                /** The latitude, WGS-84 coordinate system. */
+    double longitude = 3;                               /** The longitude, WGS-84 coordinate system. */
+}
+
+/**
+ * Represents the basic information for GPS.
+ */
+message GpsBasic {
+    PositionCoord gps_coordinates = 1;                  /** The GPS latitude and longitude coordinates. */
+    int32 gps_altitude_mm = 2;                          /** The GPS altitude, unit: mm, refer to gps_altitude_type for
+                                                            details. */
+    enum GpsStatus {
+        GPS_NORMAL = 0;                                 /** The GPS status is normal. */
+        GPS_INVALID = 1;                                /** The GPS status is invalid. */
+        GPS_RTK = 2;                                    /** The GPS status is RTK. */
+    }
+    GpsStatus gps_status = 3;                           /** The GPS status. */
+    enum GpsAltType {
+        PRESSURE_ALTITUDE = 0;                          /** The altitude is provided by barometer which is not
+                                                            ellipsoidal height. */
+        GPS_FUSION_ALTITUDE = 1;                        /** Fuse GPS and barometer height, which based on ellipsoidal
+                                                            coordinate. */
+        RTK_ALTITUDE = 2;                               /** The altitude is ellipsoidal height (WGS-84) provided by
+                                                            RTK. */
+    }
+    GpsAltType gps_altitude_type = 4;                   /** The GPS altitude type. */
+}
+
+/**
+ * Represents the accelerometer of IMU.
+ */
+message Accelerometer {
+    uint64 msg_timestamp = 1;                           /** The timestamp of each frame, unit: nano-seconds. */
+    float accelerometer_x = 2;                          /** The accelerometer in X direction, unit: 0.1 degree. */
+    float accelerometer_y = 3;                          /** The accelerometer in Y direction, unit: 0.1 degree. */
+    float accelerometer_z = 4;                          /** The accelerometer in Z direction, unit: 0.1 degree. */
+}
+
+/**
+ * Represents the gyroscope of IMU.
+ */
+message Gyroscope {
+    uint64 msg_timestamp = 1;                           /** The timestamp of each frame, unit: nano-seconds. */
+    float gyroscope_x = 2;                              /** The gyroscope in X direction, unit: 0.1 degree. */
+    float gyroscope_y = 3;                              /** The gyroscope in Y direction, unit: 0.1 degree. */
+    float gyroscope_z = 4;                              /** The gyroscope in Z direction, unit: 0.1 degree. */
+}
+
+/**
+ * Represents the status of laser ranging finder.
+ */
+message LaserStatus {
+    enum LaserStatusType {
+        LASER_NORMAL = 0;                               /** The laser ranging finder works fine. */
+        LASER_TOO_CLOSE = 1;                            /** The target distance is less than minimum range of finder. */
+        LASER_TOO_FAR = 2;                              /** The target distance is larger than maximum range of finder. */
+        LASER_CLOSED = 3;                               /** The laser module is closed. */
+    }
+    LaserStatusType laser_status = 1;
+}
+
+/**
+ * Represents the raw sensor data of laser ranging finder.
+ */
+message LaserRawData {
+    repeated uint32 distance = 1;                       /** unit: millimeter */
+    repeated uint32 intensity = 2;                      /** The signal intensity, range: 0~255. */
+}
+
+/**
+ * Represents the status of ranging function.
+ */
+message RangingStatus {
+    enum RangingStatusType {
+        RANGING_OFF = 0;                                /** The ranging function is off. */
+        RANGING_ON = 1;                                 /** The ranging function is on. */
+    }
+    RangingStatusType ranging_status = 1;
+}
+
+/**
+ * Represents the target offset in screen.
+ */
+message ScreenOffset {
+    uint32 screen_offset_x = 1;                         /** The target offset on horizontal direction of screen in permillage. */
+    uint32 screen_offset_y = 2;                         /** The target offset on vertical direction of screen in permillage. */
+}
+
+/**
+ * Represents the scene mode of infrared camera.
+ */
+message InfraredSceneMode {
+    enum InfraredSceneModeType {
+        SCENE_MODE_MANUAL = 0;                          /** The scene mode is manual. The dde, contrast and brightness are valid only in manual mode*/
+        SCENE_MODE_COMMON = 1;                          /** The scene mode is common. */
+        SCENE_MODE_INSPECTION = 2;                      /** The scene mode is inspection. */
+    }
+    InfraredSceneModeType infrared_scene_mode = 1;      /** The scene mode of infrared camera. */
+    uint32 infrared_dde_percent = 2;                    /** The DDE (digital detail enhance) value in percent, which is valid only in manual mode.*/
+    uint32 infrared_contrast_percent = 3;               /** The contrast value in percent, which is valid only in manual mode. */
+    uint32 infrared_brightness_percent = 4;             /** The brightness value in percent, which is valid only in manual mode. */
+}
+
+/**
+ * Represents the pseudo color of infrared camera.
+ */
+message InfraredPseudoColor {
+    enum InfraredPseudoColorType {
+        INFRARED_PSEUDO_COLOR_WHITEHOT = 0;                     /** The infrared pseudo color is whitehot. */
+        INFRARED_PSEUDO_COLOR_LAVA = 1;                         /** The infrared pseudo color is lava. */
+        INFRARED_PSEUDO_COLOR_IRON_RED = 2;                     /** The infrared pseudo color is iron red. */
+        INFRARED_PSEUDO_COLOR_HOTIRON = 3;                      /** The infrared pseudo color is hotiron. */
+        INFRARED_PSEUDO_COLOR_MEDICINE = 4;                     /** The infrared pseudo color is medicine. */
+        INFRARED_PSEUDO_COLOR_NORTHPOLE = 5;                    /** The infrared pseudo color is northpole. */
+        INFRARED_PSEUDO_COLOR_RAINBOW1 = 6;                     /** The infrared pseudo color is rainbow1. */
+        INFRARED_PSEUDO_COLOR_RAINBOW2 = 7;                     /** The infrared pseudo color is rainbow2. */
+        INFRARED_PSEUDO_COLOR_TRACERED = 8;                     /** The infrared pseudo color is tracered. */
+        INFRARED_PSEUDO_COLOR_BLACKHOT = 9;                     /** The infrared pseudo color is blackhot. */
+    }
+    InfraredPseudoColorType infrared_pseudo_color = 1;          /** The infrared pseudo color. */
+}
+
+/**
+ * Represents the isotherm of infrared camera.
+ */
+message InfraredIsotherm {
+    enum InfraredIsothermModeType {
+        INFRARED_ISOTHERM_MODE_OFF = 0;                          /** The infrared isotherm mode is off. */
+        INFRARED_ISOTHERM_MODE_ON = 1;                           /** The infrared isotherm mode is on. */
+    }
+    InfraredIsothermModeType infrared_isotherm_mode = 1;         /** The infrared isotherm mode. */
+    int32 infrared_isotherm_high_threshold = 2;                  /** The high threshold of infrared isotherm. */
+    int32 infrared_isotherm_low_threshold = 3;                   /** The low threshold of infrared isotherm. */
+}
+
+/**
+ * Represents the gain mode of infrared camera.
+ */
+ message InfraredGainMode {
+    enum InfraredGainModeType {
+        INFRARED_GAIN_MODE_HIGH = 0;                    /** high gain mode which has narrow temperature measurement range but high precision. */
+        INFRARED_GAIN_MODE_LOW = 1;                     /** low gain mode which has wide temperature measurement range but low precision. */
+    }
+    InfraredGainModeType infrared_gain_mode = 1;        /** The user-specified gain mode of infrared camera. */
+}
+
+/* Attitude of a specific device */
+message DeviceAttitude {
+    uint32   timestamp = 1;     /* timestamp of the first sample in the attidue array. */
+    uint32   vsync = 2;         /* sensor vsync signal timestamp of first sample. */
+    repeated Quaternion attitude = 3;  /* array containing all fusioned quaternions belong to certain vsync cnt, like 200/fps */
+    float    offset = 4;        /* time offset between first row of sensor exposure and first sample of device*/
+}
+
+message SensorFrameReadOutTime {
+    uint64 readout_time = 1;    /* read out time per frame of a certain mode. */
+}
+
+/* TODO: comment */
+message SensorReadDirection {
+    enum SenorReadDirectionType {
+        TOP_LEFT = 0;
+        TOP_RIGHT = 1;
+        BOTTOM_RIGHT = 2;
+        BOTTOM_LEFT = 3;
+        LEFT_TOP = 4;
+        RIGHT_TOP = 5;
+        RIGHT_BOTTOM = 6;
+        LEFT_BOTTOM = 7;
+    }
+    SenorReadDirectionType direction = 1;
+}
+
+message SensorFrameRate {
+    float sensor_frame_rate = 1;
+}
+
+message IMUSamplingRate {
+    uint32 imu_sampling_rate = 1;
+}
+
+message DigitalFocalLength {
+    float focal_length = 1;    /* fx in camera intrinsic matrix, in our model, fx equals to fy. */
+}
+
+message LensDistortionCoefficients {
+    repeated float coeffients = 1; /* 1*4 array containing distortion coefficients (k1, k2, k3, k4) of an OpenCV fisheye model. */
+}
+
+message EisStatus {
+    enum EisStatusType {
+        EIS_OFF = 0;
+        EIS_ROCK_STEADY = 1;
+        EIS_HORIZON_STEADY = 2;
+    }
+
+    EisStatusType status = 1;
+}
