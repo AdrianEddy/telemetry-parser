@@ -195,6 +195,15 @@ impl Dji {
               ],
               "distortion_coeffs": coeffs
             },
+            "sync_settings": {
+              "initial_offset": 0,
+              "initial_offset_inv": false,
+              "search_size": 0.5,
+              "max_sync_points": 5,
+              "every_nth_frame": 1,
+              "time_per_syncpoint": 0.6,
+              "do_autosync": false
+            },
             "calibrator_version": "---"
         })
     }
