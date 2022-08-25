@@ -17,6 +17,7 @@ Work in progress, the code is already working but I plan to add much more input 
 - [x] ArduPilot logs (*.bin, *.log)
 - [x] Blackmagic RAW (*.braw)
 - [x] RED RAW (*.r3d)
+- [x] DJI Avata
 - [ ] TODO DJI flight logs (*.dat, *.txt)
 
 # Example usage:

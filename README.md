@@ -15,6 +15,7 @@ A tool to parse real-time metadata embedded in video files or telemetry from oth
 - [x] ArduPilot logs (*.bin, *.log)
 - [x] Blackmagic RAW (*.braw)
 - [x] RED RAW (*.r3d)
+- [x] DJI Avata
 - [ ] TODO DJI flight logs (*.dat, *.txt)
 
 # Example usage
