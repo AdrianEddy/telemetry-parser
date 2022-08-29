@@ -43,10 +43,11 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_c
                 // log::debug!("Index: {}, Duration: {}, Frame rate: {}, Timestamp: {}", index, duration_ms, frame_rate, index as f64 * duration_ms);
 
                 samples.push(SampleInfo {
-                    index,
+                    sample_index: index,
                     duration_ms,
                     timestamp_ms: index as f64 * duration_ms,
-                    tag_map: Some(map)
+                    tag_map: Some(map),
+                    ..Default::default()
                 });
                 index += 1;
             }

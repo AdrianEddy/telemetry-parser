@@ -80,7 +80,7 @@ impl Dji {
                 let mut quats = Vec::new();
                 if let Some(ref frame) = parsed.frame_meta {
                     let frame_ts = frame.frame_meta_header.as_ref().unwrap().frame_timestamp as i64;
-                    if info.index == 0 { first_timestamp = frame_ts; }
+                    if info.sample_index == 0 { first_timestamp = frame_ts; }
                     let frame_relative_ts = frame_ts - first_timestamp;
 
                     if let Some(ref e) = frame.camera_frame_meta {
@@ -132,7 +132,7 @@ impl Dji {
                                 });
                             }
 
-                            if info.index == 0 { log::debug!("Quaternions: {:?}", &quats); }
+                            if info.sample_index == 0 { log::debug!("Quaternions: {:?}", &quats); }
                             util::insert_tag(&mut tag_map, tag!(parsed GroupId::Quaternion, TagId::Data, "Quaternion data",  Vec_TimeQuaternion_f64, |v| format!("{:?}", v), quats, vec![]));
                         }
                     }

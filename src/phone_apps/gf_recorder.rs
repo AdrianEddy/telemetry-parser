@@ -20,10 +20,10 @@ pub fn detect(buffer: &[u8], _filename: &str) -> bool {
 pub fn parse<T: Read + Seek>(stream: &mut T, size: usize) -> Result<Vec<SampleInfo>> {
     let mut gyro = Vec::new();
     let mut accl = Vec::new();
-    
+
     let mut last_timestamp = 0.0;
     let mut first_timestamp = 0.0;
-    
+
     // Replace all repeating whitespace with a single space
     let mut buffer = Vec::with_capacity(size);
     let mut prev_chr = '\0';
@@ -41,7 +41,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, size: usize) -> Result<Vec<SampleIn
         .trim(csv::Trim::All)
         .delimiter(b' ')
         .from_reader(d);
-    
+
     let h = csv.headers()?.clone();
     for row in csv.records() {
         let row = row?;
@@ -85,6 +85,6 @@ pub fn parse<T: Read + Seek>(stream: &mut T, size: usize) -> Result<Vec<SampleIn
     util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
 
     Ok(vec![
-        SampleInfo { index: 0, timestamp_ms: first_timestamp as f64, duration_ms: (last_timestamp - first_timestamp) as f64, tag_map: Some(map) }
+        SampleInfo { timestamp_ms: first_timestamp as f64, duration_ms: (last_timestamp - first_timestamp) as f64, tag_map: Some(map), ..Default::default() }
     ])
 }

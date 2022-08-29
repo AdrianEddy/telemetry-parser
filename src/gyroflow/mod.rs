@@ -175,7 +175,7 @@ impl Gyroflow {
         util::insert_tag(&mut map, tag!(parsed GroupId::Magnetometer,  TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.to_string(), Vec::new()));
 
         Ok(vec![
-            SampleInfo { index: 0, timestamp_ms: 0.0, duration_ms: 0.0, tag_map: Some(map) }
+            SampleInfo { tag_map: Some(map), ..Default::default() }
         ])
     }
 

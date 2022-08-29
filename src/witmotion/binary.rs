@@ -119,7 +119,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
     util::insert_tag(&mut map, tag!(parsed GroupId::Quaternion,   TagId::Data, "Quaternion data",   Vec_TimeArray4_f64,  |v| format!("{:?}", v), quat, vec![]));
 
     Ok(vec![
-        SampleInfo { index: 0, timestamp_ms: first_timestamp as f64, duration_ms: last_timestamp as f64, tag_map: Some(map) }
+        SampleInfo { timestamp_ms: first_timestamp as f64, duration_ms: last_timestamp as f64, tag_map: Some(map), ..Default::default() }
     ])
 }
 

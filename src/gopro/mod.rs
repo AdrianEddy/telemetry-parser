@@ -61,7 +61,7 @@ impl GoPro {
     pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
         let mut samples = Vec::new();
         if let Some(extra) = &self.extra_gpmf {
-            samples.push(SampleInfo { index: 0, timestamp_ms: 0.0, duration_ms: 0.0, tag_map: Some(extra.clone()) });
+            samples.push(SampleInfo { tag_map: Some(extra.clone()), ..Default::default() });
         }
         let ctx = util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64| {
             if size > 0 {

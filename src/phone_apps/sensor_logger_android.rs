@@ -12,7 +12,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
     let mut gyro = Vec::new();
     let mut accl = Vec::new();
     let mut magn = Vec::new();
-    
+
     let mut last_timestamp = 0.0;
     let mut first_timestamp = 0.0;
 
@@ -20,7 +20,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
         .has_headers(true)
         .trim(csv::Trim::All)
         .from_reader(stream);
-    
+
     let h = csv.headers()?.clone();
     for row in csv.records() {
         let row = row?;
@@ -58,7 +58,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
                 t: ts as f64,
                 x: map.get("MagneticFieldX")?.parse::<f64>().ok()?,
                 y: map.get("MagneticFieldY")?.parse::<f64>().ok()?,
-                z: map.get("MagneticFieldZ")?.parse::<f64>().ok()? 
+                z: map.get("MagneticFieldZ")?.parse::<f64>().ok()?
             });
         });
     }
@@ -79,6 +79,6 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
     util::insert_tag(&mut map, tag!(parsed GroupId::Magnetometer,  TagId::Unit, "Magnetometer unit", String, |v| v.to_string(), "μT".into(), Vec::new()));
 
     Ok(vec![
-        SampleInfo { index: 0, timestamp_ms: first_timestamp as f64, duration_ms: (last_timestamp - first_timestamp) as f64, tag_map: Some(map) }
+        SampleInfo { timestamp_ms: first_timestamp as f64, duration_ms: (last_timestamp - first_timestamp) as f64, tag_map: Some(map), ..Default::default() }
     ])
 }

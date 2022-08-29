@@ -33,7 +33,7 @@ impl Insta360 {
     pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
         let mut tag_map = self.parse_file(stream, size, progress_cb, cancel_flag)?;
         self.process_map(&mut tag_map);
-        Ok(vec![SampleInfo { index: 0, timestamp_ms: 0.0, duration_ms: 0.0, tag_map: Some(tag_map) }])
+        Ok(vec![SampleInfo { tag_map: Some(tag_map), ..std::default::Default::default() }])
     }
 
     fn parse_file<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<GroupedTagMap> {

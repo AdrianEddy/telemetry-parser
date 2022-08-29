@@ -28,9 +28,9 @@ impl BlackmagicBraw {
         let mut samples = Vec::new();
         let mut frame_rate = None;
 
-        let _ = util::get_track_samples(stream, size, mp4parse::TrackType::Video, true, |mut info: SampleInfo, data: &[u8], file_position: u64| {
+        let _ = util::get_track_samples(stream, size, mp4parse::TrackType::Video, true, Some(8192), |mut info: SampleInfo, data: &[u8], file_position: u64| {
             if size > 0 {
-                progress_cb(file_position as f64 / size as f64 / 2.0);
+                progress_cb(file_position as f64 / size as f64 / 3.0);
             }
             if let Ok(md) = Self::parse_per_frame_meta(data) {
                 if let Some(v) = md.get("sensor_rate").and_then(|v| v.as_array()) {
@@ -48,7 +48,7 @@ impl BlackmagicBraw {
 
         util::get_metadata_track_samples(stream, size, false, |info: SampleInfo, data: &[u8], file_position: u64| {
             if size > 0 {
-                progress_cb(0.5 + (file_position as f64 / size as f64 / 2.0));
+                progress_cb(((info.track_index as f64 - 1.0) + (file_position as f64 / size as f64)) / 3.0);
             }
 
             if data.len() >= 4+4+3*4 {
@@ -93,9 +93,14 @@ impl BlackmagicBraw {
 
         if let Some(fr) = frame_rate {
             util::insert_tag(&mut map, tag!(parsed GroupId::Default,   TagId::FrameRate, "Frame rate", f64, |v| format!("{:?}", v), fr, vec![]));
+            if let Some(rs) = self.frame_readout_time {
+                if rs > (1000.0 / fr) {
+                    self.frame_readout_time = Some(rs / 2.0); // Bug in firmware v7.9.0
+                }
+            }
         }
 
-        samples.insert(0, SampleInfo { index: 0, timestamp_ms: 0.0, duration_ms: 0.0, tag_map: Some(map) });
+        samples.insert(0, SampleInfo { tag_map: Some(map), ..Default::default() });
 
         Ok(samples)
     }

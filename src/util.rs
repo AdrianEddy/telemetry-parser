@@ -14,9 +14,10 @@ pub fn to_hex(data: &[u8]) -> String {
     ret
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SampleInfo {
-    pub index: u64,
+    pub sample_index: u64,
+    pub track_index: usize,
     pub timestamp_ms: f64,
     pub duration_ms: f64,
     pub tag_map: Option<GroupedTagMap>
@@ -91,13 +92,13 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
     mp4parse::read_mp4(stream)
 }
 
-pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4parse::TrackType, single: bool, mut callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
+pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4parse::TrackType, single: bool, max_sample_size: Option<usize>, mut callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
     where F: FnMut(SampleInfo, &[u8], u64)
 {
 
     let ctx = parse_mp4(stream, size).or_else(|_| mp4parse::read_mp4(stream)).unwrap();
 
-    let mut index = 0u64;
+    let mut track_index = 0;
     // let mut sample_delta = 0u32;
     // let mut timestamp_ms = 0f64;
 
@@ -111,10 +112,16 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp
 
                 if let Some(samples) = mp4parse::unstable::create_sample_table(&x, 0.into()) {
                     let mut sample_data = Vec::new();
+                    let mut sample_index = 0u64;
                     for x in samples {
                         if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) { break; }
 
-                        let sample_size = (x.end_offset.0 - x.start_offset.0) as usize;
+                        let mut sample_size = (x.end_offset.0 - x.start_offset.0) as usize;
+                        if let Some(max_sample_size) = max_sample_size {
+                            if sample_size > max_sample_size {
+                                sample_size = max_sample_size;
+                            }
+                        }
                         let sample_timestamp_ms = x.start_composition.0 as f64 / 1000.0;
                         let sample_duration_ms = (x.end_composition.0 - x.start_composition.0) as f64 / 1000.0;
                         if sample_size > 4 {
@@ -125,10 +132,10 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp
                             stream.seek(SeekFrom::Start(x.start_offset.0 as u64))?;
                             stream.read_exact(&mut sample_data[..])?;
 
-                            callback(SampleInfo { index, timestamp_ms: sample_timestamp_ms, duration_ms: sample_duration_ms, tag_map: None }, &sample_data, x.start_offset.0 as u64);
+                            callback(SampleInfo { sample_index, track_index, timestamp_ms: sample_timestamp_ms, duration_ms: sample_duration_ms, tag_map: None }, &sample_data, x.start_offset.0 as u64);
 
                             //timestamp_ms += duration_ms;
-                            index += 1;
+                            sample_index += 1;
                         }
                     }
                     if single {
@@ -137,6 +144,7 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp
                 }
             // }
         }
+        track_index += 1;
     }
     Ok(ctx)
 }
@@ -144,12 +152,12 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp
 pub fn get_metadata_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, single: bool, callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
     where F: FnMut(SampleInfo, &[u8], u64)
 {
-    get_track_samples(stream, size, mp4parse::TrackType::Metadata, single, callback, cancel_flag)
+    get_track_samples(stream, size, mp4parse::TrackType::Metadata, single, None, callback, cancel_flag)
 }
 pub fn get_other_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, single: bool, callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
     where F: FnMut(SampleInfo, &[u8], u64)
 {
-    get_track_samples(stream, size, mp4parse::TrackType::Unknown, single, callback, cancel_flag)
+    get_track_samples(stream, size, mp4parse::TrackType::Unknown, single, None, callback, cancel_flag)
 }
 
 pub fn read_beginning_and_end<T: Read + Seek>(stream: &mut T, stream_size: usize, read_size: usize) -> Result<Vec<u8>> {
