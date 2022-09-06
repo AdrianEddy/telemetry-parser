@@ -5,7 +5,7 @@ use std::sync::{ Arc, atomic::AtomicBool };
 use telemetry_parser::*;
 use telemetry_parser::tags_impl::*;
 
-/** gyro2bb v0.2.3
+/** gyro2bb v0.2.4
 Author: Adrian <adrian.eddy@gmail.com>
 
 Extract gyro data from Sony, GoPro and Insta360 cameras to betaflight blackbox csv log
