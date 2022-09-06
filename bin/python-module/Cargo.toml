@@ -1,6 +1,6 @@
 [package]
 name = "telemetry-parser-py"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Adrian <adrian.eddy@gmail.com>"]
 edition = "2021"
 
