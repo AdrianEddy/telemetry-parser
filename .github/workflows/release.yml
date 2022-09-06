@@ -44,10 +44,11 @@ jobs:
         env:
           CARGO_TARGET_DIR: ./target
         uses: actions-rs/cargo@v1
+        working-directory: bin/gyro2bb/
         with:
           use-cross: ${{ matrix.targets.cross }}
           command: build
-          args: --target ${{ matrix.targets.target }} --release --manifest-path bin/gyro2bb/Cargo.toml
+          args: --target ${{ matrix.targets.target }} --release
 
       - name: Strip
         if: ${{ matrix.targets.os != 'windows-latest' }}
