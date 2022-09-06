@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright © 2021 Adrian <adrian.eddy at gmail>
+
 mod sensor_logger;
 mod gyro;
 mod gf_recorder;
@@ -47,7 +50,7 @@ impl PhoneApps {
     pub fn camera_type(&self) -> String {
         "Mobile app".to_owned()
     }
-    
+
     pub fn frame_readout_time(&self) -> Option<f64> {
         None
     }

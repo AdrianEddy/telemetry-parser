@@ -1,6 +1,9 @@
 mod rtmd_tags;
 mod mxf;
 
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright © 2021 Adrian <adrian.eddy at gmail>
+
 #[cfg(feature="sony-xml")]
 pub mod xml_metadata;
 

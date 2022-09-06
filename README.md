@@ -39,3 +39,20 @@ Details in [bin/python-module](https://github.com/AdrianEddy/telemetry-parser/tr
 2. Clone the repo: `git clone https://github.com/AdrianEddy/telemetry-parser.git`
 3. Build the binary: `cd bin/gyro2bb ; cargo build --release`
 4. Resulting file will be in `target/release/` directory
+
+<br>
+
+#### License
+
+<sup>
+Licensed under either of <a href="LICENSE-APACHE">Apache License, Version
+2.0</a> or <a href="LICENSE-MIT">MIT license</a> at your option.
+</sup>
+
+<br>
+
+<sub>
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in this crate by you, as defined in the Apache-2.0 license, shall
+be dual licensed as above, without any additional terms or conditions.
+</sub>

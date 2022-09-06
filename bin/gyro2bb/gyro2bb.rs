@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright © 2021 Adrian <adrian.eddy at gmail>
+
 use std::time::Instant;
 use argh::FromArgs;
 use std::sync::{ Arc, atomic::AtomicBool };
@@ -43,7 +46,7 @@ fn main() {
         for info in samples {
             if info.tag_map.is_none() { continue; }
             let grouped_tag_map = info.tag_map.as_ref().unwrap();
-    
+
             for (group, map) in grouped_tag_map {
                 for (tagid, taginfo) in map {
                     println!("{: <25} {: <25} {: <50}: {}", format!("{}", group), format!("{}", tagid), taginfo.description, &taginfo.value.to_string());
@@ -75,7 +78,7 @@ fn main() {
         if v.gyro.is_some() || v.accl.is_some() {
             let gyro = v.gyro.unwrap_or_default();
             let accl = v.accl.unwrap_or_default();
-            csv.push_str(&format!("{},{:.0},{},{},{},{},{},{}\n", i, (v.timestamp_ms * 1000.0).round(), 
+            csv.push_str(&format!("{},{:.0},{},{},{},{},{},{}\n", i, (v.timestamp_ms * 1000.0).round(),
                 -gyro[2], gyro[1], gyro[0],
                 -accl[2] * 2048.0, accl[1] * 2048.0, accl[0] * 2048.0
             ));

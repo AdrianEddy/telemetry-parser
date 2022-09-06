@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright © 2021 Adrian <adrian.eddy at gmail>
+
 use std::{ io::*, collections::BTreeSet, collections::BTreeMap };
 use std::sync::{ Arc, atomic::AtomicBool };
 use byteorder::{ ReadBytesExt, BigEndian };

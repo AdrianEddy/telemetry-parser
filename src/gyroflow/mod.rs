@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright © 2021 Elvin
+
 use std::collections::BTreeMap;
 use std::io::*;
 use std::sync::{ Arc, atomic::AtomicBool };

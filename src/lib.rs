@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright © 2021-2022 Adrian <adrian.eddy at gmail>
+
 mod sony;
 mod gopro;
 mod gyroflow;

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright © 2022 Adrian <adrian.eddy at gmail>
+
 pub mod dvtm_wm169;
 
 use std::io::*;

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright © 2021 Adrian <adrian.eddy at gmail>
+
 // https://stackoverflow.com/questions/69261657/querying-a-large-dataset-in-browser-using-webassembly
 
 use wasm_bindgen::prelude::*;

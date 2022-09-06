@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright © 2021 Adrian <adrian.eddy at gmail>
+
 use ::prost::alloc::string::String;
 use ::prost::alloc::vec::Vec;
 use ::core::option::Option;
@@ -85,7 +88,7 @@ pub struct ExtraMetadata {
 
     #[prost(double, tag="48")] pub distance: f64,
     #[prost(double, tag="49")] pub fov: f64,
-    
+
     #[serde(serialize_with="GyroFilterType_serializer")]
     #[prost(enumeration="extra_metadata::GyroFilterType", tag="50")] pub gyro_filter_type: i32,
 
@@ -102,7 +105,7 @@ pub struct ExtraMetadata {
 
     #[serde(serialize_with="SensorDevice_serializer")]
     #[prost(enumeration="extra_metadata::SensorDevice", tag="57")] pub focus_sensor: i32,
-    
+
     #[serde(serialize_with="ExpectOutputType_serializer")]
     #[prost(enumeration="extra_metadata::ExpectOutputType", tag="58")] pub expect_output_type: i32,
 
@@ -111,7 +114,7 @@ pub struct ExtraMetadata {
 
     #[serde(serialize_with = "AudioModeType_serializer")]
     #[prost(enumeration="extra_metadata::AudioModeType", tag="61")] pub audio_mode: i32,
-    
+
     #[prost(bool, tag="62")] pub is_raw_gyro: bool,
 
     #[prost(enumeration="extra_metadata::RawCaptureType", tag="63")] pub raw_capture_type: i32,
