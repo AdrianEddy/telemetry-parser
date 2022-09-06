@@ -2,9 +2,11 @@
 name = "telemetry-parser"
 version = "0.2.4"
 authors = ["Adrian <adrian.eddy@gmail.com>"]
-edition = "2018"
-license = "MPL-2.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/AdrianEddy/telemetry-parser"
+description = "Library to parse real-time metadata embedded in video files or telemetry from other sources."
+readme = "README.md"
 
 [dependencies]
 mp4parse = { version = "0.12", features = ["meta-xml", "unstable-api"] }

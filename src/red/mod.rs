@@ -144,8 +144,6 @@ impl RedR3d {
                 d.resize(size as usize - 2, 0);
                 data.read_exact(&mut d)?;
                 let mut id = match d[1] {
-                    0x00 => "start_edge_timecode",
-                    0x01 => "start_absolute_timecode",
                     0x06 => "camera_pin",
                     0x08 => "exposure_time",
                     0x0d => "white_balance_kelvin",
@@ -159,28 +157,12 @@ impl RedR3d {
                     0x23 => "local_date",
                     0x24 => "local_time",
                     0x25 => "camera_firmware_version",
-                    0x26 => "user_timecode_preference",
-                    0x28 => "shutter_phase_offset",
-                    0x2D => "genlock_setting",
-                    0x2E => "jamsync_setting",
                     0x30 => "gmt_date",
                     0x31 => "gmt_time",
-                    0x32 => "media_serial_number",
-                    0x35 => "user_curve", // "user_curve_black_x", "user_curve_black_y", "user_curve_low_x", "user_curve_low_y", "user_curve_mid_x", "user_curve_mid_y", "user_curve_high_x", "user_curve_high_y", "user_curve_white_x", "user_curve_white_y"
-                    0x36 => "frame_guide_name",
-                    0x39 => "lens_cooke_i_static",
-                    0x3A => "lens_cooke_i_dynamic",
                     0x3b => "iso",
-                    0x49 => "flip_horizontal", // "flip_vertical"
-                    0x4A => "shadow",
-                    0x4D => "linked_camera_setup",
-                    0x51 => "camera_position",
-                    0x55 => "lens_mount", // 4: "P/L"; 8: "Nikon"; 9: "Canon"; 10: "Leica M"; 11: "P/L Motion Mount"; 12: "Canon Motion Mount"
                     0x56 => "file_name",
                     0x65 => "firmware_revision",
                     0x66 => "record_framerate",
-                    0x69 => "motion_mount_nd_stops",
-                    0x6D => "lens_distance_units", // "lens_aperture_units"
                     0x6E => "lens_brand",
                     0x70 => "lens_name",
                     0x71 => "camera_network_name",
@@ -195,29 +177,16 @@ impl RedR3d {
                     0x7E => "user_take",
                     0x7F => "camera_acceleration", // x/y/z
                     0x80 => "camera_rotation", // x/y/z
-                    0x85 => "motion_mount_shutter_type", // 0 = ND only, 1 = Soft Shutter, 2 = Square Shutter
                     0x86 => "resolution_format_name",
-                    0x92 => "monitor_sharpness",
-                    0x97 => "user_shot",
                     0x9D => "lens_serial_number",
                     0x9E => "lens_owner",
-                    0x9F => "temp_user_external_count", // "temp_user_external_changed"
                     0xA0 => "camera_model",
                     0xA1 => "sensor_name",
-                    0xAA => "cdl_default_enabled",
-                    0xAB => "3d_lut",
-                    0xAC => "iso_calibration_version",
-                    0xAD => "edge",
-                    0xAE => "absolute",
-                    0xAF => "sensor_sensitivity_id", // 0 = "Standard", 1 = "Low-light"
+                    0xAB => "3d_lut1",
                     0xB0 => "fps", // / 1001
-                    0xB1 => "output_transform",
                     0xBE => "redcode",
                     0xBF => "record_fps", // / 1001
-                    0xC0 => "cdl_??",
-                    0xC1 => "3d_lut",
-                    0xC2 => "cdl_filename",
-                    0xC4 => "wav_filename",
+                    0xC1 => "3d_lut2",
                     _ => "",
                 }.to_string();
                 if id.is_empty() { id = format!("0x{:x}", d[1]); };
