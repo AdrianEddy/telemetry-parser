@@ -14,9 +14,6 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
         with:
-          python-version: 3.6
-      - uses: actions/setup-python@v2
-        with:
           python-version: 3.7
       - uses: actions/setup-python@v2
         with:
@@ -127,7 +124,6 @@ jobs:
       matrix:
         target: [aarch64, armv7]
         python-config: [
-          { version: 3.6, lib: "cp36-cp36m" },
           { version: 3.7, lib: "cp37-cp37m" },
           { version: 3.8, lib: "cp38-cp38" },
           { version: 3.9, lib: "cp39-cp39" },
@@ -149,9 +145,9 @@ jobs:
 
     - name: Build Wheels
       uses: messense/maturin-action@v1
-      env: 
+      env:
         PYO3_CROSS_PYTHON_VERSION: ${{ matrix.python-config.version }}
-        PYO3_CROSS_LIB_DIR: '/opt/python/${{ matrix.python-config.lib }}/lib' 
+        PYO3_CROSS_LIB_DIR: '/opt/python/${{ matrix.python-config.lib }}/lib'
       with:
         target: ${{ matrix.target }}
         manylinux: auto
