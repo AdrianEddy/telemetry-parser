@@ -29,7 +29,12 @@ macro_rules! impl_formats {
         }
         impl Input {
             pub fn from_stream<T: Read + Seek, P: AsRef<std::path::Path>, F: Fn(f64)>(stream: &mut T, size: usize, filepath: P, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Input> {
-                let buf = util::read_beginning_and_end(stream, size, 2*1024*1024)?; // 2 MB
+                let read_mb = if size > 5*1024*1024*1024 { // If file is greater than 5 GB, read 10 MB header/footer
+                    10
+                } else {
+                    2
+                };
+                let buf = util::read_beginning_and_end(stream, size, read_mb*1024*1024)?;
                 if buf.is_empty() {
                     return Err(Error::new(ErrorKind::Other, "File is empty or there was an error trying to load it."));
                 }

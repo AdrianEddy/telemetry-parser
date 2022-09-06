@@ -62,14 +62,14 @@ impl Parser {
         if self.input.samples.is_none() { return Err(JsValue::from("No metadata")); }
 
         let imu_data = util::normalized_imu(&self.input, orientation).map_err(Self::err)?;
-        
+
         Ok(JsValue::from_serde(&imu_data).unwrap())
     }
 
     fn err(e: std::io::Error) -> JsValue {
         JsValue::from(format!("IO error {:?}", e))
     }
-    
+
     #[wasm_bindgen(getter)]
     pub fn camera(&self) -> Option<String> { self.camera.clone() }
 

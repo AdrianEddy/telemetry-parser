@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use pythonize::pythonize;
 use std::sync::{ Arc, atomic::AtomicBool };
 
-use telemetry_parser::*;
+use ::telemetry_parser::*;
 
 #[pyclass]
 struct Parser {
@@ -57,17 +57,19 @@ impl Parser {
             output.push(groups);
         }
 
-        let gil = Python::acquire_gil();
-        Ok(pythonize(gil.python(), &output)?)
+        Python::with_gil(|py| {
+            Ok(pythonize(py, &output)?)
+        })
     }
 
     fn normalized_imu(&self, orientation: Option<String>) -> PyResult<Py<PyAny>> {
         if self.input.samples.is_none() { return Err(pyo3::exceptions::PyValueError::new_err("No metadata")); }
 
         let imu_data = util::normalized_imu(&self.input, orientation)?;
-        
-        let gil = Python::acquire_gil();
-        Ok(pythonize(gil.python(), &imu_data)?)
+
+        Python::with_gil(|py| {
+            Ok(pythonize(py, &imu_data)?)
+        })
     }
 }
 
