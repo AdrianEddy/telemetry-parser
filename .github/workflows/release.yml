@@ -51,12 +51,14 @@ jobs:
       - name: Strip
         if: ${{ matrix.targets.os != 'windows-latest' }}
         continue-on-error: true
+        working-directory: bin/gyro2bb/
         run: strip target/${{ matrix.targets.target }}/release/gyro2bb 2>/dev/null || true
 
       - name: Copy dist
+        working-directory: bin/gyro2bb/
         run: |
-          mkdir dist
-          mv target/${{ matrix.targets.target }}/release/gyro2bb${{ matrix.targets.ext }} dist/gyro2bb-${{ matrix.targets.name }}${{ matrix.targets.ext }}
+          mkdir ../../dist
+          mv target/${{ matrix.targets.target }}/release/gyro2bb${{ matrix.targets.ext }} ../../dist/gyro2bb-${{ matrix.targets.name }}${{ matrix.targets.ext }}
 
       - name: Save Binaries
         uses: actions/upload-artifact@v2
