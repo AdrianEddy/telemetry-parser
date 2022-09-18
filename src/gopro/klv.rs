@@ -108,7 +108,7 @@ impl KLV {
             b"WBAL" | b"ISOE" | b"SHUT" |
             b"MWET" | b"IORI" | b"CORI" |
             b"AALP" | b"WNDM" | b"UNIF" |
-            b"WRGB" | b"GPS5" => TagId::Data,
+            b"WRGB" | b"GPS5" | b"FASC" => TagId::Data,
 
             b"SIUN" | b"UNIT" => TagId::Unit,
             b"MTRX" => TagId::Matrix,
@@ -134,6 +134,7 @@ impl KLV {
             b"IORI" => GroupId::ImageOrientation,
             b"SHUT" => GroupId::Exposure,
             b"GPS5" => GroupId::GPS,
+            b"FASC" => GroupId::Custom("FovAdaptationScore".into()),
             b"MWET" => GroupId::Custom("MicrophoneWet".into()),
             b"AALP" => GroupId::Custom("AGCAudioLevel".into()),
             b"WNDM" => GroupId::Custom("WindProcessing".into()),
