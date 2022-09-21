@@ -36,13 +36,20 @@ impl BlackmagicBraw {
                 progress_cb(file_position as f64 / size as f64 / 3.0);
             }
             if let Ok(md) = Self::parse_per_frame_meta(data) {
+                let mut map = GroupedTagMap::new();
+
                 if let Some(v) = md.get("sensor_rate").and_then(|v| v.as_array()) {
                     if v.len() == 2 {
                         frame_rate = v[0].as_u64().zip(v[1].as_u64()).map(|(a, b)| a as f64 / b.max(1) as f64);
                     }
                 }
+                if let Some(v) = md.get("focal_length").and_then(|v| v.as_str()) {
+                    let v = v.replace("mm", "");
+                    if let Ok(v) = v.parse::<f32>() {
+                        util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::LensZoomNative, "Focal length", f32, |v| format!("{v:.3}"), v, vec![]));
+                    }
+                }
 
-                let mut map = GroupedTagMap::new();
                 util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), md, vec![]));
                 info.tag_map = Some(map);
                 samples.push(info);
