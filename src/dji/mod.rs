@@ -49,103 +49,110 @@ impl Dji {
                 progress_cb(file_position as f64 / size as f64);
             }
 
-            if let Ok(parsed) = dvtm_wm169::ProductMeta::decode(data) {
+            match dvtm_wm169::ProductMeta::decode(data) {
+                Ok(parsed) => {
+                    let mut tag_map = GroupedTagMap::new();
 
-                let mut tag_map = GroupedTagMap::new();
+                    if let Some(ref clip) = parsed.clip_meta {
+                        self.model              = clip.clip_meta_header       .as_ref().map(|h| h.product_name.replace("DJI ", ""));
+                        self.frame_readout_time = clip.sensor_readout_time    .as_ref().map(|h| h.readout_time as f64 / 1000_000.0);
+                        focal_length            = clip.digital_focal_length   .as_ref().map(|h| h.focal_length as f64);
+                        distortion_coeffs       = clip.distortion_coefficients.as_ref().map(|h| h.coeffients.clone());
 
-                if let Some(ref clip) = parsed.clip_meta {
-                    self.model              = clip.clip_meta_header       .as_ref().map(|h| h.product_name.replace("DJI ", ""));
-                    self.frame_readout_time = clip.sensor_readout_time    .as_ref().map(|h| h.readout_time as f64 / 1000_000.0);
-                    focal_length            = clip.digital_focal_length   .as_ref().map(|h| h.focal_length as f64);
-                    distortion_coeffs       = clip.distortion_coefficients.as_ref().map(|h| h.coeffients.clone());
+                        if let Some(v) = clip.sensor_fps.as_ref().map(|h| h.sensor_frame_rate as f64) {
+                            sensor_fps = v;
+                        }
+                        if let Some(v) = clip.imu_sampling_rate.as_ref().map(|h| h.imu_sampling_rate as f64) {
+                            sample_rate = v;
+                        }
 
-                    if let Some(v) = clip.sensor_fps.as_ref().map(|h| h.sensor_frame_rate as f64) {
-                        sensor_fps = v;
-                    }
-                    if let Some(v) = clip.imu_sampling_rate.as_ref().map(|h| h.imu_sampling_rate as f64) {
-                        sample_rate = v;
-                    }
-
-                    let v = serde_json::to_value(&clip).map_err(|_| Error::new(ErrorKind::Other, "Serialize error"));
-                    if let Ok(vv) = v {
-                        log::debug!("Metadata: {:?}", &vv);
-                        insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), vv, vec![]));
-                    }
-                }
-                if let Some(ref stream) = parsed.stream_meta {
-                    if let Some(ref meta) = stream.video_stream_meta {
-                        fps = meta.framerate as f64;
-                    }
-                }
-
-                let fps_ratio = fps / sensor_fps;
-
-                let mut quats = Vec::new();
-                if let Some(ref frame) = parsed.frame_meta {
-                    let frame_ts = frame.frame_meta_header.as_ref().unwrap().frame_timestamp as i64;
-                    if info.sample_index == 0 { first_timestamp = frame_ts; }
-                    let frame_relative_ts = frame_ts - first_timestamp;
-
-                    if let Some(ref e) = frame.camera_frame_meta {
-                        exposure_time = e.exposure_time.as_ref().and_then(|v| Some(*v.exposure_time.get(0)? as f64 / *v.exposure_time.get(1)? as f64)).unwrap_or_default() * 1000.0;
-
-                        // log::debug!("Exposure time: {:?}", &exposure_time);
-                    }
-
-                    if let Some(ref imu) = frame.imu_frame_meta {
-                        if let Some(ref attitude) = imu.imu_attitude_after_fusion {
-                            // let ts = attitude.timestamp as i64;
-                            // println!("{} {} {} {}, vsync: {}", frame_ts, ts, frame_relative_ts, ts - frame_ts, attitude.vsync);
-                            let len = attitude.attitude.len() as f64;
-
-                            let vsync_duration = 1000.0 / fps.max(1.0);
-                            if first_vsync == 0 {
-                                first_vsync = attitude.vsync;
-                            }
-
-                            let frame_timestamp = (frame_relative_ts as f64 / fps_ratio) / 1000.0;
-
-                            // let frame_timestamp = (attitude.vsync - first_vsync) as f64 * vsync_duration;
-                            // println!("fps: {fps}, sensor_fps: {sensor_fps}, ratio: {fps_ratio}, exp: {exposure_time}, ts: {frame_timestamp}, diff: {}", frame_timestamp);
-                            // println!("vsync: {}, ts: {:.3}, ts2: {:.3}, diff: {:.3}", (attitude.vsync - first_vsync), frame_timestamp * 1000.0, (frame_relative_ts as f64 / ratio), (frame_relative_ts as f64 / ratio) - (frame_timestamp * 1000.0));
-
-                            // let frame_ratio = self.frame_readout_time.unwrap() / vsync_duration;
-
-                            for (i, q) in attitude.attitude.iter().enumerate() {
-                                let index = i as f64 - attitude.offset as f64;
-                                let t = (index / len) * vsync_duration;
-                                // println!("t: {:.3}, o: {:.3}", t, attitude.offset);
-                                let ts = frame_timestamp + t - (exposure_time / 2.0);
-                                // println!("ts: {:.2}, diff: {:.4}, vsync: {}, frame_timestamp: {}, fts: {frame_timestamp}, fts2: {frame_timestamp2}", ts, ts - prev_ts, attitude.vsync, frame_ts);
-                                prev_ts = ts;
-
-                                let quat = util::multiply_quats(
-                                    (q.quaternion_w as f64,
-                                    q.quaternion_x as f64,
-                                    q.quaternion_y as f64,
-                                    q.quaternion_z as f64),
-                                    (0.5, -0.5, -0.5, 0.5),
-                                );
-                                // Rotate Y axis 180 deg for horizon lock
-                                let quat = util::multiply_quats((0.0, 0.0, 1.0, 0.0), (quat.w, quat.x, quat.y, quat.z));
-
-                                quats.push(TimeQuaternion {
-                                    t: ts,
-                                    v: quat,
-                                });
-                            }
-
-                            if info.sample_index == 0 { log::debug!("Quaternions: {:?}", &quats); }
-                            util::insert_tag(&mut tag_map, tag!(parsed GroupId::Quaternion, TagId::Data, "Quaternion data",  Vec_TimeQuaternion_f64, |v| format!("{:?}", v), quats, vec![]));
+                        let v = serde_json::to_value(&clip).map_err(|_| Error::new(ErrorKind::Other, "Serialize error"));
+                        if let Ok(vv) = v {
+                            log::debug!("Metadata: {:?}", &vv);
+                            insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), vv, vec![]));
                         }
                     }
+                    if let Some(ref stream) = parsed.stream_meta {
+                        if let Some(ref meta) = stream.video_stream_meta {
+                            fps = meta.framerate as f64;
+                        }
+                    }
+
+                    let fps_ratio = fps / sensor_fps;
+
+                    let mut quats = Vec::new();
+                    if let Some(ref frame) = parsed.frame_meta {
+                        let frame_ts = frame.frame_meta_header.as_ref().unwrap().frame_timestamp as i64;
+                        if info.sample_index == 0 { first_timestamp = frame_ts; }
+                        let frame_relative_ts = frame_ts - first_timestamp;
+
+                        if let Some(ref e) = frame.camera_frame_meta {
+                            exposure_time = e.exposure_time.as_ref().and_then(|v| Some(*v.exposure_time.get(0)? as f64 / *v.exposure_time.get(1)? as f64)).unwrap_or_default() * 1000.0;
+
+                            // log::debug!("Exposure time: {:?}", &exposure_time);
+                        }
+
+                        if let Some(ref imu) = frame.imu_frame_meta {
+                            if let Some(ref attitude) = imu.imu_attitude_after_fusion {
+                                // let ts = attitude.timestamp as i64;
+                                // println!("{} {} {} {}, vsync: {}", frame_ts, ts, frame_relative_ts, ts - frame_ts, attitude.vsync);
+                                let len = attitude.attitude.len() as f64;
+
+                                let vsync_duration = 1000.0 / fps.max(1.0);
+                                if first_vsync == 0 {
+                                    first_vsync = attitude.vsync;
+                                }
+
+                                let frame_timestamp = (frame_relative_ts as f64 / fps_ratio) / 1000.0;
+
+                                // let frame_timestamp = (attitude.vsync - first_vsync) as f64 * vsync_duration;
+                                // println!("fps: {fps}, sensor_fps: {sensor_fps}, ratio: {fps_ratio}, exp: {exposure_time}, ts: {frame_timestamp}, diff: {}", frame_timestamp);
+                                // println!("vsync: {}, ts: {:.3}, ts2: {:.3}, diff: {:.3}", (attitude.vsync - first_vsync), frame_timestamp * 1000.0, (frame_relative_ts as f64 / ratio), (frame_relative_ts as f64 / ratio) - (frame_timestamp * 1000.0));
+
+                                // let frame_ratio = self.frame_readout_time.unwrap() / vsync_duration;
+
+                                for (i, q) in attitude.attitude.iter().enumerate() {
+                                    let index = i as f64 - attitude.offset as f64;
+                                    let t = (index / len) * vsync_duration;
+                                    let ts = frame_timestamp + t - (exposure_time / 2.0);
+                                    // println!("ts: {:.2}, diff: {:.4}, vsync: {}, frame_timestamp: {}, fts: {frame_timestamp}, fts2: {frame_timestamp2}", ts, ts - prev_ts, attitude.vsync, frame_ts);
+                                    prev_ts = ts;
+
+                                    if q.quaternion_w.is_nan() || q.quaternion_x.is_nan() || q.quaternion_y.is_nan() || q.quaternion_z.is_nan() {
+                                        continue;
+                                    }
+
+                                    let quat = util::multiply_quats(
+                                        (q.quaternion_w as f64,
+                                        q.quaternion_x as f64,
+                                        q.quaternion_y as f64,
+                                        q.quaternion_z as f64),
+                                        (0.5, -0.5, -0.5, 0.5),
+                                    );
+                                    // Rotate Y axis 180 deg for horizon lock
+                                    let quat = util::multiply_quats((0.0, 0.0, 1.0, 0.0), (quat.w, quat.x, quat.y, quat.z));
+
+                                    quats.push(TimeQuaternion {
+                                        t: ts,
+                                        v: quat,
+                                    });
+                                }
+
+                                if info.sample_index == 0 { log::debug!("Quaternions: {:?}", &quats); }
+                                util::insert_tag(&mut tag_map, tag!(parsed GroupId::Quaternion, TagId::Data, "Quaternion data",  Vec_TimeQuaternion_f64, |v| format!("{:?}", v), quats, vec![]));
+                            }
+                        }
+                    }
+
+                    // if info.index == 0 { dbg!(&parsed); }
+
+                    info.tag_map = Some(tag_map);
+
+                    samples.push(info);
+                },
+                Err(e) => {
+                    log::warn!("Failed to parse protobuf: {:?}", e);
                 }
-
-                // if info.index == 0 { dbg!(&parsed); }
-
-                info.tag_map = Some(tag_map);
-
-                samples.push(info);
             }
         }, cancel_flag)?;
 
