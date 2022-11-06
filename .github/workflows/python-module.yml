@@ -11,17 +11,17 @@ jobs:
   macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
         with:
           python-version: 3.7
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v4
         with:
           python-version: 3.8
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v4
         with:
           python-version: 3.9
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v4
         with:
           python-version: "3.10"
 
@@ -31,7 +31,7 @@ jobs:
           toolchain: stable
           profile: minimal
           default: true
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
 
       - name: Build wheels - x86_64
         uses: messense/maturin-action@v1
@@ -47,7 +47,7 @@ jobs:
           args: -m bin/python-module/Cargo.toml --release --universal2 --find-interpreter
 
       - name: Save Wheels
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: wheels
           path: bin/python-module/target/wheels/*.whl
@@ -58,8 +58,8 @@ jobs:
       matrix:
         target: [x64, x86]
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
         with:
           python-version: "3.10"
           architecture: ${{ matrix.target }}
@@ -70,7 +70,7 @@ jobs:
           toolchain: stable
           profile: minimal
           default: true
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
 
       - name: Build wheels
         uses: messense/maturin-action@v1
@@ -80,7 +80,7 @@ jobs:
           args: -m bin/python-module/Cargo.toml --release --find-interpreter
 
       - name: Save Wheels
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: wheels
           path: bin/python-module/target/wheels/*.whl
@@ -91,8 +91,8 @@ jobs:
       matrix:
         target: [i686, x86_64]
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-python@v2
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
       with:
         python-version: "3.10"
 
@@ -102,7 +102,7 @@ jobs:
         toolchain: stable
         profile: minimal
         default: true
-    - uses: Swatinem/rust-cache@v1
+    - uses: Swatinem/rust-cache@v2
 
     - name: Build Wheels
       uses: messense/maturin-action@v1
@@ -113,7 +113,7 @@ jobs:
         args: -m bin/python-module/Cargo.toml --release --find-interpreter
 
     - name: Save Wheels
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: wheels
         path: bin/python-module/target/wheels/*
@@ -130,8 +130,8 @@ jobs:
           { version: "3.10", lib: "cp310-cp310" }
         ]
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-python@v2
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-config.version }}
 
@@ -141,7 +141,7 @@ jobs:
         toolchain: stable
         profile: minimal
         default: true
-    - uses: Swatinem/rust-cache@v1
+    - uses: Swatinem/rust-cache@v2
 
     - name: Build Wheels
       uses: messense/maturin-action@v1
@@ -155,7 +155,7 @@ jobs:
         args: -m bin/python-module/Cargo.toml --release -i python${{ matrix.python-config.version }}
 
     - name: Save Wheels
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: wheels
         path: bin/python-module/target/wheels/*.whl
@@ -165,10 +165,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [ macos, windows, linux, linux-cross ]
     steps:
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         with:
           name: wheels
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v4
         with:
           python-version: "3.10"
       - name: Publish to PyPi

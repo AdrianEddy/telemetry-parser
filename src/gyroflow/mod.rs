@@ -36,7 +36,7 @@ impl Gyroflow {
         let match_hdr = |line: &[u8]| -> bool {
             &gyro_buf[0..line.len().min(gyro_buf.len())] == line
         };
-        if match_hdr(b"GYROFLOW IMU LOG") || match_hdr(b"CAMERA IMU LOG"){
+        if match_hdr(b"GYROFLOW IMU LOG") || match_hdr(b"CAMERA IMU LOG") {
             let mut header = BTreeMap::new();
 
             // get header block

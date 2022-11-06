@@ -21,7 +21,7 @@ jobs:
       ]
     runs-on: ${{ matrix.targets.os }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -29,7 +29,7 @@ jobs:
           profile: minimal
           override: true
           target: ${{ matrix.targets.target }}
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
 
       - name: Add rust target
         run: rustup target add ${{ matrix.targets.target }}
@@ -61,7 +61,7 @@ jobs:
           mv target/${{ matrix.targets.target }}/release/gyro2bb${{ matrix.targets.ext }} ../../dist/gyro2bb-${{ matrix.targets.name }}${{ matrix.targets.ext }}
 
       - name: Save Binaries
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: gyro2bb
           path: dist/gyro2bb*
@@ -72,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: gyro2bb
 
