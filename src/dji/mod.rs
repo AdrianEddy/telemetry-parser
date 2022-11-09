@@ -12,6 +12,8 @@ use crate::util::insert_tag;
 use memchr::memmem;
 use prost::Message;
 
+mod csv;
+
 #[derive(Default)]
 pub struct Dji {
     pub model: Option<String>,
@@ -25,12 +27,21 @@ impl Dji {
                 model: None,
                 frame_readout_time: None
             })
+        } else if memmem::find(buffer, b"Clock:Tick").is_some() && memmem::find(buffer, b"IMU_ATTI(0):gyroX").is_some() {
+            Some(Self {
+                model: Some("CSV flight log".into()),
+                frame_readout_time: None
+            })
         } else {
             None
         }
     }
 
     pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
+        if self.model.is_some() {
+            return csv::parse(stream, size);
+        }
+
         let mut samples = Vec::new();
         let mut first_timestamp = 0;
 
