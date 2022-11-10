@@ -16,6 +16,7 @@ A tool to parse real-time metadata embedded in video files or telemetry from oth
 - [x] Runcam CSV (Runcam 5 Orange, iFlight GOCam GR, Runcam Thumb, Mobius Maxi 4K)
 - [x] Hawkeye Firefly X Lite CSV
 - [x] WitMotion (WT901SDCL binary and *.txt)
+- [x] Vuze (VuzeXR)
 - [ ] TODO DJI flight logs (*.dat, *.txt)
 
 # Example usage

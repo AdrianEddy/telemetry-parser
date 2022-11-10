@@ -13,6 +13,7 @@ mod phone_apps;
 mod ardupilot;
 mod blackmagic;
 mod red;
+mod vuze;
 
 pub mod tags_impl;
 pub mod util;
@@ -37,7 +38,7 @@ macro_rules! impl_formats {
                 } else if size as u64 > 5u64*1024*1024*1024 { // If file is greater than 5 GB, read 10 MB header/footer
                     10
                 } else {
-                    2
+                    4
                 };
                 let buf = util::read_beginning_and_end(stream, size, read_mb*1024*1024)?;
                 if buf.is_empty() {
@@ -90,4 +91,5 @@ impl_formats! {
     ArduPilot => ardupilot::ArduPilot,
     BlackmagicBraw => blackmagic::BlackmagicBraw,
     RedR3d    => red::RedR3d,
+    Vuze      => vuze::Vuze,
 }

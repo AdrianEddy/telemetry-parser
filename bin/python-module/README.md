@@ -18,6 +18,7 @@ Work in progress, the code is already working but I plan to add much more input 
 - [x] Runcam CSV (Runcam 5 Orange, iFlight GOCam GR, Runcam Thumb, Mobius Maxi 4K)
 - [x] Hawkeye Firefly X Lite CSV
 - [x] WitMotion (WT901SDCL binary and *.txt)
+- [x] Vuze (VuzeXR)
 - [ ] TODO DJI flight logs (*.dat, *.txt)
 
 # Example usage:

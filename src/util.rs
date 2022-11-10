@@ -586,6 +586,22 @@ pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Re
     Err(ErrorKind::Other.into())
 }
 
+pub const fn fourcc(s: &str) -> u32 {
+    let s = s.as_bytes();
+    (s[3] as u32) | ((s[2] as u32) << 8) | ((s[1] as u32) << 16) | ((s[0] as u32) << 24)
+}
+pub fn read_box<R: Read + Seek>(reader: &mut R) -> Result<(u32, u64, u64, i64)> {
+    let pos = reader.stream_position()?;
+    let size = reader.read_u32::<BigEndian>()?;
+    let typ = reader.read_u32::<BigEndian>()?;
+    if size == 1 {
+        let largesize = reader.read_u64::<BigEndian>()?;
+        Ok((typ, pos, largesize, 16))
+    } else {
+        Ok((typ, pos, size as u64, 8))
+    }
+}
+
 #[macro_export]
 macro_rules! try_block {
     ($type:ty, $body:block) => {

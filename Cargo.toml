@@ -18,6 +18,7 @@ paste = "1.0"
 prost = "0.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
+serde_yaml = "0.9"
 argh = "0.1"
 memchr = "2.5"
 fc-blackbox = "0.2"
