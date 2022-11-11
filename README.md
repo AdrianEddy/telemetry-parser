@@ -17,6 +17,7 @@ A tool to parse real-time metadata embedded in video files or telemetry from oth
 - [x] Hawkeye Firefly X Lite CSV
 - [x] WitMotion (WT901SDCL binary and *.txt)
 - [x] Vuze (VuzeXR)
+- [x] KanDao (Obisidian Pro)
 - [ ] TODO DJI flight logs (*.dat, *.txt)
 
 # Example usage

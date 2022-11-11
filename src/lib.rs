@@ -14,6 +14,7 @@ mod ardupilot;
 mod blackmagic;
 mod red;
 mod vuze;
+mod kandao;
 
 pub mod tags_impl;
 pub mod util;
@@ -92,4 +93,5 @@ impl_formats! {
     BlackmagicBraw => blackmagic::BlackmagicBraw,
     RedR3d    => red::RedR3d,
     Vuze      => vuze::Vuze,
+    KanDao    => kandao::KanDao,
 }

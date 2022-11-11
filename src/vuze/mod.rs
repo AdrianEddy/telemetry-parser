@@ -25,7 +25,7 @@ impl Vuze {
         None
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, _size: usize, _progress_cb: F, _cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, _size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
         let mut gyro = Vec::new();
         let mut accl = Vec::new();
 
@@ -38,6 +38,9 @@ impl Vuze {
         while let Ok((typ, _offs, size, header_size)) = util::read_box(stream) {
             if size == 0 || typ == 0 { break; }
             let org_pos = stream.stream_position()?;
+
+            if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) { break; }
+
             if typ == fourcc("moov") || typ == fourcc("udta") {
                 continue; // go inside these boxes
             } else {
@@ -87,6 +90,12 @@ impl Vuze {
                     // 2000 02 00 5682000000000000 17B7D13A 17B7513B 00 27 00 00 00 10 00 00 79 17 00 00 C8 00
                     let mut d = std::io::Cursor::new(buf);
                     while (d.position() as usize) < buflen {
+
+                        if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) { break; }
+                        if buflen > 0 {
+                            progress_cb(d.position() as f64 / buflen as f64);
+                        }
+
                         let len = d.read_u16::<LittleEndian>()?;
                         let _unkh1 = d.read_u8()?; // command?
                         let _unkh2 = d.read_u8()?; // camera ID?
@@ -170,7 +179,7 @@ impl Vuze {
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(), Vec::new()));
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Unit, "Gyroscope unit",     String, |v| v.to_string(), "deg/s".into(), Vec::new()));
 
-        let imu_orientation = "XYz";
+        let imu_orientation = "xYz";
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
 
