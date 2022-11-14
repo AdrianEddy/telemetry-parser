@@ -6,6 +6,7 @@ mod gyro;
 mod gf_recorder;
 mod sensor_logger_android;
 mod sensor_record;
+mod opencamera_sensors;
 
 use std::io::*;
 use std::sync::{ Arc, atomic::AtomicBool };
@@ -15,17 +16,19 @@ use crate::*;
 #[derive(Default)]
 pub struct PhoneApps {
     pub model: Option<String>,
+    filepath: std::path::PathBuf
 }
 
 impl PhoneApps {
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
         let filename = filepath.as_ref().file_name().map(|x| x.to_string_lossy()).unwrap_or_default();
 
-        if sensor_logger        ::detect(&buffer, &filename) { return Some(Self { model: Some("Sensor Logger"        .to_owned()) }); }
-        if gf_recorder          ::detect(&buffer, &filename) { return Some(Self { model: Some("GF Recorder"          .to_owned()) }); }
-        if gyro                 ::detect(&buffer, &filename) { return Some(Self { model: Some("Gyro"                 .to_owned()) }); }
-        if sensor_logger_android::detect(&buffer, &filename) { return Some(Self { model: Some("Sensor Logger Android".to_owned()) }); }
-        if sensor_record        ::detect(&buffer, &filename) { return Some(Self { model: Some("Sensor Record"        .to_owned()) }); }
+        if sensor_logger        ::detect(&buffer, &filename) { return Some(Self { model: Some("Sensor Logger"        .to_owned()), filepath: filepath.as_ref().to_path_buf() }); }
+        if gf_recorder          ::detect(&buffer, &filename) { return Some(Self { model: Some("GF Recorder"          .to_owned()), filepath: filepath.as_ref().to_path_buf() }); }
+        if gyro                 ::detect(&buffer, &filename) { return Some(Self { model: Some("Gyro"                 .to_owned()), filepath: filepath.as_ref().to_path_buf() }); }
+        if sensor_logger_android::detect(&buffer, &filename) { return Some(Self { model: Some("Sensor Logger Android".to_owned()), filepath: filepath.as_ref().to_path_buf() }); }
+        if sensor_record        ::detect(&buffer, &filename) { return Some(Self { model: Some("Sensor Record"        .to_owned()), filepath: filepath.as_ref().to_path_buf() }); }
+        if opencamera_sensors   ::detect(&buffer, &filepath) { return Some(Self { model: Some("OpenCamera Sensors"   .to_owned()), filepath: filepath.as_ref().to_path_buf() }); }
 
         None
     }
@@ -37,6 +40,7 @@ impl PhoneApps {
             Some("Gyro")                    => gyro                 ::parse(stream, size),
             Some("Sensor Logger Android")   => sensor_logger_android::parse(stream, size),
             Some("Sensor Record")           => sensor_record        ::parse(stream, size),
+            Some("OpenCamera Sensors")      => opencamera_sensors   ::parse(stream, size, &self.filepath),
             _ => {
                 Err(ErrorKind::InvalidInput.into())
             }
