@@ -332,7 +332,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         0xe301 => tag!(Exposure, TagId::Custom("ISOValue3".into()), "ISO value", u32, "{}", |d| d.read_u32::<BigEndian>(), tag_data),
         0x8119 => tag!(Exposure, TagId::Custom("ISOValue4".into()), "ISO value", u32, "{}", |d| d.read_u32::<BigEndian>(), tag_data),
         0x811e => tag!(Exposure, TagId::Custom("ISOValue5".into()), "ISO value", u32, "{}", |d| d.read_u32::<BigEndian>(), tag_data),
-        0xe304 => tag!(Default, CaptureTimestamp, "Capture timestamp", u64, |&v| chrono::TimeZone::timestamp(&chrono::Utc, v as i64, 0).to_string(), |x| {
+        0xe304 => tag!(Default, CaptureTimestamp, "Capture timestamp", u64, |&v| chrono::TimeZone::timestamp_opt(&chrono::Utc, v as i64, 0).single().map(|x| x.to_string()).unwrap_or_default(), |x| {
             let _tz = x.read_u8()?; // TODO: timezone, unknown format, 0 for UTC, 68 for GMT+2, 42 for GMT-5, 2 for GMT+1
 
             fn read_as_dec(x: &mut Cursor::<&[u8]>) -> Result<u32> {
@@ -347,7 +347,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             let m   = read_as_dec(x)?;
             let s   = read_as_dec(x)?;
 
-            Ok(chrono::NaiveDate::from_ymd((yy1 * 100.0 + yy2) as i32, mm, dd).and_hms(h, m, s).timestamp() as u64)
+            Ok(chrono::NaiveDate::from_ymd_opt((yy1 * 100.0 + yy2) as i32, mm, dd).and_then(|x| x.and_hms_opt(h, m, s)).unwrap_or_default().timestamp() as u64)
         }, tag_data),
 
         // Possible values: zFar, zNear, aspect, temporal_position, temporal_rotation

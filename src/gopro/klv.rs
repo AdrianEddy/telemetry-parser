@@ -76,7 +76,7 @@ impl KLV {
                     }
                     b'F' => TagValue::String(ValueType::new(|d| Self::parse_string(d),   |v| v.into(), tag_data.to_vec())),
                     b'G' => TagValue::Uuid  (ValueType::new(|d| Self::parse_uuid(d),     |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), tag_data.to_vec())),
-                    b'U' => TagValue::u64   (ValueType::new(|d| Self::parse_utcdate(d),  |v| chrono::TimeZone::timestamp_millis(&chrono::Utc, *v as i64).to_string(), tag_data.to_vec())),
+                    b'U' => TagValue::u64   (ValueType::new(|d| Self::parse_utcdate(d),  |v| chrono::TimeZone::timestamp_millis_opt(&chrono::Utc, *v as i64).single().map(|x| x.to_string()).unwrap_or_default(), tag_data.to_vec())),
                     // b'?' => unimplemented!(),
                     _ => TagValue::Unknown(ValueType::new(|_| Ok(()), |_| "".into(), tag_data.to_vec()))
                 }
@@ -179,7 +179,7 @@ impl KLV {
         let s  = data[10..12].parse::<u32>().map_err(e)?;
         let ms = data[13..16].parse::<u32>().map_err(e)?;
 
-        Ok(chrono::NaiveDate::from_ymd(y, m, d).and_hms_milli(h, i, s, ms).timestamp_millis() as u64)
+        Ok(chrono::NaiveDate::from_ymd_opt(y, m, d).and_then(|x| x.and_hms_milli_opt(h, i, s, ms)).unwrap_or_default().timestamp_millis() as u64)
     }
     fn parse_uuid(d: &mut Cursor::<&[u8]>) -> Result<(u32,u32,u32,u32)> {
         d.seek(SeekFrom::Current(8))?; // Skip header
