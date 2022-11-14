@@ -36,9 +36,18 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress
         let headers = bbox.header.ip_fields_in_order.iter().map(|x| x.name.as_str()).collect::<Vec<&str>>();
         let mut column_struct = super::BlackBox::prepare_vectors_from_headers(&headers);
 
+        let mut prev_iteration = -1;
+        let mut prev_time = -1;
+
         while let Some(record) = bbox.next() {
             match record {
                 BlackboxRecord::Main(values) => {
+                    // In normal circumstances iterations and time go up, so if they doesn't, the rest of the log is corrupted
+                    if prev_iteration > values[0] || prev_time > values[1] { break; }
+
+                    prev_iteration = values[0];
+                    prev_time = values[1];
+
                     let time = values[1] as f64 / 1_000_000.0;
                     if first_timestamp.is_none() {
                         first_timestamp = Some(time);
