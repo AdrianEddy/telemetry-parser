@@ -68,7 +68,7 @@ pub fn hide_wave_box(all: &mut Vec<u8>) {
     }
 }
 
-// if mdhd timescale is 0, try 90000 as it's the most common one
+// if mdhd timescale is 0, try to patch it if we know valid value
 pub fn patch_mdhd_timescale(all: &mut Vec<u8>) {
     let mut offs = 0;
     while let Some(pos) = memchr::memmem::find(&all[offs..], b"mdhd") {
