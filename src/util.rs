@@ -72,7 +72,8 @@ pub fn hide_wave_box(all: &mut Vec<u8>) {
 pub fn patch_mdhd_timescale(all: &mut Vec<u8>) {
     let mut offs = 0;
     while let Some(pos) = memchr::memmem::find(&all[offs..], b"mdhd") {
-        if all.len() > offs+pos+4+4+16+4 {
+        if all.len() > offs+pos+70 && &all[offs+pos+32..offs+pos+36] == b"hdlr" {
+            let typ = unsafe { std::str::from_utf8_unchecked(&all[offs+pos+61..offs+pos+70] ) };
             let version = all[offs + 5];
             let dates = match version { 1 => 16, _ => 8 }; // creation and modification dates size
             // Skip 4 bytes fourcc
@@ -81,8 +82,15 @@ pub fn patch_mdhd_timescale(all: &mut Vec<u8>) {
             let ts_offset = offs+pos+4+4+dates;
             let timescale = (&all[ts_offset..]).read_u32::<BigEndian>().unwrap();
             if timescale == 0 {
-                log::warn!("Track timescale is 0, trying patching it to 90000");
-                all[ts_offset..ts_offset+4].copy_from_slice(&90000u32.to_be_bytes());
+                let patch = match typ {
+                    "GoPro AAC" => 48000u32,
+                    "GoPro MET" => 1000u32,
+                    _ => 0u32
+                };
+                log::warn!("Track {typ} timescale is 0, trying patching it to {patch}");
+                if patch > 0 {
+                    all[ts_offset..ts_offset+4].copy_from_slice(&patch.to_be_bytes());
+                }
             }
         }
         offs += pos + 4;
