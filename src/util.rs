@@ -68,12 +68,40 @@ pub fn hide_wave_box(all: &mut Vec<u8>) {
     }
 }
 
+// if mdhd timescale is 0, try 90000 as it's the most common one
+pub fn patch_mdhd_timescale(all: &mut Vec<u8>) {
+    let mut offs = 0;
+    while let Some(pos) = memchr::memmem::find(&all[offs..], b"mdhd") {
+        if all.len() > offs+pos+4+4+16+4 {
+            let version = all[offs + 5];
+            let dates = match version { 1 => 16, _ => 8 }; // creation and modification dates size
+            // Skip 4 bytes fourcc
+            // Skip 4 bytes version + flags
+            // Skip 8 or 16 bytes creation/modification dates
+            let ts_offset = offs+pos+4+4+dates;
+            let timescale = (&all[ts_offset..]).read_u32::<BigEndian>().unwrap();
+            if timescale == 0 {
+                log::warn!("Track timescale is 0, trying patching it to 90000");
+                all[ts_offset..ts_offset+4].copy_from_slice(&90000u32.to_be_bytes());
+            }
+        }
+        offs += pos + 4;
+    }
+}
+
 pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Result<mp4parse::MediaContext> {
     if size > 10*1024*1024 {
         // With large files we can save a lot of time by only parsing actual MP4 box structure, skipping track data ifself.
         // We do that by reading 2 MB from each end of the file, then patching `mdat` box to make the 4 MB buffer a correct MP4 file.
         // This is hacky, but it's worth a try and if we fail we fallback to full parsing anyway.
-        let mut all = read_beginning_and_end(stream, size, 2*1024*1024)?;
+        let read_mb = if size as u64 > 30u64*1024*1024*1024 { // If file is greater than 30 GB, read 30 MB header/footer
+            30
+        } else if size as u64 > 5u64*1024*1024*1024 { // If file is greater than 5 GB, read 10 MB header/footer
+            10
+        } else {
+            4
+        };
+        let mut all = read_beginning_and_end(stream, size, read_mb*1024*1024)?;
         if let Some(pos) = memchr::memmem::find(&all, b"mdat") {
             let how_much_less = (size - all.len()) as u64;
             let mut len = (&all[pos-4..]).read_u32::<BigEndian>()? as u64;
@@ -87,6 +115,7 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
 
             verify_and_fix_mp4_structure(&mut all);
             hide_wave_box(&mut all);
+            patch_mdhd_timescale(&mut all);
 
             let mut c = std::io::Cursor::new(&all);
             return mp4parse::read_mp4(&mut c);
