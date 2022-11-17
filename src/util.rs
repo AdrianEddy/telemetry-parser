@@ -136,7 +136,7 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp
     where F: FnMut(SampleInfo, &[u8], u64)
 {
 
-    let ctx = parse_mp4(stream, size).or_else(|_| mp4parse::read_mp4(stream)).unwrap();
+    let ctx = parse_mp4(stream, size).or_else(|_| mp4parse::read_mp4(stream))?;
 
     let mut track_index = 0;
     // let mut sample_delta = 0u32;
