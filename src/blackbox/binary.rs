@@ -72,9 +72,16 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress
             util::insert_tag(&mut map, desc);
         }
 
-        samples.push(SampleInfo { sample_index: i as u64, timestamp_ms: first_timestamp.unwrap_or_default(), duration_ms: last_timestamp.unwrap_or_default() - first_timestamp.unwrap_or_default(), tag_map: Some(map), ..Default::default() });
+        let map = if prev_iteration == -1 {
+            None // no usable data
+        } else {
+            Some(map)
+        };
+
+        samples.push(SampleInfo { sample_index: i as u64, timestamp_ms: first_timestamp.unwrap_or_default() * 1000.0, duration_ms: (last_timestamp.unwrap_or_default() - first_timestamp.unwrap_or_default()) * 1000.0, tag_map: map, ..Default::default() });
 
         first_timestamp = None;
+        last_timestamp = None;
     }
 
     Ok(samples)
