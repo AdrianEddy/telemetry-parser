@@ -20,6 +20,8 @@ pub struct PhoneApps {
 }
 
 impl PhoneApps {
+    pub fn possible_extensions() -> Vec<&'static str> { vec![] }
+
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
         let filename = filepath.as_ref().file_name().map(|x| x.to_string_lossy()).unwrap_or_default();
 

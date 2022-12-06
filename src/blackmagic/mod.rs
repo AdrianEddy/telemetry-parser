@@ -16,6 +16,8 @@ pub struct BlackmagicBraw {
 }
 
 impl BlackmagicBraw {
+    pub fn possible_extensions() -> Vec<&'static str> { vec!["braw"] }
+
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if memmem::find(buffer, b"Blackmagic Design").is_some() && memmem::find(buffer, b"braw_codec_bitrate").is_some() {
             Some(Self::default())

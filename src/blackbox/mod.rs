@@ -13,8 +13,6 @@ use memchr::memmem;
 mod binary;
 mod csv;
 
-// TODO: iNAV
-
 #[derive(Default)]
 pub struct BlackBox {
     pub model: Option<String>,
@@ -22,6 +20,8 @@ pub struct BlackBox {
 }
 
 impl BlackBox {
+    pub fn possible_extensions() -> Vec<&'static str> { vec!["bfl", "bbl", "csv", "txt"] }
+
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         // BBL - container format, can contain multiple logs, each starting with "H Product:Blackbox flight data recorder by Nicholas Sherlock." and ending with "End of log\0"
         // BFL - single flight log file
@@ -32,7 +32,7 @@ impl BlackBox {
                 csv: false
             });
         }
-        if memmem::find(buffer, b"\"loopIteration\",\"time\"").is_some() || memmem::find(buffer, b"loopIteration,time").is_some(){
+        if memmem::find(buffer, b"\"loopIteration\",\"time\"").is_some() || memmem::find(buffer, b"loopIteration,time").is_some() {
             return Some(Self {
                 model: util::find_between(buffer, b"\"Firmware revision\",\"", b'"'),
                 csv: true

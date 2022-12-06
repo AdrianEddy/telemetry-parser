@@ -18,14 +18,14 @@ pub struct ArduPilot {
 // .bin can be converted to .log using mission planner or https://github.com/ArduPilot/pymavlink/blob/master/tools/mavlogdump.py
 
 impl ArduPilot {
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
+    pub fn possible_extensions() -> Vec<&'static str> { vec!["bin", "log"] }
+
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if buffer.len() > 4 && buffer[..4] == [0xA3, 0x95, 0x80, 0x80] &&
            memmem::find(&buffer[..256], b"BBnNZ").is_some() &&
            memmem::find(&buffer[..256], b"Type,Length,Name,Format,Columns").is_some() {
             return Some(Self { model: Some(".bin".to_owned()) });
         }
-
-        if !filepath.as_ref().to_str().unwrap_or_default().ends_with(".log") { return None }
 
         if memmem::find(buffer, b"FMT,").is_some() &&
            memmem::find(buffer, b"PARM,").is_some() &&

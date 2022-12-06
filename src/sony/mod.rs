@@ -21,6 +21,8 @@ pub struct Sony {
     pub model: Option<String>
 }
 impl Sony {
+    pub fn possible_extensions() -> Vec<&'static str> { vec!["mp4", "mov", "mxf"] }
+
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if let Some(p1) = memmem::find(buffer, b"manufacturer=\"Sony\"") {
             return Some(Self {

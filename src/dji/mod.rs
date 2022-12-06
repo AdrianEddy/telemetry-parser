@@ -21,6 +21,8 @@ pub struct Dji {
 }
 
 impl Dji {
+    pub fn possible_extensions() -> Vec<&'static str> { vec!["mp4", "mov", "csv"] }
+
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if memmem::find(buffer, b"djmd").is_some() && memmem::find(buffer, b"DJI meta").is_some() {
             Some(Self {

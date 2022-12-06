@@ -26,6 +26,8 @@ pub struct Insta360 {
 }
 
 impl Insta360 {
+    pub fn possible_extensions() -> Vec<&'static str> { vec!["mp4", "mov", "insv"] }
+
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if buffer.len() > MAGIC.len() && &buffer[buffer.len()-MAGIC.len()..] == MAGIC {
             return Some(Insta360::default());

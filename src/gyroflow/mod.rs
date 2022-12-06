@@ -20,6 +20,8 @@ pub struct Gyroflow {
 // .gcsv format as described here: https://docs.gyroflow.xyz/logging/gcsv/
 
 impl Gyroflow {
+    pub fn possible_extensions() -> Vec<&'static str> { vec!["mp4", "mov", "gcsv"] }
+
     pub fn detect<P: AsRef<Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
         let filename = filepath.as_ref().file_name().map(|x| x.to_string_lossy()).unwrap_or_default();
 

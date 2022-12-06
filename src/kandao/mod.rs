@@ -18,6 +18,8 @@ pub struct KanDao {
 
 #[allow(unused_assignments)]
 impl KanDao {
+    pub fn possible_extensions() -> Vec<&'static str> { vec!["bin"] }
+
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if memmem::find(buffer, b"KANDAO_IMU_DATA").is_some() && memmem::find(buffer, b"GYROACC").is_some() {
             return Some(Self { model: None });

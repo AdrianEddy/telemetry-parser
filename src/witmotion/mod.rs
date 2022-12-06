@@ -26,6 +26,8 @@ pub struct WitMotion {
 }
 
 impl WitMotion {
+    pub fn possible_extensions() -> Vec<&'static str> { vec!["txt", "bin"] }
+
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if buffer.len() > 11 && buffer[0..2] == [0x55, 0x50] && buffer[11] == 0x55 {
             return Some(Self { format: Format::Binary, model: None });

@@ -15,6 +15,8 @@ pub struct Vuze {
 }
 
 impl Vuze {
+    pub fn possible_extensions() -> Vec<&'static str> { vec!["mp4", "mov"] }
+
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if memmem::find(buffer, b"bmdt").is_some() &&
            memmem::find(buffer, b"modl").is_some() &&

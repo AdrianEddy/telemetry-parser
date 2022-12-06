@@ -20,6 +20,8 @@ pub struct GoPro {
 }
 
 impl GoPro {
+    pub fn possible_extensions() -> Vec<&'static str> { vec!["mp4", "mov", "360"] }
+
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         let mut ret = None;
 

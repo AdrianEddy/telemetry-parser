@@ -17,6 +17,8 @@ pub struct RedR3d {
 }
 
 impl RedR3d {
+    pub fn possible_extensions() -> Vec<&'static str> { vec!["r3d"] }
+
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
         if buffer.len() > 8 && &buffer[4..8] == b"RED2" {
             Some(Self {

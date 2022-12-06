@@ -45,12 +45,22 @@ macro_rules! impl_formats {
                 if buf.is_empty() {
                     return Err(Error::new(ErrorKind::Other, "File is empty or there was an error trying to load it."));
                 }
+                let ext = filepath.as_ref().extension().map(|x| x.to_ascii_lowercase().to_string_lossy().to_owned().to_string());
                 $(
-                    if let Some(mut x) = <$class>::detect(&buf, &filepath) {
-                        return Ok(Input {
-                            samples: x.parse(stream, size, progress_cb, cancel_flag).ok(),
-                            inner: SupportedFormats::$name(x)
-                        });
+                    let exts = <$class>::possible_extensions();
+                    let mut check = true;
+                    if !exts.is_empty() {
+                        if let Some(ref ext) = ext {
+                            if !exts.contains(&ext.as_str()) { check = false; }
+                        }
+                    }
+                    if check {
+                        if let Some(mut x) = <$class>::detect(&buf, &filepath) {
+                            return Ok(Input {
+                                samples: x.parse(stream, size, progress_cb, cancel_flag).ok(),
+                                inner: SupportedFormats::$name(x)
+                            });
+                        }
                     }
                 )*
                 return Err(Error::new(ErrorKind::Other, "Unsupported file format"));
@@ -82,16 +92,16 @@ macro_rules! impl_formats {
 impl_formats! {
     GoPro     => gopro::GoPro,
     Sony      => sony::Sony,
-    Gyroflow  => gyroflow::Gyroflow,
-    Insta360  => insta360::Insta360,
-    BlackBox  => blackbox::BlackBox,
-    Runcam    => runcam::Runcam,
-    WitMotion => witmotion::WitMotion,
     Dji       => dji::Dji,
-    PhoneApps => phone_apps::PhoneApps,
-    ArduPilot => ardupilot::ArduPilot,
+    Insta360  => insta360::Insta360,
+    Gyroflow  => gyroflow::Gyroflow,
+    BlackBox  => blackbox::BlackBox,
     BlackmagicBraw => blackmagic::BlackmagicBraw,
     RedR3d    => red::RedR3d,
+    Runcam    => runcam::Runcam,
+    WitMotion => witmotion::WitMotion,
+    PhoneApps => phone_apps::PhoneApps,
+    ArduPilot => ardupilot::ArduPilot,
     Vuze      => vuze::Vuze,
     KanDao    => kandao::KanDao,
 }
