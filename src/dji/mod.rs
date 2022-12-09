@@ -45,7 +45,7 @@ impl Dji {
         }
 
         let mut samples = Vec::new();
-        let mut first_timestamp = 0;
+        // let mut first_timestamp = 0;
 
         let mut focal_length = None;
         let mut distortion_coeffs = None;
@@ -53,8 +53,9 @@ impl Dji {
         let mut fps = 59.94;
         let mut sensor_fps = 59.969295501708984;
         let mut sample_rate = 2000.0;
+        let mut global_quat_i = 0;
 
-        let mut first_vsync = 0;
+        // let mut first_vsync = 0;
         let mut prev_ts = 0.0;
 
         let ctx = util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64| {
@@ -84,10 +85,13 @@ impl Dji {
                             log::debug!("Metadata: {:?}", &vv);
                             insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), vv, vec![]));
                         }
-                    }
-                    if let Some(ref stream) = parsed.stream_meta {
-                        if let Some(ref meta) = stream.video_stream_meta {
-                            fps = meta.framerate as f64;
+                        if let Some(ref stream) = parsed.stream_meta {
+                            if let Some(ref meta) = stream.video_stream_meta {
+                                fps = meta.framerate as f64;
+                            }
+                        }
+                        if let Some(ref mut v) = self.frame_readout_time {
+                            *v /= fps / sensor_fps;
                         }
                     }
 
@@ -95,9 +99,9 @@ impl Dji {
 
                     let mut quats = Vec::new();
                     if let Some(ref frame) = parsed.frame_meta {
-                        let frame_ts = frame.frame_meta_header.as_ref().unwrap().frame_timestamp as i64;
-                        if info.sample_index == 0 { first_timestamp = frame_ts; }
-                        let frame_relative_ts = frame_ts - first_timestamp;
+                        // let frame_ts = frame.frame_meta_header.as_ref().unwrap().frame_timestamp as i64;
+                        // if info.sample_index == 0 { first_timestamp = frame_ts; }
+                        // let frame_relative_ts = frame_ts - first_timestamp;
 
                         if let Some(ref e) = frame.camera_frame_meta {
                             exposure_time = e.exposure_time.as_ref().and_then(|v| Some(*v.exposure_time.get(0)? as f64 / *v.exposure_time.get(1)? as f64)).unwrap_or_default() * 1000.0;
@@ -109,14 +113,14 @@ impl Dji {
                             if let Some(ref attitude) = imu.imu_attitude_after_fusion {
                                 // let ts = attitude.timestamp as i64;
                                 // println!("{} {} {} {}, vsync: {}", frame_ts, ts, frame_relative_ts, ts - frame_ts, attitude.vsync);
-                                let len = attitude.attitude.len() as f64;
+                                // let len = attitude.attitude.len() as f64;
 
-                                let vsync_duration = 1000.0 / fps.max(1.0);
-                                if first_vsync == 0 {
-                                    first_vsync = attitude.vsync;
-                                }
+                                // let vsync_duration = 1000.0 / fps.max(1.0);
+                                // if first_vsync == 0 {
+                                //     first_vsync = attitude.vsync;
+                                // }
 
-                                let frame_timestamp = (frame_relative_ts as f64 / fps_ratio) / 1000.0;
+                                // let frame_timestamp = (frame_relative_ts as f64 / fps_ratio) / 1000.0;
 
                                 // let frame_timestamp = (attitude.vsync - first_vsync) as f64 * vsync_duration;
                                 // println!("fps: {fps}, sensor_fps: {sensor_fps}, ratio: {fps_ratio}, exp: {exposure_time}, ts: {frame_timestamp}, diff: {}", frame_timestamp);
@@ -124,12 +128,20 @@ impl Dji {
 
                                 // let frame_ratio = self.frame_readout_time.unwrap() / vsync_duration;
 
-                                for (i, q) in attitude.attitude.iter().enumerate() {
-                                    let index = i as f64 - attitude.offset as f64;
-                                    let t = (index / len) * vsync_duration;
-                                    let ts = frame_timestamp + t - (exposure_time / 2.0);
+                                // let offset_ms = (1000.0 / sample_rate) * attitude.offset as f64;
+
+                                for (_i, q) in attitude.attitude.iter().enumerate() {
+                                    // let index = i as f64 - attitude.offset as f64;
+                                    // let t = (index / len) * vsync_duration;
+                                    // let ts = frame_timestamp + t - (exposure_time / 2.0);
+                                    // let quat_ts1 = frame_timestamp + ((i as f64 / len) * vsync_duration);
+                                    let quat_ts2 = (global_quat_i as f64 - attitude.offset as f64) * (1000.0 / sample_rate);
+
+                                    let ts = (quat_ts2 - exposure_time) / fps_ratio;
                                     // println!("ts: {:.2}, diff: {:.4}, vsync: {}, frame_timestamp: {}, fts: {frame_timestamp}, fts2: {frame_timestamp2}", ts, ts - prev_ts, attitude.vsync, frame_ts);
                                     prev_ts = ts;
+
+                                    global_quat_i += 1;
 
                                     if q.quaternion_w.is_nan() || q.quaternion_x.is_nan() || q.quaternion_y.is_nan() || q.quaternion_z.is_nan() {
                                         continue;
