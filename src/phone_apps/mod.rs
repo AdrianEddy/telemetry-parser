@@ -40,7 +40,7 @@ impl PhoneApps {
             Some("Sensor Logger")           => sensor_logger        ::parse(stream, size),
             Some("GF Recorder")             => gf_recorder          ::parse(stream, size),
             Some("Gyro")                    => gyro                 ::parse(stream, size),
-            Some("Sensor Logger Android")   => sensor_logger_android::parse(stream, size),
+            Some("Sensor Logger Android")   => sensor_logger_android::parse(stream, size, &self.filepath),
             Some("Sensor Record")           => sensor_record        ::parse(stream, size),
             Some("OpenCamera Sensors")      => opencamera_sensors   ::parse(stream, size, &self.filepath),
             _ => {
