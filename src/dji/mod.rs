@@ -115,7 +115,7 @@ impl Dji {
                                 // println!("{} {} {} {}, vsync: {}", frame_ts, ts, frame_relative_ts, ts - frame_ts, attitude.vsync);
                                 let len = attitude.attitude.len() as f64;
 
-                                let vsync_duration = 1000.0 / fps.max(1.0);
+                                let vsync_duration = 1000.0 / sensor_fps.max(1.0);
                                 // if first_vsync == 0 {
                                 //     first_vsync = attitude.vsync;
                                 // }
@@ -132,12 +132,33 @@ impl Dji {
 
                                 for (i, q) in attitude.attitude.iter().enumerate() {
                                     let index = i as f64 - attitude.offset as f64;
-                                    //let t = (index / len) * vsync_duration;
-                                    //let ts = frame_timestamp + t;// - (exposure_time / 2.0);
-                                    let quat_ts1 = frame_timestamp + ((index / len) * vsync_duration);
-                                    //let quat_ts2 = (global_quat_i as f64 - attitude.offset as f64) * (1000.0 / sample_rate);
+                                    let quat_ts = frame_timestamp + ((index / len) * vsync_duration);
 
-                                    let ts = (quat_ts1 - exposure_time) / fps_ratio;
+                                    /*let ts = match std::env::var("OFFSET_METHOD").as_deref() {
+                                        Ok("1.3.0") => {
+                                            quat_ts - (exposure_time / 2.0)
+                                        },
+                                        Ok("no-exp") => {
+                                            quat_ts
+                                        },
+                                        Ok("global-quat-index") => {
+                                            (global_quat_i as f64 - attitude.offset as f64) * (1000.0 / sample_rate)
+                                        },
+                                        Ok("global-quat-index-with-readout-time") => {
+                                            (global_quat_i as f64 - attitude.offset as f64) * (1000.0 / sample_rate) - (self.frame_readout_time.unwrap() / 2.0)
+                                        },
+                                        Ok("with-readout-time") => {
+                                            quat_ts - (self.frame_readout_time.unwrap() / 2.0)
+                                        },
+                                        // Default, if no env var
+                                        _ => {
+                                            quat_ts - exposure_time
+                                        }
+                                    };*/
+
+                                    let ts = quat_ts / fps_ratio;
+
+                                    // let ts = (quat_ts1 - exposure_time) / fps_ratio;
                                     // println!("ts: {:.2}, diff: {:.4}, vsync: {}, frame_timestamp: {}, fts: {frame_timestamp}, fts2: {frame_timestamp2}", ts, ts - prev_ts, attitude.vsync, frame_ts);
                                     prev_ts = ts;
 
