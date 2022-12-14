@@ -90,9 +90,9 @@ impl Insta360 {
 
         let imu_orientation = match self.model.as_deref() {
             Some("Insta360 Go")    => "xyZ",
-            Some("Insta360 GO 2")  => "yXZ",
+            Some("Insta360 GO 2")  => "XYZ",
             Some("Insta360 OneR")  => "yXZ",
-            Some("Insta360 OneRS") => "yxz",
+            Some("Insta360 OneRS") => "Xyz",
             Some("Insta360 ONE X2")=> "xZy",
             _                      => "yXZ"
         };
@@ -113,6 +113,23 @@ impl Insta360 {
                        .as_f64()?
             );
         });
+
+        crate::try_block!({
+            let md = (tag_map.get(&GroupId::Default)?.get_t(TagId::Metadata) as Option<&serde_json::Value>)?.as_object()?;
+            match (md.get("dimension").and_then(|x| x.as_object()), md.get("window_crop_info").and_then(|x| x.as_object()), md.get("offset_v3").and_then(|x| x.as_array())) {
+                (Some(dim), Some(crop_info), Some(offset_v3)) if offset_v3.len() >= 20 => {
+                    let (w, h) = (dim.get("x")?.as_i64()? as u32, dim.get("y")?.as_i64()? as u32);
+                    let sw = crop_info.get("src_width") ?.as_i64()? as u32;
+                    let sh = crop_info.get("src_height")?.as_i64()? as u32;
+                    let dw = crop_info.get("dst_width") ?.as_i64()? as u32;
+                    let dh = crop_info.get("dst_height")?.as_i64()? as u32;
+
+                    self.insert_lens_profile(tag_map, (w, h), (sw, sh), (dw, dh), &offset_v3.into_iter().filter_map(|x| x.as_f64()).collect::<Vec<f64>>());
+
+                },
+                _ => { }
+            }
+        });
     }
 
     pub fn normalize_imu_orientation(v: String) -> String {
@@ -125,5 +142,95 @@ impl Insta360 {
 
     pub fn frame_readout_time(&self) -> Option<f64> {
         self.frame_readout_time
+    }
+
+    fn insert_lens_profile(&self, tag_map: &mut GroupedTagMap, size: (u32, u32), _src: (u32, u32), dst: (u32, u32), offset_v3: &[f64]) {
+        let model = self.model.clone().unwrap_or_default().replace("Insta360 ", "");
+
+        // offset_v3: num_xi_fx_fy_cx_cy_yaw_pitch_roll_tx_ty_tz_k1_k2_k3_p1_p2_width_height_lensType_flag
+
+        let (_num, xi, fx, fy, cx, cy, yaw, pitch, roll, _tx, _ty, _tz, k1, k2, k3, p1, p2, lens_width, lens_height, _lens_type, _flag) =
+            (offset_v3[0], offset_v3[1], offset_v3[2], offset_v3[3], offset_v3[4], offset_v3[5], offset_v3[6], offset_v3[7],
+            offset_v3[8], offset_v3[9], offset_v3[10], offset_v3[11], offset_v3[12], offset_v3[13], offset_v3[14], offset_v3[15],
+            offset_v3[16], offset_v3[17], offset_v3[18], offset_v3[19], offset_v3[20]);
+
+        let c_ratio = (
+            size.0 as f64 / lens_width,
+            size.1 as f64 / lens_height
+        );
+        let f_ratio = (
+            dst.0 as f64 / size.0 as f64,
+            dst.1 as f64 / size.1 as f64
+        );
+
+        let profile = serde_json::json!({
+            "calibrated_by": "Insta360",
+            "camera_brand": "Insta360",
+            "camera_model": model,
+            "calib_dimension": { "w": size.0, "h": size.1 },
+            "orig_dimension":  { "w": size.0, "h": size.1 },
+            "frame_readout_time": self.frame_readout_time,
+            "official": true,
+            "asymmetrical": true,
+            "fisheye_params": {
+              "camera_matrix": [
+                [ fx / f_ratio.0,   0.0,              cx * c_ratio.0 ],
+                [ 0.0,              fy / f_ratio.1,   cy * c_ratio.1 ],
+                [ 0.0,              0.0,              1.0 ]
+              ],
+              "distortion_coeffs": [k1, k2, k3, p1, p2, xi]
+            },
+            "distortion_model": "insta360",
+            "sync_settings": {
+              "initial_offset": 0,
+              "initial_offset_inv": false,
+              "search_size": 0.3,
+              "max_sync_points": 5,
+              "every_nth_frame": 1,
+              "time_per_syncpoint": 0.6,
+              "do_autosync": true
+            },
+            "calibrator_version": "---"
+        });
+
+        insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::Data, "Lens profile", Json, |v| serde_json::to_string(v).unwrap(), profile, vec![]));
+
+        if pitch.abs() > 0.0 || roll.abs() > 0.0 || yaw.abs() > 0.0 {
+            const DEG2RAD: f64 = std::f64::consts::PI / 180.0;
+            let yaw = yaw * DEG2RAD;
+            let pitch = pitch * DEG2RAD;
+            let roll = roll * DEG2RAD;
+            let (sr, cr) = (yaw.sin(), yaw.cos());
+            let (sp, cp) = (pitch.sin(), pitch.cos());
+            let (sy, cy) = (roll.sin(), roll.cos());
+            let mat = [
+                [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+                [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+                [-sp,     cp * sr,                cp * cr],
+            ];
+            let rotate = |vec: &mut TimeVector3<f64>| {
+                let mut rotated = [0.0f64; 3];
+                for i in 0..3 {
+                    rotated[i] += mat[i][0] * vec.x;
+                    rotated[i] += mat[i][1] * vec.y;
+                    rotated[i] += mat[i][2] * vec.z;
+                }
+                vec.x = rotated[0];
+                vec.y = rotated[1];
+                vec.z = rotated[2];
+            };
+
+            for group in [GroupId::Gyroscope, GroupId::Accelerometer] {
+                if let Some(x) = tag_map.get_mut(&group) {
+                    if let Some(xx) = x.get_mut(&TagId::Data) {
+                        if let TagValue::Vec_TimeVector3_f64(arr) = &mut xx.value {
+                            for v in arr.get_mut().iter_mut() {
+                                rotate(v);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
