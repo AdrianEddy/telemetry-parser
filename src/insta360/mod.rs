@@ -88,13 +88,27 @@ impl Insta360 {
             });
         }
 
-        let imu_orientation = match self.model.as_deref() {
-            Some("Insta360 Go")    => "xyZ",
-            Some("Insta360 GO 2")  => "XYZ",
-            Some("Insta360 OneR")  => "yXZ",
-            Some("Insta360 OneRS") => "Xyz",
-            Some("Insta360 ONE X2")=> "xZy",
-            _                      => "yXZ"
+        let has_offset_v3 = crate::try_block!(bool, {
+            (tag_map.get(&GroupId::Default)?.get_t(TagId::Metadata) as Option<&serde_json::Value>)?.as_object()?.get("offset_v3")?.as_array()?.len() >= 20
+        }).unwrap_or_default();
+        log::debug!("Has offset_v3: {has_offset_v3}");
+
+        let imu_orientation = if has_offset_v3 {
+            match self.model.as_deref() {
+                Some("Insta360 GO 2")  => "XYZ",
+                Some("Insta360 OneR")  => "Xyz",
+                Some("Insta360 OneRS") => "Xyz",
+                _                      => "Xyz"
+            }
+        } else {
+            match self.model.as_deref() {
+                Some("Insta360 Go")    => "xyZ",
+                Some("Insta360 GO 2")  => "yXZ",
+                Some("Insta360 OneR")  => "yXZ",
+                Some("Insta360 OneRS") => "yxz",
+                Some("Insta360 ONE X2")=> "xZy",
+                _                      => "yXZ"
+            }
         };
 
         if let Some(x) = tag_map.get_mut(&GroupId::Gyroscope) {
@@ -163,12 +177,15 @@ impl Insta360 {
             dst.1 as f64 / size.1 as f64
         );
 
+        let output_size = Self::get_output_size(size.0, size.1);
+
         let profile = serde_json::json!({
             "calibrated_by": "Insta360",
             "camera_brand": "Insta360",
             "camera_model": model,
             "calib_dimension": { "w": size.0, "h": size.1 },
             "orig_dimension":  { "w": size.0, "h": size.1 },
+            "output_dimension": { "w": output_size.0, "h": output_size.1 },
             "frame_readout_time": self.frame_readout_time,
             "official": true,
             "asymmetrical": true,
@@ -231,6 +248,15 @@ impl Insta360 {
                     }
                 }
             }
+        }
+    }
+
+    fn get_output_size(width: u32, height: u32) -> (u32, u32) {
+        let aspect = (width as f64 / height as f64 * 100.0) as u32;
+        match aspect {
+            133 => (width, (width as f64 / 1.7777777777777).round() as u32), // 4:3 -> 16:9
+            100 => (width, (width as f64 / 1.7777777777777).round() as u32), // 1:1 -> 16:9
+            _   => (width, height)
         }
     }
 }

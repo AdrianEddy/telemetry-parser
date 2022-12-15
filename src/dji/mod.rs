@@ -235,12 +235,14 @@ impl Dji {
         let model = self.model.clone().unwrap_or_default();
         let half_width = width as f64 / 2.0;
         let half_height = height as f64 / 2.0;
+        let output_size = Self::get_output_size(width, height);
         serde_json::json!({
             "calibrated_by": "DJI",
             "camera_brand": "DJI",
             "camera_model": model,
-            "calib_dimension": { "w": width, "h": height },
-            "orig_dimension":  { "w": width, "h": height },
+            "calib_dimension":  { "w": width, "h": height },
+            "orig_dimension":   { "w": width, "h": height },
+            "output_dimension": { "w": output_size.0, "h": output_size.1 },
             "frame_readout_time": self.frame_readout_time,
             "official": true,
             "fisheye_params": {
@@ -262,5 +264,13 @@ impl Dji {
             },
             "calibrator_version": "---"
         })
+    }
+
+    fn get_output_size(width: u32, height: u32) -> (u32, u32) {
+        let aspect = (width as f64 / height as f64 * 100.0) as u32;
+        match aspect {
+            133 => (width, (width as f64 / 1.7777777777777).round() as u32), // 4:3 -> 16:9
+            _   => (width, height)
+        }
     }
 }
