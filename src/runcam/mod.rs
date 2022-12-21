@@ -33,7 +33,7 @@ impl Runcam {
         let match_hdr = |line: &[u8]| -> bool {
             &gyro_buf[0..line.len().min(gyro_buf.len())] == line
         };
-        if match_hdr(b"time,x,y,z,ax,ay,az") || match_hdr(b"time,rx,ry,rz,ax,ay,az") || match_hdr(b"time,x,y,z") {
+        if match_hdr(b"time,x,y,z,ax,ay,az") || match_hdr(b"time,rx,ry,rz,ax,ay,az") || match_hdr(b"time,x,y,z") || match_hdr(b"time(ms),x,y,z") {
             let model = if match_hdr(b"time,rx,ry,rz,ax,ay,az,temp") {
                 // Mobius uses same log format as RunCam with an added temp field
                 Some("Mobius Maxi 4K".to_owned())
@@ -102,7 +102,7 @@ impl Runcam {
             .from_reader(Cursor::new(gyro_buf));
         for row in csv.records() {
             let row = row?;
-            if &row[0] == "time" { continue; }
+            if &row[0] == "time" || &row[0] == "time(ms)" { continue; }
 
             let time = row[0].parse::<f64>().map_err(e)? / 1_000.0;
             if row.len() >= 4 {
