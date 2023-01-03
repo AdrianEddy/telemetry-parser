@@ -178,6 +178,10 @@ impl Dji {
                                     // Rotate Y axis 180 deg for horizon lock
                                     let quat = util::multiply_quats((0.0, 0.0, 1.0, 0.0), (quat.w, quat.x, quat.y, quat.z));
 
+                                    if quat.w == 0.0 && quat.x == 0.0 && quat.y == 0.0 && quat.z == 0.0 {
+                                        continue;
+                                    }
+
                                     quats.push(TimeQuaternion {
                                         t: ts,
                                         v: quat,
