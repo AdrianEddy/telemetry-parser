@@ -122,7 +122,11 @@ impl BlackmagicBraw {
     }
 
     pub fn camera_type(&self) -> String {
-        "Blackmagic RAW".to_owned()
+        if self.model.is_some() {
+            "Blackmagic".to_owned()
+        } else {
+            "Blackmagic RAW".to_owned()
+        }
     }
 
     pub fn frame_readout_time(&self) -> Option<f64> {

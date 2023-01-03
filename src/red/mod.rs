@@ -17,9 +17,26 @@ pub struct RedR3d {
 }
 
 impl RedR3d {
-    pub fn possible_extensions() -> Vec<&'static str> { vec!["r3d"] }
+    pub fn possible_extensions() -> Vec<&'static str> { vec!["r3d", "mp4", "mov"] }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
+        if let Some(ext) = filepath.as_ref().extension() {
+            if ext.to_ascii_lowercase() != "r3d" {
+                if filepath.as_ref().with_extension("R3D").exists() {
+                    return Some(Self {
+                        model: None,
+                        record_framerate: None,
+                        all_parts: Self::detect_all_parts(filepath.as_ref().with_extension("R3D").as_path()).unwrap_or_default()
+                    })
+                }
+                if filepath.as_ref().with_extension("").exists() {
+                    let all_parts = Self::detect_all_parts(filepath.as_ref().with_extension("").as_path()).unwrap_or_default();
+                    if all_parts.is_empty() { return None; }
+                    return Some(Self { model: None, record_framerate: None, all_parts });
+                }
+                return None;
+            }
+        }
         if buffer.len() > 8 && &buffer[4..8] == b"RED2" {
             Some(Self {
                 model: None,
@@ -107,8 +124,18 @@ impl RedR3d {
                     stream.seek(SeekFrom::Current(-8))?;
                     stream.read_exact(&mut data)?;
                     if data.len() > 126 {
-                        if let Ok(md) = self.parse_meta(&data[126..]) {
-                            util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), md, vec![]));
+                        if let Some(offs) = memchr::memmem::find(&data, b"rdx\x02\x00\x00\x00\x00\x00\x00\x00\x01RED ") {
+                            if let Ok(size) = (&data[offs + 16..]).read_u16::<BigEndian>() {
+                                if let Ok(md) = self.parse_meta(&data[offs + 16 + 2..offs + 16 + 2 + size as usize]) {
+                                    if let Some(v) = md.get("focal_length").and_then(|v| v.as_f64()) {
+                                        util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::LensZoomNative, "Focal length", f32, |v| format!("{v:.3}"), v as f32, vec![]));
+                                    }
+                                    if let Some(v) = md.get("lens_name").and_then(|v| v.as_str()) {
+                                        util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::Name, "Lens name", String, |v| v.clone(), v.into(), vec![]));
+                                    }
+                                    util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), md, vec![]));
+                                }
+                            }
                         }
                     }
                 } else {
@@ -168,6 +195,10 @@ impl RedR3d {
                     0x56 => "file_name",
                     0x65 => "firmware_revision",
                     0x66 => "record_framerate",
+                    0x6B => "focal_length",
+                    0x6C => "focus_distance",
+                    0x74 => "lens_focus_distance_near",
+                    0x75 => "lens_focus_distance_far",
                     0x6E => "lens_brand",
                     0x70 => "lens_name",
                     0x71 => "camera_network_name",
@@ -226,7 +257,11 @@ impl RedR3d {
     }
 
     pub fn camera_type(&self) -> String {
-        "RED RAW".to_owned()
+        if self.model.is_some() {
+            "RED".to_owned()
+        } else {
+            "RED RAW".to_owned()
+        }
     }
 
     pub fn frame_readout_time(&self) -> Option<f64> {
