@@ -75,8 +75,13 @@ impl RedR3d {
         let mut accl = Vec::new();
         let mut first_timestamp = None;
         let mut map = GroupedTagMap::new();
+        let mut samples = Vec::new();
 
         let all_parts = self.all_parts.clone();
+        let mut data4096 = Vec::with_capacity(4096);
+        data4096.resize(4096, 0);
+
+        let mut csv = String::new();
 
         let total_count = all_parts.len() as f64;
 
@@ -91,7 +96,7 @@ impl RedR3d {
                 stream.read_exact(&mut name)?;
                 let aligned_size = ((size as f64 / 4096.0).ceil() * 4096.0) as usize;
                 // log::debug!("Name: {}{}{}{}, size: {}", name[0] as char, name[1] as char, name[2] as char, name[3] as char, aligned_size);
-                if &name == b"RDX\x02" {
+                if &name == b"RDX\x01" || &name == b"RDX\x02" {
                     let mut data = Vec::with_capacity(aligned_size);
                     data.resize(aligned_size, 0);
                     stream.seek(SeekFrom::Current(-8))?;
@@ -100,21 +105,25 @@ impl RedR3d {
                         let mut data = &data[4096..size as usize];
 
                         crate::try_block!({
-                            while let Ok(timestamp) = data.read_u64::<BigEndian>() {
-                                if first_timestamp.is_none() {
-                                    first_timestamp = Some(timestamp);
+                            if &name == b"RDX\x01" {
+                                csv.push_str(std::str::from_utf8(data).ok()?);
+                            } else {
+                                while let Ok(timestamp) = data.read_u64::<BigEndian>() {
+                                    if first_timestamp.is_none() {
+                                        first_timestamp = Some(timestamp);
+                                    }
+                                    let t = (timestamp - first_timestamp.unwrap()) as f64 / 1000000.0;
+                                    accl.push(TimeVector3 { t,
+                                        x: -data.read_i16::<BigEndian>().ok()? as f64 / 100.0,
+                                        y: -data.read_i16::<BigEndian>().ok()? as f64 / 100.0,
+                                        z: -data.read_i16::<BigEndian>().ok()? as f64 / 100.0
+                                    });
+                                    gyro.push(TimeVector3 { t,
+                                        x: data.read_i16::<BigEndian>().ok()? as f64 / 10.0,
+                                        y: data.read_i16::<BigEndian>().ok()? as f64 / 10.0,
+                                        z: data.read_i16::<BigEndian>().ok()? as f64 / 10.0
+                                    });
                                 }
-                                let t = (timestamp - first_timestamp.unwrap()) as f64 / 1000000.0;
-                                accl.push(TimeVector3 { t,
-                                    x: -data.read_i16::<BigEndian>().ok()? as f64 / 100.0,
-                                    y: -data.read_i16::<BigEndian>().ok()? as f64 / 100.0,
-                                    z: -data.read_i16::<BigEndian>().ok()? as f64 / 100.0
-                                });
-                                gyro.push(TimeVector3 { t,
-                                    x: data.read_i16::<BigEndian>().ok()? as f64 / 10.0,
-                                    y: data.read_i16::<BigEndian>().ok()? as f64 / 10.0,
-                                    z: data.read_i16::<BigEndian>().ok()? as f64 / 10.0
-                                });
                             }
                         });
                     }
@@ -126,17 +135,21 @@ impl RedR3d {
                     if data.len() > 126 {
                         if let Some(offs) = memchr::memmem::find(&data, b"rdx\x02\x00\x00\x00\x00\x00\x00\x00\x01RED ") {
                             if let Ok(size) = (&data[offs + 16..]).read_u16::<BigEndian>() {
-                                if let Ok(md) = self.parse_meta(&data[offs + 16 + 2..offs + 16 + 2 + size as usize]) {
-                                    if let Some(v) = md.get("focal_length").and_then(|v| v.as_f64()) {
-                                        util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::LensZoomNative, "Focal length", f32, |v| format!("{v:.3}"), v as f32, vec![]));
-                                    }
-                                    if let Some(v) = md.get("lens_name").and_then(|v| v.as_str()) {
-                                        util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::Name, "Lens name", String, |v| v.clone(), v.into(), vec![]));
-                                    }
-                                    util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), md, vec![]));
-                                }
+                                let _ = self.parse_meta(&data[offs + 16 + 2..offs + 16 + 2 + size as usize], &mut map);
                             }
                         }
+                    }
+                } else if &name == b"RDI\x01" {
+                    if aligned_size >= 4096 {
+                        stream.read_exact(&mut data4096)?;
+                        stream.seek(SeekFrom::Current(aligned_size as i64 - 8 - 4096))?;
+                        if let Ok(size) = (&data4096[86..]).read_u16::<BigEndian>() {
+                            let mut per_frame_map = GroupedTagMap::new();
+                            let _ = self.parse_meta(&data4096[88..88 + size as usize], &mut per_frame_map);
+                            samples.push(SampleInfo { tag_map: Some(per_frame_map), ..Default::default() });
+                        }
+                    } else {
+                        stream.seek(SeekFrom::Current(aligned_size as i64 - 8))?;
                     }
                 } else {
                     stream.seek(SeekFrom::Current(aligned_size as i64 - 8))?;
@@ -147,6 +160,9 @@ impl RedR3d {
                     progress_cb((i as f64 + (stream.stream_position()? as f64 / filesize as f64)) / total_count);
                 }
             }
+        }
+        if !csv.is_empty() {
+            util::insert_tag(&mut map, tag!(parsed GroupId::Default,   TagId::Custom("CSV".into()), "Custom CSV data", String, |v| v.clone(), csv, vec![]));
         }
 
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), accl, vec![]));
@@ -163,12 +179,12 @@ impl RedR3d {
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
 
-        Ok(vec![
-            SampleInfo { tag_map: Some(map), ..Default::default() }
-        ])
+        samples.insert(0, SampleInfo { tag_map: Some(map), ..Default::default() });
+
+        Ok(samples)
     }
 
-    fn parse_meta(&mut self, mut data: &[u8]) -> Result<serde_json::Value> {
+    fn parse_meta(&mut self, mut data: &[u8], map: &mut GroupedTagMap) -> Result<()> {
         let mut md = serde_json::Map::<String, serde_json::Value>::new();
         while let Ok(size) = data.read_u16::<BigEndian>() {
             if size > 2 {
@@ -249,7 +265,16 @@ impl RedR3d {
                 break;
             }
         }
-        Ok(serde_json::Value::Object(md))
+        if !md.is_empty() {
+            if let Some(v) = md.get("focal_length").and_then(|v| v.as_f64()) {
+                util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::LensZoomNative, "Focal length", f32, |v| format!("{v:.3}"), v as f32, vec![]));
+            }
+            if let Some(v) = md.get("lens_name").and_then(|v| v.as_str()) {
+                util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::Name, "Lens name", String, |v| v.clone(), v.into(), vec![]));
+            }
+            util::insert_tag(map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), serde_json::Value::Object(md), vec![]));
+        }
+        Ok(())
     }
 
     pub fn normalize_imu_orientation(v: String) -> String {
