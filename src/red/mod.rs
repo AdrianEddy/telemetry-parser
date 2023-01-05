@@ -17,7 +17,7 @@ pub struct RedR3d {
 }
 
 impl RedR3d {
-    pub fn possible_extensions() -> Vec<&'static str> { vec!["r3d", "mp4", "mov"] }
+    pub fn possible_extensions() -> Vec<&'static str> { vec!["r3d", "mp4", "mov", "mxf"] }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
         if let Some(ext) = filepath.as_ref().extension() {
