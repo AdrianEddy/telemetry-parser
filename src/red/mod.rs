@@ -4,6 +4,7 @@
 use std::io::*;
 use std::path::Path;
 use std::sync::{ Arc, atomic::AtomicBool };
+use std::collections::HashMap;
 
 use crate::tags_impl::*;
 use crate::*;
@@ -53,12 +54,14 @@ impl RedR3d {
         if let Some(filename) = path.file_name().map(|x| x.to_string_lossy()) {
             if let Some(pos) = filename.rfind('_') {
                 let filename_base = &filename[0..pos + 1];
+                let rmd = format!("{}.rmd", &filename[0..pos]).to_ascii_lowercase();
 
                 if let Some(parent) = path.parent() {
                     for x in parent.read_dir()? {
                         let x = x?;
                         let fname = x.file_name().to_string_lossy().to_string();
-                        if fname.starts_with(filename_base) && fname.to_lowercase().ends_with(".r3d") {
+                        let fname_lower = fname.to_lowercase();
+                        if (fname.starts_with(filename_base) && fname_lower.ends_with(".r3d")) || (fname_lower == rmd) {
                             if let Some(p) = x.path().to_str() {
                                 ret.push(p.to_string());
                             }
@@ -82,10 +85,16 @@ impl RedR3d {
         data4096.resize(4096, 0);
 
         let mut csv = String::new();
+        let mut rmd = HashMap::<String, String>::new();
 
         let total_count = all_parts.len() as f64;
 
         for (i, file) in all_parts.into_iter().enumerate() {
+            if file.to_ascii_lowercase().ends_with(".rmd") {
+                rmd.extend(Self::parse_rmd(&file));
+                continue;
+            }
+
             let stream = std::fs::File::open(file)?;
             let filesize = stream.metadata()?.len() as usize;
 
@@ -164,7 +173,35 @@ impl RedR3d {
         if !csv.is_empty() {
             util::insert_tag(&mut map, tag!(parsed GroupId::Default,   TagId::Custom("CSV".into()), "Custom CSV data", String, |v| v.clone(), csv, vec![]));
         }
-
+        if !rmd.is_empty() {
+            if let Some(Ok(fps)) = rmd.get("frame_rate_override").map(|x| x.parse::<f64>()) {
+                self.record_framerate = Some(fps);
+            }
+            if let Some(v) = rmd.get("lens") {
+                util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::Name, "Lens name", String, |v| v.clone(), v.into(), vec![]));
+            }
+            crate::try_block!({
+                if let TagValue::Json(ref mut md) = map.get_mut(&GroupId::Default)?.get_mut(&TagId::Metadata)?.value {
+                    if let Some(md) = md.get_mut().as_object_mut() {
+                        for (k, v) in rmd.drain() {
+                            if k == "fittype" {
+                                if v.starts_with("Fit Width ") || v.starts_with("Fit Height ") {
+                                    if let Ok(num) = v.replace("Fit Width ", "").replace("Fit Height ", "").replace("x", "").parse::<f64>() {
+                                        if v.starts_with("Fit Width") {
+                                            md.insert("horizontal_stretch".into(), num.into());
+                                        } else {
+                                            md.insert("vertical_stretch".into(), num.into());
+                                        }
+                                    }
+                                }
+                            } else {
+                                md.insert(k, v.into());
+                            }
+                        }
+                    }
+                }
+            });
+        }
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), accl, vec![]));
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]));
 
@@ -275,6 +312,55 @@ impl RedR3d {
             util::insert_tag(map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), serde_json::Value::Object(md), vec![]));
         }
         Ok(())
+    }
+
+    fn parse_rmd(file: &str) -> HashMap<String, String> {
+        let mut rmd = HashMap::<String, String>::new();
+        if let Ok(contents) = std::fs::read_to_string(file) {
+            let contents = contents.as_bytes();
+            let mut find = |name: &str, typ| {
+                if let Some(v) = util::find_between(&contents, format!("<{} type=\"{}\" value=\"", name, typ).as_bytes(), b'"') {
+                    if !v.is_empty() {
+                        rmd.insert(name.to_string(), v
+                            .replace("&quot;", "\"")
+                            .replace("&amp;", "&")
+                            .replace("&lt;", "<")
+                            .replace("&gt;", ">")
+                        );
+                    }
+                }
+            };
+            find("fittype", "string");
+            find("unit", "string");
+            find("location", "string");
+            find("focal_length", "string");
+            find("production_name", "string");
+            find("aperture", "string");
+            find("director", "string");
+            find("camera_operator", "string");
+            find("focus_distance", "string");
+            find("copyright", "string");
+            find("director_of_photography", "string");
+            find("take", "string");
+            find("lens", "string");
+            find("scene", "string");
+            find("shot", "string");
+            find("label", "string");
+            find("video_slate_position", "int");
+            find("poster_frame", "int");
+            find("added_r3d_markers", "bool");
+
+            if let Some(n) = util::find_between(&contents, b"<frame_rate_override num=\"", b'"') {
+                if let Some(d) = util::find_between(&contents, format!("<frame_rate_override num=\"{n}\" den=\"").as_bytes(), b'"') {
+                    match (n.parse::<u32>(), d.parse::<u32>()) {
+                        (Ok(n), Ok(d)) if n > 0 && d > 0 => { rmd.insert("frame_rate_override".into(), format!("{:.3}", n as f64 / d as f64)); }
+                        _ => { }
+                    }
+                }
+            }
+        }
+
+        rmd
     }
 
     pub fn normalize_imu_orientation(v: String) -> String {
