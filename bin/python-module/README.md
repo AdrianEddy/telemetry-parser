@@ -19,6 +19,7 @@ Library to parse real-time metadata embedded in video files or telemetry from ot
 - [x] WitMotion (WT901SDCL binary and *.txt)
 - [x] Vuze (VuzeXR)
 - [x] KanDao (Obisidian Pro)
+- [x] [CAMM format](https://developers.google.com/streetview/publish/camm-spec)
 - [ ] TODO DJI flight logs (*.dat, *.txt)
 
 # Example usage:
