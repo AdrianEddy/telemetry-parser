@@ -15,11 +15,14 @@ pub struct Camm {
     frame_readout_time: Option<f64>
 }
 
+// We could parse that too
+// https://github.com/google/spatial-media/blob/master/docs/spherical-video-v2-rfc.md
+
 impl Camm {
     pub fn possible_extensions() -> Vec<&'static str> { vec!["mp4", "mov"] }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
-        if let Some(camm_pos) = memmem::find(buffer, b"camm") {
+        for camm_pos in memmem::find_iter(buffer, b"camm") {
             if buffer.len() > 16 + camm_pos && &buffer[4..8] == b"ftyp" && &buffer[camm_pos-4-4-4-4..camm_pos-4-4-4] == b"stsd" {
                 return Some(Self::default());
             }
@@ -33,6 +36,7 @@ impl Camm {
         let mut magn = Vec::new();
         let mut pos = Vec::new();
         let mut quats = Vec::new();
+        let mut gps = Vec::new();
 
         let mut samples = Vec::new();
 
@@ -74,7 +78,6 @@ impl Camm {
                             let _pixel_exposure_time = d.read_i32::<LittleEndian>().ok()?;
                             let rolling_shutter_skew_time = d.read_i32::<LittleEndian>().ok()?;
                             self.frame_readout_time = Some(rolling_shutter_skew_time as f64 / 1000000.0); // nanoseconds to milliseconds
-                            // TODO add to map
                         },
                         2 => { // gyro
                             gyro.push(TimeVector3 { t: info.timestamp_ms / 1000.0,
@@ -91,32 +94,48 @@ impl Camm {
                             });
                         },
                         4 => { // position
-                            pos.push(TimeVector3 { t: info.timestamp_ms / 1000.0,
+                            pos.push(TimeVector3 { t: info.timestamp_ms,
                                 x: d.read_f32::<LittleEndian>().ok()? as f64,
                                 y: d.read_f32::<LittleEndian>().ok()? as f64,
                                 z: d.read_f32::<LittleEndian>().ok()? as f64
                             });
-                            // TODO add to map
                         },
                         5 => { // minimal gps
-                            let _latitude  = d.read_f64::<LittleEndian>().ok()?; // degrees
-                            let _longitude = d.read_f64::<LittleEndian>().ok()?; // degrees
-                            let _altitude  = d.read_f64::<LittleEndian>().ok()?; // degrees
-                            // TODO add to map
+                            let latitude  = d.read_f64::<LittleEndian>().ok()?; // degrees
+                            let longitude = d.read_f64::<LittleEndian>().ok()?; // degrees
+                            let altitude  = d.read_f64::<LittleEndian>().ok()?; // degrees
+                            gps.push(GpsData {
+                                is_acquired: true,
+                                unix_timestamp: info.timestamp_ms / 1000.0,
+                                lat: latitude,
+                                lon: longitude,
+                                speed: 0.0,
+                                track: 0.0,
+                                altitude
+                            });
                         },
                         6 => { // gps
-                            let _time_gps_epoch      = d.read_f64::<LittleEndian>().ok()?; // seconds
-                            let _gps_fix_type        = d.read_i32::<LittleEndian>().ok()?;
-                            let _latitude            = d.read_f64::<LittleEndian>().ok()?; // degrees
-                            let _longitude           = d.read_f64::<LittleEndian>().ok()?; // degrees
-                            let _altitude            = d.read_f32::<LittleEndian>().ok()?; // meters
+                            let time_gps_epoch      = d.read_f64::<LittleEndian>().ok()?; // seconds
+                            let gps_fix_type        = d.read_i32::<LittleEndian>().ok()?; // 0 (no fix), 2 (2D fix), 3 (3D fix)
+                            let latitude            = d.read_f64::<LittleEndian>().ok()?; // degrees
+                            let longitude           = d.read_f64::<LittleEndian>().ok()?; // degrees
+                            let altitude            = d.read_f32::<LittleEndian>().ok()? as f64; // meters
                             let _horizontal_accuracy = d.read_f32::<LittleEndian>().ok()?; // meters
                             let _vertical_accuracy   = d.read_f32::<LittleEndian>().ok()?; // meters
                             let _velocity_east       = d.read_f32::<LittleEndian>().ok()?; // meters/seconds
                             let _velocity_north      = d.read_f32::<LittleEndian>().ok()?; // meters/seconds
                             let _velocity_up         = d.read_f32::<LittleEndian>().ok()?; // meters/seconds
                             let _speed_accuracy      = d.read_f32::<LittleEndian>().ok()?; // meters/seconds
-                            // TODO add to map
+
+                            gps.push(GpsData {
+                                is_acquired: gps_fix_type > 0,
+                                unix_timestamp: time_gps_epoch,
+                                lat: latitude,
+                                lon: longitude,
+                                speed: 0.0, // TODO
+                                track: 0.0, // TODO
+                                altitude
+                            });
                         },
                         7 => { // magnetic_field
                             magn.push(TimeVector3 { t: info.timestamp_ms / 1000.0,
@@ -138,7 +157,9 @@ impl Camm {
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), accl, vec![]));
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]));
         util::insert_tag(&mut map, tag!(parsed GroupId::Magnetometer,  TagId::Data, "Magnetometer data",  Vec_TimeVector3_f64, |v| format!("{:?}", v), magn, vec![]));
+        util::insert_tag(&mut map, tag!(parsed GroupId::Position3D,    TagId::Data, "3D position data",   Vec_TimeVector3_f64, |v| format!("{:?}", v), pos, vec![]));
         util::insert_tag(&mut map, tag!(parsed GroupId::Quaternion,    TagId::Data, "Quaternion data",    Vec_TimeQuaternion_f64, |v| format!("{:?}", v), quats, vec![]));
+        util::insert_tag(&mut map, tag!(parsed GroupId::GPS,           TagId::Data, "GPS data",           Vec_GpsData, |v| format!("{:?}", v), gps, vec![]));
 
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "m/s²".into(),  Vec::new()));
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Unit, "Gyroscope unit",     String, |v| v.to_string(), "rad/s".into(), Vec::new()));

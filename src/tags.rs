@@ -12,6 +12,7 @@ declare_groups! {
     Accelerometer,
     Magnetometer,
     Quaternion,
+    Position3D,
     IBIS,
     LensOSS,
     GravityVector,
