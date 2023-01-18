@@ -15,8 +15,23 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_c
     let mut index = 0;
     let mut id = [0u8; 16];
     while let Ok(_) = stream.read_exact(&mut id) {
+        if &id[0..4] != &[0x06, 0x0e, 0x2b, 0x34] {
+            log::warn!("Unknown ID {} at 0x{:08x}", util::to_hex(&id), stream.stream_position()? - 16);
+            while let Ok(byte) = stream.read_u8() {
+                if byte == 0x06 {
+                    let mut id2 = [0u8; 3];
+                    stream.read_exact(&mut id2)?;
+                    if id2 == [0x0e, 0x2b, 0x34] {
+                        stream.seek(SeekFrom::Current(-4))?;
+                        break;
+                    }
+                    stream.seek(SeekFrom::Current(-3))?;
+                }
+            }
+            continue;
+        }
+
         let length = read_ber(&mut stream)?;
-        if length == 0 { break; }
 
         if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) { break; }
         if size > 0 {
