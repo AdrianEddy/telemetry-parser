@@ -16,6 +16,7 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_c
     let mut id = [0u8; 16];
     while let Ok(_) = stream.read_exact(&mut id) {
         let length = read_ber(&mut stream)?;
+        if length == 0 { break; }
 
         if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) { break; }
         if size > 0 {
