@@ -1,6 +1,6 @@
 [package]
 name = "gyro2bb"
-version = "0.2.7"
+version = "0.2.8"
 authors = ["Adrian <adrian.eddy@gmail.com>"]
 edition = "2021"
 
