@@ -9,12 +9,6 @@ pub struct State {
     pub v: [i32; 3], // decoder's angular velocity
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct DequantResult {
-    pub new_state: State,
-    pub quats_put: usize,
-}
-
 impl State {
     pub fn new() -> State {
         Self::default()
