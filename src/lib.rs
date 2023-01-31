@@ -16,6 +16,7 @@ mod red;
 mod vuze;
 mod kandao;
 mod camm;
+mod esplog;
 
 pub mod tags_impl;
 pub mod util;
@@ -106,4 +107,5 @@ impl_formats! {
     Vuze      => vuze::Vuze,
     KanDao    => kandao::KanDao,
     Camm      => camm::Camm,
+    EspLog    => esplog::EspLog,
 }
