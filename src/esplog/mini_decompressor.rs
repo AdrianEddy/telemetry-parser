@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-use std::fmt::{Debug, Display};
-use std::ops::{Add, Div, Mul, Neg, Sub};
+use std::fmt::{Debug};
 
 pub const FIX_MULT : i32 = 27;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct State {
     pub v: [i32; 3], // decoder's angular velocity
 }
@@ -18,7 +17,7 @@ pub struct DequantResult {
 
 impl State {
     pub fn new() -> State {
-        State { v: [0, 0, 0] }
+        Self::default()
     }
 
     pub fn dequant_one(&mut self, data: &[i8], qp: u8) -> Option<[i32; 3]> {

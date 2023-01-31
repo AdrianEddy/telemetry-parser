@@ -28,7 +28,7 @@ impl EspLog {
     }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
-        if buffer.len() > 7 && buffer[0..7] == [0x45, 0x73, 0x70, 0x4c, 0x6f, 0x67, 0x30] {
+        if buffer.len() > 7 && &buffer[0..7] == b"EspLog0" {
             return Some(Self { model: None });
         }
         None
@@ -58,11 +58,11 @@ impl EspLog {
         let mut cur_time = 0.0;
         let mut orientation = "xyz".to_string();
         let mut res = || {
-            loop {
+            while let Ok(byte) = stream.read_u8() {
                 if cancel_flag.load(Ordering::Relaxed) {
                     break;
                 }
-                match stream.read_u8()? {
+                match byte {
                     0x01 => {
                         // gyro setup
                         if stream.read_u8()? != 0x01 {
@@ -153,9 +153,7 @@ impl EspLog {
         // as a result of power failure and this is completely OK
         let res = res();
         if let Err(e) = res {
-            if e.kind() != ErrorKind::UnexpectedEof {
-                log::warn!("Unknown error during decode: {}", e);
-            }
+            log::warn!("Unknown error during decode: {}", e);
         }
 
         // If we could not decode any samples, then this is definitely an error
