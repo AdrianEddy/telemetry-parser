@@ -174,9 +174,9 @@ impl RedR3d {
             util::insert_tag(&mut map, tag!(parsed GroupId::Default,   TagId::Custom("CSV".into()), "Custom CSV data", String, |v| v.clone(), csv, vec![]));
         }
         if !rmd.is_empty() {
-            if let Some(Ok(fps)) = rmd.get("frame_rate_override").map(|x| x.parse::<f64>()) {
+            /*if let Some(Ok(fps)) = rmd.get("frame_rate_override").map(|x| x.parse::<f64>()) {
                 self.record_framerate = Some(fps);
-            }
+            }*/
             if let Some(v) = rmd.get("lens") {
                 util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::Name, "Lens name", String, |v| v.clone(), v.into(), vec![]));
             }
