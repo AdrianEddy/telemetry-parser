@@ -122,9 +122,9 @@ impl EspLog {
                         // accel data
                         for _ in 0..accel_blk_size {
                             accels.push([
-                                -stream.read_i16::<LittleEndian>()?,
-                                -stream.read_i16::<LittleEndian>()?,
-                                -stream.read_i16::<LittleEndian>()?,
+                                stream.read_i16::<LittleEndian>()?,
+                                stream.read_i16::<LittleEndian>()?,
+                                stream.read_i16::<LittleEndian>()?,
                             ]);
                         }
                     }
