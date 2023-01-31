@@ -9,9 +9,11 @@ use std::sync::{
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use crate::esplog::mini_decompressor::{decompress_block, Quat, State};
+use crate::esplog::mini_decompressor::{decompress_block, State};
 use crate::tags_impl::*;
 use crate::*;
+
+use self::mini_decompressor::FIX_MULT;
 
 mod mini_decompressor;
 
@@ -51,9 +53,8 @@ impl EspLog {
         let mut accel_range = 0i32;
         let mut state = State::new();
         let mut tmp_quats = vec![];
-        let mut quats: Vec<Quat> = vec![];
+        let mut rates: Vec<[i32; 3]> = vec![];
         let mut accels: Vec<[i16; 3]> = vec![];
-        let mut prev_quat = Quat::default();
         let mut cur_time = 0.0;
         let mut orientation = "xyz".to_string();
         let mut res = || {
@@ -68,26 +69,25 @@ impl EspLog {
                             return Err(Error::new(ErrorKind::Other, "Unsupported algo revision"));
                         }
                         let blk_size = stream.read_u16::<LittleEndian>()?;
-                        tmp_quats.resize(blk_size as usize, Quat::default());
+                        tmp_quats.resize(blk_size as usize, [0, 0, 0]);
                     }
                     0x02 => {
                         // delta time
                         let dt = stream.read_u32::<LittleEndian>()?;
 
                         // generate timestamps for gyro
-                        let scale =
-                            quats.len() as f64 / dt as f64 * 1e6 * 180.0 / std::f64::consts::PI;
-                        for (i, &q) in quats.iter().enumerate() {
-                            let rv = (q.conj() * prev_quat).to_rvec();
+                        let scale = rates.len() as f64 / dt as f64 * 1e6 * 180.0
+                            / std::f64::consts::PI
+                            / ((1 << FIX_MULT) as f64);
+                        for (i, &q) in rates.iter().enumerate() {
                             gyro.push(TimeVector3 {
-                                t: cur_time + dt as f64 * 1e-6 * (i as f64 / quats.len() as f64),
-                                x: rv.x.to_float() as f64 * scale,
-                                y: rv.y.to_float() as f64 * scale,
-                                z: rv.z.to_float() as f64 * scale,
+                                t: cur_time + dt as f64 * 1e-6 * (i as f64 / rates.len() as f64),
+                                x: q[0] as f64 * scale,
+                                y: q[1] as f64 * scale,
+                                z: q[2] as f64 * scale,
                             });
-                            prev_quat = q;
                         }
-                        quats.clear();
+                        rates.clear();
                         // generate timestamps for accel
                         let scale = 16.0 / 32767.0;
                         for (i, &a) in accels.iter().enumerate() {
@@ -105,7 +105,7 @@ impl EspLog {
                         // gyro data
                         let nread = stream.read(&mut buf)?;
                         if let Some(res) = decompress_block(&state, &buf, &mut tmp_quats) {
-                            quats.extend_from_slice(&tmp_quats);
+                            rates.extend_from_slice(&tmp_quats);
                             state = res.new_state;
                             stream
                                 .seek(SeekFrom::Current(res.bytes_eaten as i64 - nread as i64))?;
