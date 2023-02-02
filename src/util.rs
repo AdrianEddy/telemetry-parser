@@ -372,7 +372,7 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
     let mut accl_map = BTreeMap::new();
     let mut magn_map = BTreeMap::new();
 
-    let mut all_timestamps = BTreeSet::new();
+    let mut gyro_timestamps = BTreeSet::new();
 
     if let Some(ref samples) = input.samples {
         let mut reading_duration =
@@ -482,9 +482,9 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
 
                                 for v in arr {
                                     let itm = v.clone().into_scaled(&raw2unit, &unit2deg).orient(io);
-                                         if group == &GroupId::Gyroscope     { let ts = (timestamp.0 * 1000.0f64).round() as i64; gyro_map.insert(ts, itm); timestamp.0 += reading_duration.0.unwrap(); all_timestamps.insert(ts); }
-                                    else if group == &GroupId::Accelerometer { let ts = (timestamp.1 * 1000.0f64).round() as i64; accl_map.insert(ts, itm); timestamp.1 += reading_duration.1.unwrap(); all_timestamps.insert(ts); }
-                                    else if group == &GroupId::Magnetometer  { let ts = (timestamp.2 * 1000.0f64).round() as i64; magn_map.insert(ts, itm); timestamp.2 += reading_duration.2.unwrap(); all_timestamps.insert(ts); }
+                                         if group == &GroupId::Gyroscope     { let ts = (timestamp.0 * 1000.0f64).round() as i64; gyro_map.insert(ts, itm); timestamp.0 += reading_duration.0.unwrap(); gyro_timestamps.insert(ts); }
+                                    else if group == &GroupId::Accelerometer { let ts = (timestamp.1 * 1000.0f64).round() as i64; accl_map.insert(ts, itm); timestamp.1 += reading_duration.1.unwrap(); }
+                                    else if group == &GroupId::Magnetometer  { let ts = (timestamp.2 * 1000.0f64).round() as i64; magn_map.insert(ts, itm); timestamp.2 += reading_duration.2.unwrap(); }
                                 }
                             },
                             TagValue::Vec_TimeVector3_f64(arr) => {
@@ -498,10 +498,9 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
                                     timestamp_ms -= first_timestamp.unwrap();
 
                                     let timestamp_us = (timestamp_ms * 1000.0).round() as i64;
-                                    all_timestamps.insert(timestamp_us);
 
                                     let itm = v.clone().into_scaled(&raw2unit, &unit2deg).orient(io);
-                                         if group == &GroupId::Gyroscope     { gyro_map.insert(timestamp_us, itm); }
+                                         if group == &GroupId::Gyroscope     { gyro_map.insert(timestamp_us, itm);  gyro_timestamps.insert(timestamp_us); }
                                     else if group == &GroupId::Accelerometer { accl_map.insert(timestamp_us, itm); }
                                     else if group == &GroupId::Magnetometer  { magn_map.insert(timestamp_us, itm); }
                                 }
@@ -534,7 +533,7 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
     }
 
     let mut final_data = Vec::with_capacity(gyro_map.len());
-    for x in &all_timestamps {
+    for x in &gyro_timestamps {
         final_data.push(IMUData {
             timestamp_ms: *x as f64 / 1000.0,
             gyro: get_at_timestamp(*x, &gyro_map),
