@@ -70,6 +70,11 @@ impl RedR3d {
                 }
             }
         }
+        if ret.is_empty() && path.extension().unwrap_or_default().to_ascii_lowercase().to_string_lossy().ends_with("r3d") {
+            if let Some(p) = path.to_str() {
+                ret.push(p.to_string());
+            }
+        }
         ret.sort_by(|a, b| human_sort::compare(a, b));
         Ok(ret)
     }
@@ -142,7 +147,8 @@ impl RedR3d {
                     stream.seek(SeekFrom::Current(-8))?;
                     stream.read_exact(&mut data)?;
                     if data.len() > 126 {
-                        if let Some(offs) = memchr::memmem::find(&data, b"rdx\x02\x00\x00\x00\x00\x00\x00\x00\x01RED ") {
+                        if let Some(offs) = memchr::memmem::find(&data, b"rdx\x02\x00\x00\x00\x00\x00\x00\x00\x01RED ")
+                                     .or_else(|| memchr::memmem::find(&data, b"rdx\x01\x00\x00\x00\x00\x00\x00\x00\x05REDT")) {
                             if let Ok(size) = (&data[offs + 16..]).read_u16::<BigEndian>() {
                                 let _ = self.parse_meta(&data[offs + 16 + 2..offs + 16 + 2 + size as usize], &mut map);
                             }
