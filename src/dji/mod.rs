@@ -57,6 +57,8 @@ impl Dji {
 
         // let mut first_vsync = 0;
         let mut prev_ts = 0.0;
+        let mut prev_quat: Option<Quaternion<f64>> = None;
+        let mut inv = false;
 
         let ctx = util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64| {
             if size > 0 {
@@ -182,9 +184,14 @@ impl Dji {
                                         continue;
                                     }
 
+                                    if prev_quat.is_some() && (prev_quat.unwrap() - quat).norm_squared().sqrt() > 1.5 {
+                                        inv = !inv;
+                                    }
+                                    prev_quat = Some(quat.clone());
+
                                     quats.push(TimeQuaternion {
                                         t: ts,
-                                        v: quat,
+                                        v: if inv { -quat } else { quat },
                                     });
                                 }
 

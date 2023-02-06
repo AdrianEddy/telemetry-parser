@@ -287,7 +287,7 @@ pub struct TimeScalar<T> {
     pub t: f64,
     pub v: T
 }
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Copy, Clone, Serialize, Default)]
 pub struct Quaternion<T> {
     pub w: T,
     pub x: T,
@@ -305,6 +305,32 @@ impl<T: Copy + std::ops::Mul<Output = T> + std::ops::Sub<Output = T> + std::ops:
         }
     }
 }
+impl<T: Copy + std::ops::Sub<Output = T>> std::ops::Sub for Quaternion<T> {
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self {
+        Self {
+            w: self.w - rhs.w,
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+            z: self.z - rhs.z
+        }
+    }
+}
+impl<T: Copy + std::ops::Neg<Output = T>> std::ops::Neg for Quaternion<T> {
+    type Output = Self;
+    fn neg(self) -> Self {
+        Self { w: -self.w, x: -self.x, y: -self.y, z: -self.z }
+    }
+}
+impl<T: Copy + std::ops::Mul<Output = T> + std::ops::Add<Output = T>> Quaternion<T> {
+    pub fn norm_squared(&self) -> T {
+        self.w * self.w +
+        self.x * self.x +
+        self.y * self.y +
+        self.z * self.z
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct TimeQuaternion<T> {
     pub t: f64,
