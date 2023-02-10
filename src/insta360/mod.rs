@@ -98,7 +98,7 @@ impl Insta360 {
                 Some("Insta360 GO 2")  => "XYZ",
                 Some("Insta360 OneR")  => "Xyz",
                 Some("Insta360 OneRS") => "Xyz",
-                _                      => "Xyz"
+                _                      => "XYZ"
             }
         } else {
             match self.model.as_deref() {
