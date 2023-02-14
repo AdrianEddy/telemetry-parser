@@ -85,6 +85,46 @@ impl GoPro {
             fps = util::get_fps_from_track(&ctx.tracks[0]);
         }
         self.process_samples(&mut samples, fps);
+
+        if self.model.as_ref().map(|x| x.contains("HERO5")).unwrap_or_default() {
+            if samples.is_empty() {
+                samples.push(SampleInfo { tag_map: Some(GroupedTagMap::default()), ..Default::default() });
+            }
+            let first_sample = samples.first_mut().unwrap();
+            if let Some(ref mut first_map) = first_sample.tag_map {
+                if let Ok(_) = stream.seek(SeekFrom::Start(0)) {
+                    while let Ok((typ, _offs, size, header_size)) = util::read_box(stream) {
+                        if size == 0 || typ == 0 { break; }
+                        let org_pos = stream.stream_position()?;
+                        if typ == fourcc("moov") || typ == fourcc("udta") {
+                            continue; // go inside these boxes
+                        } else {
+                            if typ == fourcc("SETT") {
+                                let mut buf = vec![0u8; size as usize - header_size as usize];
+                                stream.read_exact(&mut buf)?;
+                                if buf.len() > 8 {
+                                    match buf[5] {
+                                        0x00 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x45495341), "EISA", String, |v| v.clone(), "N".into(), vec![])),
+                                        0x10 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x45495341), "EISA", String, |v| v.clone(), "Y".into(), vec![])),
+                                        _ => log::debug!("Unknown stab byte {}", util::to_hex(&buf)),
+                                    }
+                                    match buf[7] {
+                                        0x40 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "W".into(), vec![])),
+                                        0x41 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "M".into(), vec![])),
+                                        0x42 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "N".into(), vec![])),
+                                        0x44 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "L".into(), vec![])),
+                                        0x63 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "S".into(), vec![])),
+                                        _ => log::debug!("Unknown lens byte {}", util::to_hex(&buf)),
+                                    }
+                                }
+                            }
+                            stream.seek(SeekFrom::Start(org_pos + size - header_size as u64))?;
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(samples)
     }
 
@@ -160,7 +200,6 @@ impl GoPro {
                 } else if let Some(m) = &self.model {
                     if m.contains("HERO6") { imu_orientation = Some("ZyX".to_string()); }
                     if m.contains("HERO7 Silver") { imu_orientation = Some("YXz".to_string()); }
-                    // if m.contains("HERO5") { imu_orientation = Some("XYZ".to_string()); }
                 }
                 if let Some(o) = imu_orientation {
                     v.insert(TagId::Orientation, crate::tag!(parsed g.clone(), TagId::Orientation, "IMUO", String, |v| v.to_string(), o, Vec::new()));
