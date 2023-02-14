@@ -105,10 +105,12 @@ impl GoPro {
                                 if buf.len() > 8 {
                                     match buf[5] {
                                         0x00 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x45495341), "EISA", String, |v| v.clone(), "N".into(), vec![])),
+                                        0x02 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x45495341), "EISA", String, |v| v.clone(), "N".into(), vec![])),
                                         0x10 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x45495341), "EISA", String, |v| v.clone(), "Y".into(), vec![])),
                                         _ => log::debug!("Unknown stab byte {}", util::to_hex(&buf)),
                                     }
                                     match buf[7] {
+                                        0x00 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "W".into(), vec![])),
                                         0x40 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "W".into(), vec![])),
                                         0x41 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "M".into(), vec![])),
                                         0x42 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "N".into(), vec![])),
