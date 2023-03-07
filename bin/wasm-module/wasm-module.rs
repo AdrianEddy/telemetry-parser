@@ -58,7 +58,7 @@ impl Parser {
             output.push(groups);
         }
 
-        Ok(JsValue::from_serde(&output).unwrap())
+        Ok(serde_wasm_bindgen::to_value(&output).unwrap())
     }
 
     pub fn normalized_imu(&self, orientation: Option<String>) -> Result<JsValue, JsValue> {
@@ -66,7 +66,7 @@ impl Parser {
 
         let imu_data = util::normalized_imu(&self.input, orientation).map_err(Self::err)?;
 
-        Ok(JsValue::from_serde(&imu_data).unwrap())
+        Ok(serde_wasm_bindgen::to_value(&imu_data).unwrap())
     }
 
     fn err(e: std::io::Error) -> JsValue {

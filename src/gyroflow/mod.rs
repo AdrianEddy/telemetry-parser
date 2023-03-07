@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-// Copyright © 2021 Elvin
+// Copyright © 2021-2023 Elvin, Adrian
 
 use std::collections::BTreeMap;
 use std::io::*;
@@ -17,10 +17,10 @@ pub struct Gyroflow {
     frame_readout_time: Option<f64>
 }
 
-// .gcsv format as described here: https://docs.gyroflow.xyz/logging/gcsv/
+// .gcsv format as described here: https://docs.gyroflow.xyz/app/technical-details/gcsv-format
 
 impl Gyroflow {
-    pub fn possible_extensions() -> Vec<&'static str> { vec!["mp4", "mov", "gcsv", "csv", "txt"] }
+    pub fn possible_extensions() -> Vec<&'static str> { vec!["mp4", "mov", "gcsv", "csv", "txt", "bin"] }
 
     pub fn detect<P: AsRef<Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
         let filename = filepath.as_ref().file_name().map(|x| x.to_string_lossy()).unwrap_or_default();

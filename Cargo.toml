@@ -22,7 +22,7 @@ serde_yaml = "0.9"
 argh = "0.1"
 memchr = "2.5"
 fc-blackbox = "0.2"
-csv = "1.1"
+csv = "1.2"
 human-sort = "0.2.2"
 log = "0.4.17"
 
