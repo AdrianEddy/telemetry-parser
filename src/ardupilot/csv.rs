@@ -22,22 +22,54 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress
     let time_scale = 1.0e-6;
     for row in csv.records() {
         let row = row?;
-        if &row[0] != "VSTB" || row.len() < 8 {
-            continue;
+        if &row[0] == "VSTB" && row.len() >= 8 {
+            let time = row[1].parse::<f64>().map_err(e)? * time_scale;
+            gyro.push(TimeVector3 {
+                t: time,
+                x: row[2].parse::<f64>().map_err(e)?,
+                y: row[3].parse::<f64>().map_err(e)?,
+                z: row[4].parse::<f64>().map_err(e)?
+            });
+            accl.push(TimeVector3 {
+                t: time,
+                x: row[5].parse::<f64>().map_err(e)?,
+                y: row[6].parse::<f64>().map_err(e)?,
+                z: row[7].parse::<f64>().map_err(e)?
+            });
         }
-        let time = row[1].parse::<f64>().map_err(e)? * time_scale;
-        gyro.push(TimeVector3 {
-            t: time,
-            x: row[2].parse::<f64>().map_err(e)?,
-            y: row[3].parse::<f64>().map_err(e)?,
-            z: row[4].parse::<f64>().map_err(e)?
-        });
-        accl.push(TimeVector3 {
-            t: time,
-            x: row[5].parse::<f64>().map_err(e)?,
-            y: row[6].parse::<f64>().map_err(e)?,
-            z: row[7].parse::<f64>().map_err(e)?
-        });
+        if &row[0] == "IMU" && row.len() >= 9 {
+            let time = row[1].parse::<f64>().map_err(e)? * time_scale;
+            gyro.push(TimeVector3 {
+                t: time,
+                x: row[3].parse::<f64>().map_err(e)?,
+                y: row[4].parse::<f64>().map_err(e)?,
+                z: row[5].parse::<f64>().map_err(e)?
+            });
+            accl.push(TimeVector3 {
+                t: time,
+                x: row[6].parse::<f64>().map_err(e)?,
+                y: row[7].parse::<f64>().map_err(e)?,
+                z: row[8].parse::<f64>().map_err(e)?
+            });
+        }
+        if &row[0] == "GYR" && row.len() >= 7 {
+            let time = row[1].parse::<f64>().map_err(e)? * time_scale;
+            gyro.push(TimeVector3 {
+                t: time,
+                x: row[4].parse::<f64>().map_err(e)?,
+                y: row[5].parse::<f64>().map_err(e)?,
+                z: row[6].parse::<f64>().map_err(e)?
+            });
+        }
+        if &row[0] == "ACC" && row.len() >= 7 {
+            let time = row[1].parse::<f64>().map_err(e)? * time_scale;
+            accl.push(TimeVector3 {
+                t: time,
+                x: row[4].parse::<f64>().map_err(e)?,
+                y: row[5].parse::<f64>().map_err(e)?,
+                z: row[6].parse::<f64>().map_err(e)?
+            });
+        }
     }
 
     let mut map = GroupedTagMap::new();

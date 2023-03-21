@@ -9,9 +9,10 @@ use byteorder::{ ReadBytesExt, BigEndian, LittleEndian };
 use crate::tags_impl::*;
 use crate::*;
 
+#[derive(Debug)]
 struct Format {
     typ: u8,
-    _length: u8,
+    length: u8,
     name: String,
     format: String,
     multipliers: Option<String>,
@@ -62,7 +63,7 @@ pub fn parse_full<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progr
         ( 'h', "degheading"   .to_owned() ), // 0.? to 359.?
         ( 'i', "A.s"          .to_owned() ), // Ampere second
         ( 'J', "W.s"          .to_owned() ), // Joule (Watt second)
-        // ( 'l', "l"         .to_owned() ), // litres
+        ( 'l', "l"            .to_owned() ), // litres
         ( 'L', "rad/s/s"      .to_owned() ), // radians per second per second
         ( 'm', "m"            .to_owned() ), // metres
         ( 'n', "m/s"          .to_owned() ), // metres per second
@@ -81,6 +82,7 @@ pub fn parse_full<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progr
         ( 'w', "Ohm"          .to_owned() ), // Ohm
         ( 'W', "Watt"         .to_owned() ), // Watt
         ( 'X', "W.h"          .to_owned() ), // Watt hour
+        ( 'y', "l/s"          .to_owned() ), // litres per second
         ( 'Y', "us"           .to_owned() ), // pulse width modulation in microseconds
         ( 'z', "Hz"           .to_owned() ), // Hertz
         ( '#', "instance"     .to_owned() )  // (e.g.)Sensor instance number
@@ -118,6 +120,7 @@ pub fn parse_full<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progr
             progress_cb(stream.stream_position()? as f64 / size as f64);
         }
 
+        let start_pos = stream.stream_position()?;
         if stream.read_u16::<BigEndian>()? == 0xA395 {
             let id = stream.read_u8()?;
             if id == 0x80 { // Format message
@@ -125,13 +128,13 @@ pub fn parse_full<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progr
                 let mut format = vec![0u8; 16];
                 let mut labels = vec![0u8; 64];
                 let typ = stream.read_u8()?;
-                let _length = stream.read_u8()?;
+                let length = stream.read_u8()?;
                 stream.read_exact(&mut name)?;
                 stream.read_exact(&mut format)?;
                 stream.read_exact(&mut labels)?;
                 formats.insert(typ, Format {
                     typ,
-                    _length,
+                    length,
                     units: None,
                     multipliers: None,
                     name: String::from_utf8_lossy(&name).trim_matches('\0').to_string(),
@@ -164,10 +167,10 @@ pub fn parse_full<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progr
                                     stream.read_exact(&mut data)?;
                                     Some(FieldType::String(String::from_utf8_lossy(&data).trim_matches('\0').to_string()))
                                 }
-                                'c' => Some(FieldType::Vec_i16((0..100).filter_map(|_| stream.read_i16::<LittleEndian>().ok()).collect())),
-                                'C' => Some(FieldType::Vec_u16((0..100).filter_map(|_| stream.read_u16::<LittleEndian>().ok()).collect())),
-                                'e' => Some(FieldType::Vec_i32((0..100).filter_map(|_| stream.read_i32::<LittleEndian>().ok()).collect())),
-                                'E' => Some(FieldType::Vec_u32((0..100).filter_map(|_| stream.read_u32::<LittleEndian>().ok()).collect())),
+                                'c' => Some(FieldType::i32((stream.read_i16::<LittleEndian>()? as i32).saturating_mul(100))),
+                                'C' => Some(FieldType::u32((stream.read_u16::<LittleEndian>()? as u32).saturating_mul(100))),
+                                'e' => Some(FieldType::i32(stream.read_i32::<LittleEndian>()?.saturating_mul(100))),
+                                'E' => Some(FieldType::u32(stream.read_u32::<LittleEndian>()?.saturating_mul(100))),
                                 'L' => Some(FieldType::i32(stream.read_i32::<LittleEndian>()?)), // latitude/longitude
                                 'M' => Some(FieldType::u8(stream.read_u8()?)), // flight mode
                                 'q' => Some(FieldType::i64(stream.read_i64::<LittleEndian>()?)),
@@ -182,7 +185,7 @@ pub fn parse_full<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progr
                             }
                             Ok(())
                         })() {
-                            log::error!("error parsing data: {e:?}")
+                            log::error!("error parsing data: {e:?}, desc: {desc:?}, file pos: {}", stream.stream_position()?)
                         }
                     }
                     match desc.name.as_ref() {
@@ -207,6 +210,11 @@ pub fn parse_full<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progr
                         _ => { }
                     }
                     // log::debug!("{}: {:?}", desc.name, msg);
+                    let final_len = stream.stream_position()? - start_pos;
+                    if final_len != desc.length as u64 {
+                        log::error!("Unexpected field length, {} bytes were expected but got {final_len}.", desc.length);
+                        stream.seek(SeekFrom::Start(start_pos + desc.length as u64))?;
+                    }
                     log.push(LogItem {
                         typ: desc.typ,
                         name: desc.name.clone(),
@@ -216,6 +224,8 @@ pub fn parse_full<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progr
             } else {
                 log::warn!("Unknown msg: {}", id);
             }
+        } else {
+            log::error!("Unexpected bytes at pos: {}", stream.stream_position()?);
         }
         if !update_format.is_empty() {
             for (id, (mult, unit)) in update_format {
