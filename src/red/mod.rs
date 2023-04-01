@@ -208,6 +208,39 @@ impl RedR3d {
                 }
             });
         }
+
+        // Try to get the sync data, if no async data present
+        if accl.is_empty() && gyro.is_empty() && !samples.is_empty() {
+            let mut timestamp = 0.0;
+            for sample in &samples {
+                if let Some(ref map) = sample.tag_map {
+                    if let Some(g) = map.get(&GroupId::Default) {
+                        if let Some(arr) = g.get_t(TagId::Metadata) as Option<&serde_json::Value> {
+                            if let Some(camera_acceleration) = arr.get("camera_acceleration").and_then(|x| x.as_array()) {
+                                if camera_acceleration.len() == 3 {
+                                    accl.push(TimeVector3 { t: timestamp,
+                                        x: -camera_acceleration[0].as_f64().unwrap_or(0.0),
+                                        y: -camera_acceleration[1].as_f64().unwrap_or(0.0),
+                                        z: -camera_acceleration[2].as_f64().unwrap_or(0.0),
+                                    });
+                                }
+                            }
+                            if let Some(camera_rotation) = arr.get("camera_rotation").and_then(|x| x.as_array()) {
+                                if camera_rotation.len() == 3 {
+                                    gyro.push(TimeVector3 { t: timestamp,
+                                        x: camera_rotation[0].as_f64().unwrap_or(0.0),
+                                        y: camera_rotation[1].as_f64().unwrap_or(0.0),
+                                        z: camera_rotation[2].as_f64().unwrap_or(0.0)
+                                    });
+                                }
+                            }
+                            timestamp += 1.0 / self.record_framerate.unwrap();
+                        }
+                    }
+                }
+            }
+        }
+
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), accl, vec![]));
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]));
 
@@ -286,23 +319,37 @@ impl RedR3d {
                 }.to_string();
                 if id.is_empty() { id = format!("0x{:x}", d[1]); };
 
-                let v = match d[0] {
-                    0x10 => serde_json::to_value(std::str::from_utf8(&d[2..]).unwrap_or(&"")),
-                    0x20 => serde_json::to_value((&d[2..]).read_f32::<BigEndian>()? as f64),
-                    0x30 => serde_json::to_value((&d[2..]).read_u8()?),
-                    0x40 => serde_json::to_value((&d[2..]).read_i16::<BigEndian>()?),
-                    0x60 => serde_json::to_value((&d[2..]).read_u32::<BigEndian>()?),
-                    _ => {
-                        // log::debug!("Type: {}, id: {}, hex: {}", d[0], id, pretty_hex::pretty_hex(&d));
-                        Err(serde_json::Error::io(ErrorKind::InvalidData.into()))
-                    }
+                let num_items = match id.as_str() {
+                    "camera_acceleration" => 3, // x/y/z
+                    "camera_rotation"     => 3, // x/y/z
+                    _ => 1,
                 };
-                if let Ok(v) = v {
-                    if id == "camera_model" { self.model = v.as_str().map(|x| x.to_string()); }
-                    if id == "record_framerate" { self.record_framerate = v.as_f64(); }
 
-                    md.insert(id, v);
-                    // log::debug!("{}: {:?}", id, v);
+                let mut items = vec![];
+                for i in 0..num_items {
+                    let v = match d[0] {
+                        0x10 => serde_json::to_value(std::str::from_utf8(&d[2..]).unwrap_or(&"")),
+                        0x20 => serde_json::to_value((&d[2 + i*4..]).read_f32::<BigEndian>()? as f64),
+                        0x30 => serde_json::to_value((&d[2 + i*1..]).read_u8()?),
+                        0x40 => serde_json::to_value((&d[2 + i*2..]).read_i16::<BigEndian>()?),
+                        0x60 => serde_json::to_value((&d[2 + i*4..]).read_u32::<BigEndian>()?),
+                        _ => {
+                            // log::debug!("Type: {}, id: {}, hex: {}", d[0], id, pretty_hex::pretty_hex(&d));
+                            Err(serde_json::Error::io(ErrorKind::InvalidData.into()))
+                        }
+                    };
+                    if let Ok(v) = v {
+                        if id == "camera_model" { self.model = v.as_str().map(|x| x.to_string()); }
+                        if id == "record_framerate" { self.record_framerate = v.as_f64(); }
+
+                        items.push(v);
+                        // log::debug!("{}: {:?}", id, v);
+                    }
+                }
+                if items.len() == 1 {
+                    md.insert(id.clone(), items.into_iter().next().unwrap());
+                } else {
+                    md.insert(id.clone(), serde_json::to_value(items)?);
                 }
             } else {
                 break;

@@ -29,7 +29,7 @@ log = "0.4.17"
 [build-dependencies]
 #prost-build = "*"
 
-quick-xml = { version = "0.27", optional = true }
+quick-xml = { version = "0.28", optional = true }
 
 [features]
 sony-xml = ["quick-xml"]
