@@ -16,12 +16,17 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
     let mut magn = Vec::new();
     let mut quat = Vec::new();
 
-    let mut last_timestamp = 0.0;
+    let mut has_any_time = false;
+
+    let default_step = 1.0 / 200.0; // 200 Hz
+
+    let mut last_timestamp = -default_step;
     let mut first_timestamp = 0.0;
     while let Ok(tag) = stream.read_u16::<BigEndian>() {
         match tag {
             0x5550 => { // Time Output
                 if let Ok(mut d) = checksum(tag, &mut stream, 8) {
+                    has_any_time = true;
                     let yy = d.read_u8()? as i32 + 2000;
                     let mm = d.read_u8()? as u32;
                     let dd = d.read_u8()? as u32;
@@ -40,6 +45,9 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
             }
             0x5551 => { // Acceleration Output
                 if let Ok(mut d) = checksum(tag, &mut stream, 8) {
+                    if !has_any_time {
+                        last_timestamp += default_step;
+                    }
                     accl.push(TimeVector3 {
                         t: last_timestamp as f64,
                         x: d.read_i16::<LittleEndian>()? as f64 / 32768.0 * 16.0,

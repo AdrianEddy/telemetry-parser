@@ -25,12 +25,19 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
         .delimiter(b'\t')
         .from_reader(stream);
 
+    let default_step = 1.0 / 200.0; // 200 Hz
+
     for row in csv.records() {
         let row = row?;
         if let Some(ref h) = headers {
             let map = util::create_csv_map(&row, &h);
 
-            let ts = chrono::NaiveDateTime::parse_from_str(*map.get("ChipTime").unwrap(), "%Y-%m-%d %H:%M:%S%.3f").unwrap().timestamp_millis() as f64 / 1000.0;
+            let chip_time = *map.get("ChipTime").unwrap();
+            let ts = if !chip_time.is_empty() {
+                chrono::NaiveDateTime::parse_from_str(chip_time, "%Y-%m-%d %H:%M:%S%.3f").unwrap_or_default().timestamp_millis() as f64 / 1000.0
+            } else {
+                last_timestamp + default_step
+            };
             if first_timestamp == 0.0 {
                 first_timestamp = ts;
             }
