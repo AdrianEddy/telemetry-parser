@@ -100,14 +100,14 @@ pub fn patch_mdhd_timescale(all: &mut Vec<u8>) {
 pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Result<mp4parse::MediaContext> {
     if size > 10*1024*1024 {
         // With large files we can save a lot of time by only parsing actual MP4 box structure, skipping track data itself.
-        // We do that by reading 2 MB from each end of the file, then patching `mdat` box to make the 4 MB buffer a correct MP4 file.
+        // We do that by reading 20 MB from each end of the file, then patching `mdat` box to make the 40 MB buffer a correct MP4 file.
         // This is hacky, but it's worth a try and if we fail we fallback to full parsing anyway.
-        let read_mb = if size as u64 > 30u64*1024*1024*1024 { // If file is greater than 30 GB, read 30 MB header/footer
+        let read_mb = if size as u64 > 30u64*1024*1024*1024 { // If file is greater than 60 GB, read 30 MB header/footer
+            60
+        } else if size as u64 > 5u64*1024*1024*1024 { // If file is greater than 5 GB, read 30 MB header/footer
             30
-        } else if size as u64 > 5u64*1024*1024*1024 { // If file is greater than 5 GB, read 10 MB header/footer
-            10
         } else {
-            4
+            20
         };
         let mut all = read_beginning_and_end(stream, size, read_mb*1024*1024)?;
         if let Some(pos) = memchr::memmem::find(&all, b"mdat") {
