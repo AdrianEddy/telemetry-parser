@@ -100,15 +100,28 @@ pub fn patch_mdhd_timescale(all: &mut Vec<u8>) {
 pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Result<mp4parse::MediaContext> {
     if size > 10*1024*1024 {
         // With large files we can save a lot of time by only parsing actual MP4 box structure, skipping track data itself.
-        // We do that by reading 20 MB from each end of the file, then patching `mdat` box to make the 40 MB buffer a correct MP4 file.
+        // We do that by reading 15 MB from each end of the file, then patching `mdat` box to make the 30 MB buffer a correct MP4 file.
         // This is hacky, but it's worth a try and if we fail we fallback to full parsing anyway.
-        let read_mb = if size as u64 > 30u64*1024*1024*1024 { // If file is greater than 60 GB, read 30 MB header/footer
-            60
-        } else if size as u64 > 5u64*1024*1024*1024 { // If file is greater than 5 GB, read 30 MB header/footer
-            30
+        let mut read_mb = if size as u64 > 30u64*1024*1024*1024 { // If file is greater than 60 GB, read 50 MB header/footer
+            50
+        } else if size as u64 > 5u64*1024*1024*1024 { // If file is greater than 5 GB, read 25 MB header/footer
+            25
         } else {
-            20
+            15
         };
+
+        { // Check if it's Insta360 to account for the data at the end of file
+            use crate::insta360;
+            let mut buf = vec![0u8; insta360::HEADER_SIZE];
+            stream.seek(SeekFrom::End(-(insta360::HEADER_SIZE as i64)))?;
+            stream.read_exact(&mut buf)?;
+            if &buf[insta360::HEADER_SIZE-32..] == insta360::MAGIC {
+                let extra_size = (&buf[32..]).read_u32::<byteorder::LittleEndian>()? as f32;
+                read_mb += (extra_size / 1024.0 / 1024.0).ceil() as usize;
+            }
+            stream.seek(SeekFrom::Start(0))?;
+        }
+
         let mut all = read_beginning_and_end(stream, size, read_mb*1024*1024)?;
         if let Some(pos) = memchr::memmem::find(&all, b"mdat") {
             let how_much_less = (size - all.len()) as u64;
@@ -586,7 +599,17 @@ pub fn get_fps_from_track(track: &mp4parse::Track) -> Option<f64> {
     }
     None
 }
-pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Result<(usize, usize, f64, f64)> { // -> (width, height, fps, duration_s)
+
+#[derive(Debug, Clone)]
+pub struct VideoMetadata {
+    pub width: usize,
+    pub height: usize,
+    pub fps: f64,
+    pub duration_s: f64,
+    pub rotation: i32
+}
+
+pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Result<VideoMetadata> { // -> (width, height, fps, duration_s, rotation)
     let mp = parse_mp4(stream, filesize)?;
     for track in mp.tracks {
         if track.track_type == TrackType::Video {
@@ -605,14 +628,20 @@ pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Re
                     tkhd.matrix.c >> 16,
                     tkhd.matrix.d >> 16,
                 );
-                let _rotation = match matrix {
+                let rotation = match matrix {
                     (0, 1, -1, 0) => 90,   // rotate 90 degrees
                     (-1, 0, 0, -1) => 180, // rotate 180 degrees
                     (0, -1, 1, 0) => 270,  // rotate 270 degrees
                     _ => 0,
                 };
                 let fps = get_fps_from_track(&track).unwrap_or_default();
-                return Ok((w as usize, h as usize, fps, duration_sec));
+                return Ok(VideoMetadata {
+                    width: w as usize,
+                    height: h as usize,
+                    fps,
+                    duration_s: duration_sec,
+                    rotation
+                });
             }
         }
     }

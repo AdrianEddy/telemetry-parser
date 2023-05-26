@@ -11,8 +11,8 @@ use byteorder::{ ReadBytesExt, LittleEndian };
 use crate::{try_block, tag, tags_impl::*};
 use crate::tags_impl::{GroupId::*, TagId::*};
 
-const HEADER_SIZE: usize = 32 + 4 + 4 + 32; // padding(32), size(4), version(4), magic(32)
-const MAGIC: &[u8] = b"8db42d694ccc418790edff439fe026bf";
+pub const HEADER_SIZE: usize = 32 + 4 + 4 + 32; // padding(32), size(4), version(4), magic(32)
+pub const MAGIC: &[u8] = b"8db42d694ccc418790edff439fe026bf";
 
 use crate::util::*;
 
