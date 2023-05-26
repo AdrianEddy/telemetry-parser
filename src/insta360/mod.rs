@@ -224,6 +224,15 @@ impl Insta360 {
               "distortion_coeffs": [k1, k2, k3, p1, p2, xi]
             },
             "distortion_model": "insta360",
+            "sync_settings": {
+              "initial_offset": 0,
+              "initial_offset_inv": false,
+              "search_size": 0.3,
+              "max_sync_points": 5,
+              "every_nth_frame": 1,
+              "time_per_syncpoint": 0.5,
+              "do_autosync": false
+            },
             "calibrator_version": "---"
         });
 
