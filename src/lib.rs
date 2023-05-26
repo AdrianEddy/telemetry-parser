@@ -87,6 +87,11 @@ macro_rules! impl_formats {
                     $(SupportedFormats::$name(x) => x.frame_readout_time(),)*
                 }
             }
+            pub fn has_accurate_timestamps(&self) -> bool {
+                match &self.inner {
+                    $(SupportedFormats::$name(x) => x.has_accurate_timestamps(),)*
+                }
+            }
         }
     };
 }

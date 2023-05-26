@@ -23,8 +23,20 @@ pub struct EspLog {
 }
 
 impl EspLog {
+    pub fn camera_type(&self) -> String {
+        "EspLog".to_owned()
+    }
+    pub fn has_accurate_timestamps(&self) -> bool {
+        false
+    }
     pub fn possible_extensions() -> Vec<&'static str> {
         vec!["bin"]
+    }
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        None
+    }
+    pub fn normalize_imu_orientation(v: String) -> String {
+        v
     }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
@@ -202,17 +214,5 @@ impl EspLog {
             tag_map: Some(map),
             ..Default::default()
         }])
-    }
-
-    pub fn normalize_imu_orientation(v: String) -> String {
-        v
-    }
-
-    pub fn camera_type(&self) -> String {
-        "EspLog".to_owned()
-    }
-
-    pub fn frame_readout_time(&self) -> Option<f64> {
-        None
     }
 }

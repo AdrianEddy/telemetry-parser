@@ -20,7 +20,21 @@ pub struct PhoneApps {
 }
 
 impl PhoneApps {
-    pub fn possible_extensions() -> Vec<&'static str> { vec![] }
+    pub fn camera_type(&self) -> String {
+        "Mobile app".to_owned()
+    }
+    pub fn has_accurate_timestamps(&self) -> bool {
+        false
+    }
+    pub fn possible_extensions() -> Vec<&'static str> {
+        vec![]
+    }
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        None
+    }
+    pub fn normalize_imu_orientation(v: String) -> String {
+        v
+    }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
         let filename = filepath.as_ref().file_name().map(|x| x.to_string_lossy()).unwrap_or_default();
@@ -47,17 +61,5 @@ impl PhoneApps {
                 Err(ErrorKind::InvalidInput.into())
             }
         }
-    }
-
-    pub fn normalize_imu_orientation(v: String) -> String {
-        v
-    }
-
-    pub fn camera_type(&self) -> String {
-        "Mobile app".to_owned()
-    }
-
-    pub fn frame_readout_time(&self) -> Option<f64> {
-        None
     }
 }

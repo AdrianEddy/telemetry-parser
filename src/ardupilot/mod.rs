@@ -18,7 +18,21 @@ pub struct ArduPilot {
 // .bin can be converted to .log using mission planner or https://github.com/ArduPilot/pymavlink/blob/master/tools/mavlogdump.py
 
 impl ArduPilot {
-    pub fn possible_extensions() -> Vec<&'static str> { vec!["bin", "log"] }
+    pub fn camera_type(&self) -> String {
+        "ArduPilot".to_owned()
+    }
+    pub fn has_accurate_timestamps(&self) -> bool {
+        false
+    }
+    pub fn possible_extensions() -> Vec<&'static str> {
+        vec!["bin", "log"]
+    }
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        None
+    }
+    pub fn normalize_imu_orientation(v: String) -> String {
+        v
+    }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if buffer.len() > 4 && buffer[..4] == [0xA3, 0x95, 0x80, 0x80] &&
@@ -41,17 +55,5 @@ impl ArduPilot {
             Some(".log") => csv::parse(stream, size, progress_cb, cancel_flag),
             _ => Err(ErrorKind::InvalidData.into())
         }
-    }
-
-    pub fn normalize_imu_orientation(v: String) -> String {
-        v
-    }
-
-    pub fn camera_type(&self) -> String {
-        "ArduPilot".to_owned()
-    }
-
-    pub fn frame_readout_time(&self) -> Option<f64> {
-        None
     }
 }

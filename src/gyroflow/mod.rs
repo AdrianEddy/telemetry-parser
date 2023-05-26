@@ -20,7 +20,21 @@ pub struct Gyroflow {
 // .gcsv format as described here: https://docs.gyroflow.xyz/app/technical-details/gcsv-format
 
 impl Gyroflow {
-    pub fn possible_extensions() -> Vec<&'static str> { vec!["mp4", "mov", "gcsv", "csv", "txt", "bin"] }
+    pub fn camera_type(&self) -> String {
+        self.vendor.to_owned()
+    }
+    pub fn has_accurate_timestamps(&self) -> bool {
+        false
+    }
+    pub fn possible_extensions() -> Vec<&'static str> {
+        vec!["mp4", "mov", "gcsv", "csv", "txt", "bin"]
+    }
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        self.frame_readout_time
+    }
+    pub fn normalize_imu_orientation(v: String) -> String {
+        v
+    }
 
     pub fn detect<P: AsRef<Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
         let filename = filepath.as_ref().file_name().map(|x| x.to_string_lossy()).unwrap_or_default();
@@ -182,17 +196,5 @@ impl Gyroflow {
         Ok(vec![
             SampleInfo { tag_map: Some(map), ..Default::default() }
         ])
-    }
-
-    pub fn normalize_imu_orientation(v: String) -> String {
-        v
-    }
-
-    pub fn camera_type(&self) -> String {
-        self.vendor.to_owned()
-    }
-
-    pub fn frame_readout_time(&self) -> Option<f64> {
-        self.frame_readout_time
     }
 }

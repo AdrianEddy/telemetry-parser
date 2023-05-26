@@ -234,6 +234,7 @@ pub struct IMUData {
 pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Result<Vec<IMUData>> {
     let mut timestamp = 0f64;
     let mut first_timestamp = None;
+    let accurate_ts = input.has_accurate_timestamps();
 
     let mut final_data = Vec::<IMUData>::with_capacity(10000);
     let mut data_index = 0;
@@ -245,20 +246,6 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
             if info.tag_map.is_none() { continue; }
 
             let grouped_tag_map = info.tag_map.as_ref().unwrap();
-
-            // Insta360
-            let first_frame_ts = crate::try_block!(f64, {
-                (grouped_tag_map.get(&GroupId::Default)?.get_t(TagId::Metadata) as Option<&serde_json::Value>)?
-                    .as_object()?
-                    .get("first_frame_timestamp")?
-                    .as_i64()? as f64 / 1000.0
-            }).unwrap_or_default();
-            let is_insta360_raw_gyro = crate::try_block!(bool, {
-                (grouped_tag_map.get(&GroupId::Default)?.get_t(TagId::Metadata) as Option<&serde_json::Value>)?
-                    .as_object()?
-                    .get("is_raw_gyro")?
-                    .as_bool()?
-            }).unwrap_or_default();
 
             for (group, map) in grouped_tag_map {
                 if group == &GroupId::Gyroscope || group == &GroupId::Accelerometer || group == &GroupId::Magnetometer {
@@ -312,15 +299,13 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
                             // Insta360
                             TagValue::Vec_TimeVector3_f64(arr) => {
                                 for (j, v) in arr.get().iter().enumerate() {
-                                    if v.t < first_frame_ts { continue; } // Skip gyro readings before actual first frame
                                     if final_data.len() <= data_index + j {
                                         final_data.resize_with(data_index + j + 1, Default::default);
-                                        let timestamp_multiplier = if is_insta360_raw_gyro { 1.0 } else { 1000.0 };
-                                        final_data[data_index + j].timestamp_ms = (v.t - first_frame_ts) * timestamp_multiplier;
-                                        if first_timestamp.is_none() {
-                                            first_timestamp = Some(final_data[data_index + j].timestamp_ms);
-                                            final_data[data_index + j].timestamp_ms = 0.0;
-                                        } else {
+                                        final_data[data_index + j].timestamp_ms = v.t * 1000.0;
+                                        if !accurate_ts {
+                                            if first_timestamp.is_none() {
+                                                first_timestamp = Some(final_data[data_index + j].timestamp_ms);
+                                            }
                                             final_data[data_index + j].timestamp_ms -= first_timestamp.unwrap();
                                         }
                                     }
@@ -365,6 +350,8 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
 
 pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<String>) -> Result<Vec<IMUData>> {
     let mut first_timestamp = None;
+
+    let accurate_ts = input.has_accurate_timestamps();
 
     let mut timestamp = (0.0, 0.0, 0.0);
 
@@ -430,21 +417,6 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
 
             let grouped_tag_map = info.tag_map.as_ref().unwrap();
 
-            // Insta360
-            let first_frame_ts = crate::try_block!(f64, {
-                (grouped_tag_map.get(&GroupId::Default)?.get_t(TagId::Metadata) as Option<&serde_json::Value>)?
-                    .as_object()?
-                    .get("first_frame_timestamp")?
-                    .as_i64()? as f64 / 1000.0
-            }).unwrap_or_default();
-            let is_insta360_raw_gyro = crate::try_block!(bool, {
-                (grouped_tag_map.get(&GroupId::Default)?.get_t(TagId::Metadata) as Option<&serde_json::Value>)?
-                    .as_object()?
-                    .get("is_raw_gyro")?
-                    .as_bool()?
-            }).unwrap_or_default();
-            let timestamp_multiplier = if is_insta360_raw_gyro { 1.0 } else { 1000.0 };
-
             for (group, map) in grouped_tag_map {
                 if group == &GroupId::Gyroscope || group == &GroupId::Accelerometer || group == &GroupId::Magnetometer {
                     let raw2unit = crate::try_block!(f64, {
@@ -489,13 +461,13 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
                             },
                             TagValue::Vec_TimeVector3_f64(arr) => {
                                 for v in arr.get() {
-                                    if v.t < first_frame_ts { continue; } // Skip gyro readings before actual first frame
-
-                                    let mut timestamp_ms = (v.t - first_frame_ts) * timestamp_multiplier;
-                                    if first_timestamp.is_none() {
-                                        first_timestamp = Some(timestamp_ms);
+                                    let mut timestamp_ms = v.t * 1000.0;
+                                    if !accurate_ts {
+                                        if first_timestamp.is_none() {
+                                            first_timestamp = Some(timestamp_ms);
+                                        }
+                                        timestamp_ms -= first_timestamp.unwrap();
                                     }
-                                    timestamp_ms -= first_timestamp.unwrap();
 
                                     let timestamp_us = (timestamp_ms * 1000.0).round() as i64;
 
@@ -543,6 +515,31 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
     }
 
     Ok(final_data)
+}
+
+pub fn interpolate_at_timestamp(timestamp_us: i64, offsets: &BTreeMap<i64, f64>) -> f64 {
+    match offsets.len() {
+        0 => 0.0,
+        1 => *offsets.values().next().unwrap(),
+        _ => {
+            if let Some(&first_ts) = offsets.keys().next() {
+                if let Some(&last_ts) = offsets.keys().next_back() {
+                    let lookup_ts = (timestamp_us).min(last_ts-1).max(first_ts+1);
+                    if let Some(offs1) = offsets.range(..=lookup_ts).next_back() {
+                        if *offs1.0 == lookup_ts {
+                            return *offs1.1;
+                        }
+                        if let Some(offs2) = offsets.range(lookup_ts..).next() {
+                            let time_delta = (offs2.0 - offs1.0) as f64;
+                            let fract = (timestamp_us - offs1.0) as f64 / time_delta;
+                            return offs1.1 + (offs2.1 - offs1.1) * fract;
+                        }
+                    }
+                }
+            }
+            0.0
+        }
+    }
 }
 
 pub fn multiply_quats(p: (f64, f64, f64, f64), q: (f64, f64, f64, f64)) -> Quaternion<f64> {

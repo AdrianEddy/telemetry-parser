@@ -21,7 +21,31 @@ pub struct Sony {
     pub model: Option<String>
 }
 impl Sony {
-    pub fn possible_extensions() -> Vec<&'static str> { vec!["mp4", "mov", "mxf"] }
+    pub fn camera_type(&self) -> String {
+        "Sony".to_owned()
+    }
+    pub fn has_accurate_timestamps(&self) -> bool {
+        false
+    }
+    pub fn possible_extensions() -> Vec<&'static str> {
+        vec!["mp4", "mov", "mxf"]
+    }
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        None
+    }
+    pub fn normalize_imu_orientation(v: String) -> String {
+        fn invert_case(x: char) -> char {
+            if x.is_ascii_lowercase() { x.to_ascii_uppercase() } else { x.to_ascii_lowercase() }
+        }
+        assert!(v.len() == 3);
+        let mut v = v.chars().collect::<Vec<char>>();
+
+        // Normalize to common orientation - swap X/Y and invert Z
+        v.swap(0, 1);
+        v[2] = invert_case(v[2]);
+
+        v.iter().collect()
+    }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if let Some(p1) = memmem::find(buffer, b"manufacturer=\"Sony\"") {
@@ -105,27 +129,5 @@ impl Sony {
             util::insert_tag(&mut map, tag_info);
         }
         Ok(map)
-    }
-
-    pub fn normalize_imu_orientation(v: String) -> String {
-        fn invert_case(x: char) -> char {
-            if x.is_ascii_lowercase() { x.to_ascii_uppercase() } else { x.to_ascii_lowercase() }
-        }
-        assert!(v.len() == 3);
-        let mut v = v.chars().collect::<Vec<char>>();
-
-        // Normalize to common orientation - swap X/Y and invert Z
-        v.swap(0, 1);
-        v[2] = invert_case(v[2]);
-
-        v.iter().collect()
-    }
-
-    pub fn camera_type(&self) -> String {
-        "Sony".to_owned()
-    }
-
-    pub fn frame_readout_time(&self) -> Option<f64> {
-        None
     }
 }

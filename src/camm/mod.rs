@@ -19,7 +19,21 @@ pub struct Camm {
 // https://github.com/google/spatial-media/blob/master/docs/spherical-video-v2-rfc.md
 
 impl Camm {
-    pub fn possible_extensions() -> Vec<&'static str> { vec!["mp4", "mov"] }
+    pub fn camera_type(&self) -> String {
+        "CAMM".to_owned()
+    }
+    pub fn has_accurate_timestamps(&self) -> bool {
+        false
+    }
+    pub fn possible_extensions() -> Vec<&'static str> {
+        vec!["mp4", "mov"]
+    }
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        self.frame_readout_time
+    }
+    pub fn normalize_imu_orientation(v: String) -> String {
+        v
+    }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         for camm_pos in memmem::find_iter(buffer, b"camm") {
@@ -173,17 +187,5 @@ impl Camm {
         samples.insert(0, SampleInfo { tag_map: Some(map), ..Default::default() });
 
         Ok(samples)
-    }
-
-    pub fn normalize_imu_orientation(v: String) -> String {
-        v
-    }
-
-    pub fn camera_type(&self) -> String {
-        "CAMM".to_string()
-    }
-
-    pub fn frame_readout_time(&self) -> Option<f64> {
-        self.frame_readout_time
     }
 }

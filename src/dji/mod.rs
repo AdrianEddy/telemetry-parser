@@ -21,7 +21,21 @@ pub struct Dji {
 }
 
 impl Dji {
-    pub fn possible_extensions() -> Vec<&'static str> { vec!["mp4", "mov", "csv"] }
+    pub fn camera_type(&self) -> String {
+        "DJI".to_owned()
+    }
+    pub fn has_accurate_timestamps(&self) -> bool {
+        true
+    }
+    pub fn possible_extensions() -> Vec<&'static str> {
+        vec!["mp4", "mov", "csv"]
+    }
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        self.frame_readout_time
+    }
+    pub fn normalize_imu_orientation(v: String) -> String {
+        v
+    }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if memmem::find(buffer, b"djmd").is_some() && memmem::find(buffer, b"DJI meta").is_some() {
@@ -228,18 +242,6 @@ impl Dji {
         }
 
         Ok(samples)
-    }
-
-    pub fn normalize_imu_orientation(v: String) -> String {
-        v
-    }
-
-    pub fn camera_type(&self) -> String {
-        "DJI".to_owned()
-    }
-
-    pub fn frame_readout_time(&self) -> Option<f64> {
-        self.frame_readout_time
     }
 
     fn get_lens_profile(&self, width: u32, height: u32, focal_length: f64, coeffs: &[f32]) -> serde_json::Value {

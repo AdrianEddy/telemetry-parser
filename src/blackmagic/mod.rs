@@ -16,7 +16,25 @@ pub struct BlackmagicBraw {
 }
 
 impl BlackmagicBraw {
-    pub fn possible_extensions() -> Vec<&'static str> { vec!["braw"] }
+    pub fn camera_type(&self) -> String {
+        if self.model.is_some() {
+            "Blackmagic".to_owned()
+        } else {
+            "Blackmagic RAW".to_owned()
+        }
+    }
+    pub fn has_accurate_timestamps(&self) -> bool {
+        true
+    }
+    pub fn possible_extensions() -> Vec<&'static str> {
+        vec!["braw"]
+    }
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        self.frame_readout_time
+    }
+    pub fn normalize_imu_orientation(v: String) -> String {
+        v
+    }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if memmem::find(buffer, b"Blackmagic Design").is_some() && memmem::find(buffer, b"braw_codec_bitrate").is_some() {
@@ -29,6 +47,8 @@ impl BlackmagicBraw {
     pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
         let mut gyro = Vec::new();
         let mut accl = Vec::new();
+
+        let mut map = GroupedTagMap::new();
 
         let mut samples = Vec::new();
         let mut frame_rate = None;
@@ -58,6 +78,25 @@ impl BlackmagicBraw {
             }
         }, cancel_flag.clone());
 
+        let mut firmware_version = String::new();
+        if let Ok(meta) = self.parse_meta(stream, size) {
+            if let Some(cam) = meta.get("camera_type").and_then(|x| x.as_str()) {
+                self.model = Some(cam.trim_start_matches("Blackmagic ").to_string());
+            }
+            if let Some(fw) = meta.get("firmware_version").and_then(|x| x.as_str()) {
+                firmware_version = fw.to_string();
+            }
+            util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), meta, vec![]));
+        }
+        if let Some(fr) = frame_rate {
+            util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::FrameRate, "Frame rate", f64, |v| format!("{:?}", v), fr, vec![]));
+            if let Some(rs) = self.frame_readout_time {
+                if firmware_version == "7.9" && rs > (1000.0 / fr) {
+                    self.frame_readout_time = Some(rs / 2.0); // Bug in firmware v7.9.0
+                }
+            }
+        }
+
         util::get_metadata_track_samples(stream, size, false, |info: SampleInfo, data: &[u8], file_position: u64| {
             if size > 0 {
                 progress_cb(((info.track_index as f64 - 1.0) + (file_position as f64 / size as f64)) / 3.0);
@@ -68,13 +107,13 @@ impl BlackmagicBraw {
                 crate::try_block!({
                     d.seek(SeekFrom::Start(8)).ok()?;
                     if &data[4..8] == b"mogy" {
-                        gyro.push(TimeVector3 { t: (info.timestamp_ms - 11.0) / 1000.0,
+                        gyro.push(TimeVector3 { t: (info.timestamp_ms - self.frame_readout_time.unwrap_or(0.0) / 2.0) / 1000.0,
                             x: d.read_f32::<LittleEndian>().ok()? as f64,
                             y: d.read_f32::<LittleEndian>().ok()? as f64,
                             z: d.read_f32::<LittleEndian>().ok()? as f64
                         });
                     } else if &data[4..8] == b"moac" {
-                        accl.push(TimeVector3 { t: (info.timestamp_ms - 11.0) / 1000.0,
+                        accl.push(TimeVector3 { t: (info.timestamp_ms - self.frame_readout_time.unwrap_or(0.0) / 2.0) / 1000.0,
                             x: -d.read_f32::<LittleEndian>().ok()? as f64,
                             y: -d.read_f32::<LittleEndian>().ok()? as f64,
                             z: -d.read_f32::<LittleEndian>().ok()? as f64
@@ -84,14 +123,6 @@ impl BlackmagicBraw {
             }
         }, cancel_flag)?;
 
-        let mut map = GroupedTagMap::new();
-
-        if let Ok(meta) = self.parse_meta(stream, size) {
-            if let Some(cam) = meta.get("camera_type").and_then(|x| x.as_str()) {
-                self.model = Some(cam.trim_start_matches("Blackmagic ").to_string());
-            }
-            util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), meta, vec![]));
-        }
 
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), accl, vec![]));
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]));
@@ -103,34 +134,9 @@ impl BlackmagicBraw {
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
 
-        if let Some(fr) = frame_rate {
-            util::insert_tag(&mut map, tag!(parsed GroupId::Default,   TagId::FrameRate, "Frame rate", f64, |v| format!("{:?}", v), fr, vec![]));
-            if let Some(rs) = self.frame_readout_time {
-                if rs > (1000.0 / fr) {
-                    self.frame_readout_time = Some(rs / 2.0); // Bug in firmware v7.9.0
-                }
-            }
-        }
-
         samples.insert(0, SampleInfo { tag_map: Some(map), ..Default::default() });
 
         Ok(samples)
-    }
-
-    pub fn normalize_imu_orientation(v: String) -> String {
-        v
-    }
-
-    pub fn camera_type(&self) -> String {
-        if self.model.is_some() {
-            "Blackmagic".to_owned()
-        } else {
-            "Blackmagic RAW".to_owned()
-        }
-    }
-
-    pub fn frame_readout_time(&self) -> Option<f64> {
-        self.frame_readout_time
     }
 
     pub fn parse_meta<T: Read + Seek>(&mut self, stream: &mut T, size: usize) -> Result<serde_json::Value> {

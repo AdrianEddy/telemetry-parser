@@ -18,7 +18,21 @@ pub struct KanDao {
 
 #[allow(unused_assignments)]
 impl KanDao {
-    pub fn possible_extensions() -> Vec<&'static str> { vec!["bin"] }
+    pub fn camera_type(&self) -> String {
+        "KanDao".to_owned()
+    }
+    pub fn has_accurate_timestamps(&self) -> bool {
+        false
+    }
+    pub fn possible_extensions() -> Vec<&'static str> {
+        vec!["bin"]
+    }
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        None
+    }
+    pub fn normalize_imu_orientation(v: String) -> String {
+        v
+    }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if memmem::find(buffer, b"KANDAO_IMU_DATA").is_some() && memmem::find(buffer, b"GYROACC").is_some() {
@@ -168,17 +182,5 @@ impl KanDao {
         }
 
         Ok(ret)
-    }
-
-    pub fn normalize_imu_orientation(v: String) -> String {
-        v
-    }
-
-    pub fn camera_type(&self) -> String {
-        "KanDao".to_owned()
-    }
-
-    pub fn frame_readout_time(&self) -> Option<f64> {
-        None
     }
 }

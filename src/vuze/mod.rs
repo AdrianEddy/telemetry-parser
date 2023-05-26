@@ -15,7 +15,21 @@ pub struct Vuze {
 }
 
 impl Vuze {
-    pub fn possible_extensions() -> Vec<&'static str> { vec!["mp4", "mov"] }
+    pub fn camera_type(&self) -> String {
+        "Vuze".to_owned()
+    }
+    pub fn has_accurate_timestamps(&self) -> bool {
+        false
+    }
+    pub fn possible_extensions() -> Vec<&'static str> {
+        vec!["mp4", "mov"]
+    }
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        None
+    }
+    pub fn normalize_imu_orientation(v: String) -> String {
+        v
+    }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if memmem::find(buffer, b"bmdt").is_some() &&
@@ -188,18 +202,6 @@ impl Vuze {
         Ok(vec![
             SampleInfo { timestamp_ms: 0.0, duration_ms: last_timestamp, tag_map: Some(map), ..Default::default() }
         ])
-    }
-
-    pub fn normalize_imu_orientation(v: String) -> String {
-        v
-    }
-
-    pub fn camera_type(&self) -> String {
-        "Vuze".to_owned()
-    }
-
-    pub fn frame_readout_time(&self) -> Option<f64> {
-        None
     }
 
     fn get_lens_profile(&self, data: &serde_json::Value, width: i32, height: i32) -> Option<serde_json::Value> {

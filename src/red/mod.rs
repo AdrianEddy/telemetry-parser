@@ -18,7 +18,25 @@ pub struct RedR3d {
 }
 
 impl RedR3d {
-    pub fn possible_extensions() -> Vec<&'static str> { vec!["r3d", "mp4", "mov", "mxf"] }
+    pub fn camera_type(&self) -> String {
+        if self.model.is_some() {
+            "RED".to_owned()
+        } else {
+            "RED RAW".to_owned()
+        }
+    }
+    pub fn has_accurate_timestamps(&self) -> bool {
+        false
+    }
+    pub fn possible_extensions() -> Vec<&'static str> {
+        vec!["r3d", "mp4", "mov", "mxf"]
+    }
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        None
+    }
+    pub fn normalize_imu_orientation(v: String) -> String {
+        v
+    }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
         if let Some(ext) = filepath.as_ref().extension() {
@@ -414,21 +432,5 @@ impl RedR3d {
         }
 
         rmd
-    }
-
-    pub fn normalize_imu_orientation(v: String) -> String {
-        v
-    }
-
-    pub fn camera_type(&self) -> String {
-        if self.model.is_some() {
-            "RED".to_owned()
-        } else {
-            "RED RAW".to_owned()
-        }
-    }
-
-    pub fn frame_readout_time(&self) -> Option<f64> {
-        None
     }
 }

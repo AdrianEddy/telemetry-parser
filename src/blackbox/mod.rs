@@ -20,7 +20,21 @@ pub struct BlackBox {
 }
 
 impl BlackBox {
-    pub fn possible_extensions() -> Vec<&'static str> { vec!["bfl", "bbl", "csv", "txt"] }
+    pub fn camera_type(&self) -> String {
+        "BlackBox".to_owned()
+    }
+    pub fn has_accurate_timestamps(&self) -> bool {
+        false
+    }
+    pub fn possible_extensions() -> Vec<&'static str> {
+        vec!["bfl", "bbl", "csv", "txt"]
+    }
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        None
+    }
+    pub fn normalize_imu_orientation(_: String) -> String {
+        "ZYx".into()
+    }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         // BBL - container format, can contain multiple logs, each starting with "H Product:Blackbox flight data recorder by Nicholas Sherlock." and ending with "End of log\0"
@@ -83,10 +97,6 @@ impl BlackBox {
             "accSmooth" => GroupId::Accelerometer,
             _ => GroupId::Custom(name.to_owned())
         }
-    }
-
-    pub fn normalize_imu_orientation(_: String) -> String {
-        "ZYx".into()
     }
 
     fn prepare_vectors_from_headers(headers: &[&str]) -> Columns {
@@ -157,13 +167,6 @@ impl BlackBox {
         }
     }
 
-    pub fn camera_type(&self) -> String {
-        "BlackBox".to_owned()
-    }
-
-    pub fn frame_readout_time(&self) -> Option<f64> {
-        None
-    }
 }
 
 #[derive(Debug)]

@@ -16,11 +16,26 @@ use memchr::memmem;
 pub struct GoPro {
     pub model: Option<String>,
     extra_gpmf: Option<GroupedTagMap>,
-    frame_readout_time: Option<f64>
+    frame_readout_time: Option<f64>,
+    has_cori: bool,
 }
 
 impl GoPro {
-    pub fn possible_extensions() -> Vec<&'static str> { vec!["mp4", "mov", "360"] }
+    pub fn camera_type(&self) -> String {
+        "GoPro".to_owned()
+    }
+    pub fn has_accurate_timestamps(&self) -> bool {
+        self.has_cori
+    }
+    pub fn possible_extensions() -> Vec<&'static str> {
+        vec!["mp4", "mov", "360"]
+    }
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        self.frame_readout_time
+    }
+    pub fn normalize_imu_orientation(v: String) -> String {
+        v
+    }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         let mut ret = None;
@@ -226,7 +241,7 @@ impl GoPro {
         None
     }
 
-    fn process_samples(&self, samples: &mut Vec<SampleInfo>, fps: Option<f64>) {
+    fn process_samples(&mut self, samples: &mut Vec<SampleInfo>, fps: Option<f64>) {
         // Normalize quaternions
         let mut prev_increment = 0;
         let mut start_timestamp_us = None;
@@ -252,6 +267,7 @@ impl GoPro {
                     }
                     // TODO https://github.com/gopro/gpmf-parser/blob/master/GPMF_utils.c
                     if let Some(arr) = map.get_t(TagId::Data) as Option<&Vec<Quaternion<i16>>> {
+                        self.has_cori = true;
                         let sample_count = arr.len() as i64;
                         let increment = next_timestamp_us.map(|x| ((x - timestamp_us) / sample_count)).unwrap_or(prev_increment);
                         prev_increment = increment;
@@ -355,17 +371,5 @@ impl GoPro {
             else if mtrx[x * 3 + 2] > 0.5 { 'Z' } else if mtrx[x * 3 + 2] < -0.5 { 'z' }
             else { panic!("Invalid MTRX {:?}", mtrx) }
         }).collect()
-    }
-
-    pub fn normalize_imu_orientation(v: String) -> String {
-        v
-    }
-
-    pub fn camera_type(&self) -> String {
-        "GoPro".to_owned()
-    }
-
-    pub fn frame_readout_time(&self) -> Option<f64> {
-        self.frame_readout_time
     }
 }

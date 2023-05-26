@@ -22,11 +22,27 @@ pub struct Insta360 {
     pub is_raw_gyro: bool,
     pub acc_range: Option<f64>,
     pub gyro_range: Option<f64>,
-    pub frame_readout_time: Option<f64>
+    pub frame_readout_time: Option<f64>,
+    pub first_frame_timestamp: Option<f64>,
+    pub gyro_timestamp: Option<f64>,
 }
 
 impl Insta360 {
-    pub fn possible_extensions() -> Vec<&'static str> { vec!["mp4", "mov", "insv"] }
+    pub fn camera_type(&self) -> String {
+        "Insta360".to_owned()
+    }
+    pub fn has_accurate_timestamps(&self) -> bool {
+        true
+    }
+    pub fn possible_extensions() -> Vec<&'static str> {
+        vec!["mp4", "mov", "insv"]
+    }
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        self.frame_readout_time
+    }
+    pub fn normalize_imu_orientation(v: String) -> String {
+        v
+    }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if buffer.len() > MAGIC.len() && &buffer[buffer.len()-MAGIC.len()..] == MAGIC {
@@ -119,16 +135,6 @@ impl Insta360 {
         }
 
         crate::try_block!({
-            self.frame_readout_time = Some(
-                (tag_map.get(&GroupId::Default)?
-                       .get_t(TagId::Metadata) as Option<&serde_json::Value>)?
-                       .as_object()?
-                       .get("rolling_shutter_time")?
-                       .as_f64()?
-            );
-        });
-
-        crate::try_block!({
             let md = (tag_map.get(&GroupId::Default)?.get_t(TagId::Metadata) as Option<&serde_json::Value>)?.as_object()?;
             match (md.get("dimension").and_then(|x| x.as_object()), md.get("window_crop_info").and_then(|x| x.as_object()), md.get("offset_v3").and_then(|x| x.as_array())) {
                 (Some(dim), Some(crop_info), Some(offset_v3)) if offset_v3.len() >= 20 => {
@@ -139,23 +145,43 @@ impl Insta360 {
                     let dh = crop_info.get("dst_height")?.as_i64()? as u32;
 
                     self.insert_lens_profile(tag_map, (w, h), (sw, sh), (dw, dh), &offset_v3.into_iter().filter_map(|x| x.as_f64()).collect::<Vec<f64>>());
-
                 },
                 _ => { }
             }
         });
-    }
 
-    pub fn normalize_imu_orientation(v: String) -> String {
-        v
-    }
+        crate::try_block!({
+            let mut exposures = std::collections::BTreeMap::<i64, f64>::new();
+            let md: &Vec<TimeScalar<f64>> = (tag_map.get(&GroupId::Exposure)?.get_t(TagId::Data) as Option<&Vec<TimeScalar<f64>>>)?;
+            let mut fft = self.first_frame_timestamp.unwrap(); // ms
+            let mut gyro_timestamp = self.gyro_timestamp.unwrap(); // ms
+            for x in md {
+                exposures.insert((x.t * 1000.0).round() as i64, x.v);
+            }
 
-    pub fn camera_type(&self) -> String {
-        "Insta360".to_owned()
-    }
+            // Subtract 0.9 ms, no idea why but it works better
+            fft -= 0.9; // ms
 
-    pub fn frame_readout_time(&self) -> Option<f64> {
-        self.frame_readout_time
+            // ms to s
+            fft /= 1000.0;
+            gyro_timestamp /= 1000.0;
+
+            let mut update_timestamps = |group: &GroupId| {
+                if let Some(g) = tag_map.get_mut(group) {
+                    if let Some(g) = g.get_mut(&TagId::Data) {
+                        if let TagValue::Vec_TimeVector3_f64(g) = &mut g.value {
+                            for x in g.get_mut() {
+                                let exp_s = crate::util::interpolate_at_timestamp((x.t * 1000000.0).round() as i64, &exposures);
+
+                                x.t -= fft + gyro_timestamp - (exp_s / 2.0);
+                            }
+                        }
+                    }
+                }
+            };
+            update_timestamps(&GroupId::Gyroscope);
+            update_timestamps(&GroupId::Accelerometer);
+        });
     }
 
     fn insert_lens_profile(&self, tag_map: &mut GroupedTagMap, size: (u32, u32), _src: (u32, u32), dst: (u32, u32), offset_v3: &[f64]) {
@@ -198,15 +224,6 @@ impl Insta360 {
               "distortion_coeffs": [k1, k2, k3, p1, p2, xi]
             },
             "distortion_model": "insta360",
-            "sync_settings": {
-              "initial_offset": 0,
-              "initial_offset_inv": false,
-              "search_size": 0.3,
-              "max_sync_points": 5,
-              "every_nth_frame": 1,
-              "time_per_syncpoint": 0.6,
-              "do_autosync": true
-            },
             "calibrator_version": "---"
         });
 

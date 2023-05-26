@@ -66,6 +66,13 @@ impl super::Insta360 {
                         if let Ok(x) = extra_info::parse_offset    (&info.original_offset)    { obj["original_offset"   ] = x; }
                         if let Ok(x) = extra_info::parse_offset    (&info.original_offset_v2) { obj["original_offset_v2"] = x; }
                         if let Ok(x) = extra_info::parse_offset    (&info.original_offset_v3) { obj["original_offset_v3"] = x; }
+
+                        self.gyro_timestamp = if info.is_has_gyro_timestamp { Some(info.gyro_timestamp) } else { None };
+                        self.first_frame_timestamp = Some(info.first_frame_timestamp as f64 / 1000.0);
+                        self.frame_readout_time = Some(info.rolling_shutter_time);
+                        if !self.is_raw_gyro {
+                            self.first_frame_timestamp = Some(info.first_frame_timestamp as f64);
+                        }
                     }
                 }
                 if let Ok(vv) = v {
@@ -100,13 +107,13 @@ impl super::Insta360 {
                         });
                     } else {
                         acc_vec.push(TimeVector3 {
-                            t: timestamp,
+                            t: timestamp / 1000.0,
                             x: d.read_u16::<LittleEndian>()? as f64 - 32768.0,
                             y: d.read_u16::<LittleEndian>()? as f64 - 32768.0,
                             z: d.read_u16::<LittleEndian>()? as f64 - 32768.0,
                         });
                         gyro_vec.push(TimeVector3 {
-                            t: timestamp,
+                            t: timestamp / 1000.0,
                             x: d.read_u16::<LittleEndian>()? as f64 - 32768.0,
                             y: d.read_u16::<LittleEndian>()? as f64 - 32768.0,
                             z: d.read_u16::<LittleEndian>()? as f64 - 32768.0,

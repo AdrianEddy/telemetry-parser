@@ -26,7 +26,21 @@ pub struct WitMotion {
 }
 
 impl WitMotion {
-    pub fn possible_extensions() -> Vec<&'static str> { vec!["txt", "bin"] }
+    pub fn camera_type(&self) -> String {
+        "WitMotion".to_owned()
+    }
+    pub fn has_accurate_timestamps(&self) -> bool {
+        false
+    }
+    pub fn possible_extensions() -> Vec<&'static str> {
+        vec!["txt", "bin"]
+    }
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        None
+    }
+    pub fn normalize_imu_orientation(v: String) -> String {
+        v
+    }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if buffer.len() > 11 && (buffer[0..2] == [0x55, 0x50] || buffer[0..2] == [0x55, 0x51]) && buffer[11] == 0x55 {
@@ -47,17 +61,5 @@ impl WitMotion {
             Format::Txt    => txt::parse(stream, size),
             Format::Txt2   => txt2::parse(stream, size)
         }
-    }
-
-    pub fn normalize_imu_orientation(v: String) -> String {
-        v
-    }
-
-    pub fn camera_type(&self) -> String {
-        "WitMotion".to_owned()
-    }
-
-    pub fn frame_readout_time(&self) -> Option<f64> {
-        None
     }
 }

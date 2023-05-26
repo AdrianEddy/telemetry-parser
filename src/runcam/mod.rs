@@ -15,7 +15,25 @@ pub struct Runcam {
 }
 
 impl Runcam {
-    pub fn possible_extensions() -> Vec<&'static str> { vec![] }
+    pub fn camera_type(&self) -> String {
+        match self.model.as_deref() {
+            Some("iFlight GOCam GR") => "iFlight",
+            Some("Mobius Maxi 4K") => "Mobius",
+            _ => "Runcam"
+        }.to_owned()
+    }
+    pub fn has_accurate_timestamps(&self) -> bool {
+        false
+    }
+    pub fn possible_extensions() -> Vec<&'static str> {
+        vec![]
+    }
+    pub fn frame_readout_time(&self) -> Option<f64> {
+        None
+    }
+    pub fn normalize_imu_orientation(v: String) -> String {
+        v
+    }
 
     pub fn detect<P: AsRef<Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
         let filename = filepath.as_ref().file_name().map(|x| x.to_string_lossy()).unwrap_or_default();
@@ -163,21 +181,5 @@ impl Runcam {
         Ok(vec![
             SampleInfo { tag_map: Some(map), ..Default::default() }
         ])
-    }
-
-    pub fn normalize_imu_orientation(v: String) -> String {
-        v
-    }
-
-    pub fn camera_type(&self) -> String {
-        match self.model.as_deref() {
-            Some("iFlight GOCam GR") => "iFlight",
-            Some("Mobius Maxi 4K") => "Mobius",
-            _ => "Runcam"
-        }.to_owned()
-    }
-
-    pub fn frame_readout_time(&self) -> Option<f64> {
-        None
     }
 }
