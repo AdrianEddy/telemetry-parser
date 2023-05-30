@@ -14,6 +14,7 @@ declare_groups! {
     Quaternion,
     Position3D,
     IBIS,
+    Imager,
     LensOSS,
     GravityVector,
     CameraOrientation,

@@ -361,38 +361,38 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         0xe401 => tag!(IBIS, Unknown(tag as u32), "IBIS position/rotation u8", u8, "{}", |d| d.read_u8(), tag_data),
         0xe402 => tag!(IBIS, Unknown(tag as u32), "IBIS position/rotation i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
         0xe403 => tag!(IBIS, Unknown(tag as u32), "IBIS position/rotation u8", u8, "{}", |d| d.read_u8(), tag_data),
-        0xe404 => tag!(IBIS, Unknown(tag as u32), "IBIS Position/Rotation 3xi16", Vector3_i16, "{:?}", |d| {
+        0xe404 => tag!(IBIS, Unknown(tag as u32), "IBIS position/rotation 3xi16", Vector3_i16, "{:?}", |d| {
             let x = d.read_i16::<BigEndian>()?;
             let y = d.read_i16::<BigEndian>()?;
             let z = d.read_i16::<BigEndian>()?;
             Ok(Vector3 { x, y, z })
         }, tag_data),
-        0xe405 => tag!(IBIS, Unknown(tag as u32), "IBIS 2xi16", String, |v| v.to_string(), |d| {
-            let x = d.read_i16::<BigEndian>()?;
-            let y = d.read_i16::<BigEndian>()?;
-            Ok(format!("{} {}", x, y))
+        0xe405 => tag!(Imager, Unknown(tag as u32), "Sensor pixel size", u32x2, "{:?}", |d| {
+            let width = d.read_u16::<BigEndian>()? as u32;
+            let height = d.read_u16::<BigEndian>()? as u32;
+            Ok((width, height))
         }, tag_data),
-        0xe406 => tag!(IBIS, Unknown(tag as u32), "IBIS i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
-        0xe407 => tag!(IBIS, Unknown(tag as u32), "IBIS 2xi16", String, |v| v.to_string(), |d| {
-            let x = d.read_i16::<BigEndian>()?;
-            let y = d.read_i16::<BigEndian>()?;
-            Ok(format!("{} {}", x, y))
+        0xe406 => tag!(Imager, Unknown(tag as u32), "Imager i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
+        0xe407 => tag!(Imager, Unknown(tag as u32), "Imager scaler", u32x2, "{:?}", |d| {
+            let x = d.read_i16::<BigEndian>()? as u32;
+            let y = d.read_i16::<BigEndian>()? as u32;
+            Ok((x, y))
         }, tag_data),
-        0xe408 => tag!(IBIS, Unknown(tag as u32), "IBIS i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
-        0xe409 => tag!(IBIS, Unknown(tag as u32), "IBIS 2xi32", String, |v| v.to_string(), |d| {
-            let x = d.read_i32::<BigEndian>()?;
-            let y = d.read_i32::<BigEndian>()?;
-            Ok(format!("{} {}", x, y))
+        0xe408 => tag!(Imager, Unknown(tag as u32), "Imager i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
+        0xe409 => tag!(Imager, Unknown(tag as u32), "Sensor crop origin", u32x2, "{:?}", |d| {
+            let x = d.read_u32::<BigEndian>()?;
+            let y = d.read_u32::<BigEndian>()?;
+            Ok((x, y))
         }, tag_data),
-        0xe40a => tag!(IBIS, Unknown(tag as u32), "IBIS 2xi32", String, |v| v.to_string(), |d| {
-            let x = d.read_i32::<BigEndian>()?;
-            let y = d.read_i32::<BigEndian>()?;
-            Ok(format!("{} {}", x, y))
+        0xe40a => tag!(Imager, Unknown(tag as u32), "Sensor crop size", u32x2, "{:?}", |d| {
+            let width = d.read_u32::<BigEndian>()? as u32;
+            let height = d.read_u32::<BigEndian>()? as u32;
+            Ok((width, height))
         }, tag_data),
-        0xe40b => tag!(IBIS, Unknown(tag as u32), "IBIS i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
-        0xe40c => tag!(IBIS, Unknown(tag as u32), "IBIS i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
-        0xe40d => tag!(IBIS, Unknown(tag as u32), "IBIS i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
-        0xe40e => tag!(IBIS, Unknown(tag as u32), "IBIS i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
+        0xe40b => tag!(Imager, Unknown(tag as u32), "Imager i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
+        0xe40c => tag!(Imager, Unknown(tag as u32), "First sample timestamp", i32, "{} us", |d| d.read_i32::<BigEndian>(), tag_data),
+        0xe40d => tag!(Imager, Unknown(tag as u32), "Timestamp drift", i32, "{} us", |d| d.read_i32::<BigEndian>(), tag_data),
+        0xe40e => tag!(Imager, Unknown(tag as u32), "Frame readout time", i32, "{} us", |d| d.read_i32::<BigEndian>(), tag_data),
         0xe40f => tag!(IBIS, Data, "IBIS TimeOffset table 1", Vec_TimeVector3_i32, "{:?}", |d| {
             let count  = d.read_i32::<BigEndian>()?;
             let length = d.read_i32::<BigEndian>()?;
@@ -484,11 +484,11 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         ////////////////////////////////////////// DistortionCorrection //////////////////////////////////////////
         0xe420 => tag!(GroupId::Custom("LensDistortion".into()), Enabled, "LensDistortion bool", bool, "{}", |d| Ok(d.read_u8()? != 0), tag_data),
         0xe421 => tag!(GroupId::Custom("LensDistortion".into()), Data,    "LensDistortion Table", Json, |v| v.to_string(), |d| {
-            let aa = d.read_u32::<BigEndian>()?; // confirmed u32
-            let bb = d.read_u32::<BigEndian>()?; // confirmed u32
+            let focal_length_nm = d.read_u32::<BigEndian>()?;
+            let effective_sensor_height_nm = d.read_u32::<BigEndian>()?;
 
-            let cc = d.read_u8()?; // confirmed u8
-            let dd = d.read_f32::<BigEndian>()?; // confirmed f32
+            let unk1 = d.read_u8()?; // confirmed u8
+            let coeff_scale = d.read_f32::<BigEndian>()?; // confirmed f32
             let mut elem_count = d.read_u32::<BigEndian>()?;
             let _elem_size = d.read_u32::<BigEndian>()?;
             if elem_count == 0xffffffff {
@@ -499,10 +499,11 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
                 ret.push(d.read_u16::<BigEndian>()?); // confirmed u16
             }
             Ok(serde_json::json!({
-                "unk1": [aa, bb],
-                "unk2": cc,
-                "unk3": dd,
-                "unk4": ret
+                "focal_length_nm": focal_length_nm,
+                "effective_sensor_height_nm": effective_sensor_height_nm,
+                "unk1": unk1,
+                "coeff_scale": coeff_scale,
+                "coeffs": ret
             }))
         }, tag_data),
         0xe422 => tag!(GroupId::Custom("FocalPlaneDistortion".into()), Enabled, "FocalPlaneDistortion bool", bool, "{}", |d| Ok(d.read_u8()? != 0), tag_data),
@@ -578,7 +579,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         // IMU tags
         0xe435 => tag!(Gyroscope, Frequency,       "Gyroscope frequency", i32, "{} Hz", |d| d.read_i32::<BigEndian>(), tag_data),
         0xe436 => tag!(Gyroscope, Unknown(0xe436), "Gyro IMU i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
-        0xe437 => tag!(Gyroscope, Unknown(0xe437), "Gyro IMU i32 offset?", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
+        0xe437 => tag!(Gyroscope, Unknown(0xe437), "Gyro IMU offset", i32, "{} us", |d| d.read_i32::<BigEndian>(), tag_data),
         0xe438 => tag!(Gyroscope, Unknown(0xe438), "Gyro IMU u8",  u8, "{}", |d| d.read_u8(), tag_data),
         0xe439 => tag!(Gyroscope, Scale,           "Gyroscope scale", f32, "{}", |d| d.read_f32::<BigEndian>(), tag_data),
         0xe43a => tag!(Gyroscope, Orientation,     "Gyroscope orientation", String, "{}", read_orientation, tag_data),
@@ -626,7 +627,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         // IMU tags
         0xe445 => tag!(Accelerometer, Frequency,       "Accelerometer frequency", i32, "{} Hz", |d| d.read_i32::<BigEndian>(), tag_data),
         0xe446 => tag!(Accelerometer, Unknown(0xe446), "Accelerometer IMU i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
-        0xe447 => tag!(Accelerometer, Unknown(0xe447), "Accelerometer IMU i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
+        0xe447 => tag!(Accelerometer, Unknown(0xe447), "Accelerometer offset", i32, "{} us", |d| d.read_i32::<BigEndian>(), tag_data),
         0xe448 => tag!(Accelerometer, Unknown(0xe448), "Accelerometer IMU u8",  u8, "{}", |d| d.read_u8(), tag_data),
         0xe449 => tag!(Accelerometer, Scale,           "Accelerometer scale", f32, "{}", |d| d.read_f32::<BigEndian>(), tag_data),
         0xe44a => tag!(Accelerometer, Orientation,     "Accelerometer orientation", String, "{}", read_orientation, tag_data),
