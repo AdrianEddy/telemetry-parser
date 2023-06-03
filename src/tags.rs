@@ -59,6 +59,10 @@ declare_ids! {
     GroupIdentifier,
     StabilizationEnabled,
     CaptureTimestamp,
+    FirstFrameTimestamp,
+    FrameReadoutTime,
+    ExposureTime,
+    TimeOffset,
 
     Name,
     Enabled,

@@ -9,7 +9,7 @@ description = "Library to parse real-time metadata embedded in video files or te
 readme = "README.md"
 
 [dependencies]
-mp4parse = { version = "0.12", features = ["meta-xml", "unstable-api"] }
+mp4parse = { version = "0.17", features = ["meta-xml", "unstable-api"] }
 byteorder = "1.4"
 pretty-hex = "0.3"
 chrono = "0.4"
@@ -24,7 +24,7 @@ memchr = "2.5"
 fc-blackbox = "0.2"
 csv = "1.2"
 human-sort = "0.2.2"
-log = "0.4.17"
+log = "0.4.18"
 
 [build-dependencies]
 #prost-build = "*"

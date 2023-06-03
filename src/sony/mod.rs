@@ -18,20 +18,21 @@ use memchr::memmem;
 
 #[derive(Default)]
 pub struct Sony {
-    pub model: Option<String>
+    pub model: Option<String>,
+    frame_readout_time: Option<f64>,
 }
 impl Sony {
     pub fn camera_type(&self) -> String {
         "Sony".to_owned()
     }
     pub fn has_accurate_timestamps(&self) -> bool {
-        false
+        true
     }
     pub fn possible_extensions() -> Vec<&'static str> {
         vec!["mp4", "mov", "mxf"]
     }
     pub fn frame_readout_time(&self) -> Option<f64> {
-        None
+        self.frame_readout_time
     }
     pub fn normalize_imu_orientation(v: String) -> String {
         fn invert_case(x: char) -> char {
@@ -50,7 +51,8 @@ impl Sony {
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if let Some(p1) = memmem::find(buffer, b"manufacturer=\"Sony\"") {
             return Some(Self {
-                model: util::find_between(&buffer[p1..(p1+1024).min(buffer.len())], b"modelName=\"", b'"')
+                model: util::find_between(&buffer[p1..(p1+1024).min(buffer.len())], b"modelName=\"", b'"'),
+                frame_readout_time: None
             });
         }
         None
@@ -60,26 +62,44 @@ impl Sony {
         let mut header = [0u8; 4];
         stream.read_exact(&mut header)?;
         stream.seek(SeekFrom::Start(0))?;
-        if header == [0x06, 0x0E, 0x2B, 0x34] { // MXF header
-            return mxf::parse(stream, size, progress_cb, cancel_flag);
-        }
 
-        let mut samples = Vec::new();
-        util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64| {
-            if size > 0 {
-                progress_cb(file_position as f64 / size as f64);
-            }
-            if Self::detect_metadata(data) {
-                if let Ok(mut map) = Sony::parse_metadata(&data[0x1C..]) {
-                    if map.contains_key(&GroupId::Accelerometer) {
-                        util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(), Vec::new()));
+        let mut samples = if header == [0x06, 0x0E, 0x2B, 0x34] { // MXF header
+            mxf::parse(stream, size, progress_cb, cancel_flag)?
+        } else {
+            let mut samples = Vec::new();
+            util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64| {
+                if size > 0 {
+                    progress_cb(file_position as f64 / size as f64);
+                }
+                if Self::detect_metadata(data) {
+                    if let Ok(map) = Self::parse_metadata(&data[0x1C..]) {
+                        info.tag_map = Some(map);
+                        samples.push(info);
                     }
-                    info.tag_map = Some(map);
-                    samples.push(info);
+                }
+            }, cancel_flag)?;
+            samples
+        };
+
+        self.process_map(&mut samples);
+
+        Ok(samples)
+    }
+
+    fn process_map(&mut self, samples: &mut Vec<SampleInfo>) {
+        for sample in samples.iter_mut() {
+            if let Some(ref mut map) = sample.tag_map {
+                if map.contains_key(&GroupId::Accelerometer) {
+                    util::insert_tag(map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(), Vec::new()));
+                }
+
+                if let Some(imager) = map.get(&GroupId::Imager) {
+                    if let Some(v) = imager.get_t(TagId::FrameReadoutTime) as Option<&f64> {
+                        self.frame_readout_time = Some(*v);
+                    }
                 }
             }
-        }, cancel_flag)?;
-        Ok(samples)
+        }
     }
 
     fn detect_metadata(data: &[u8]) -> bool {

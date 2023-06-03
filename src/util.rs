@@ -157,7 +157,7 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp
 
     for x in &ctx.tracks {
         if x.track_type == typ {
-            // if let Some(timescale) = x.timescale {
+            if let Some(timescale) = x.timescale {
                 // if let Some(ref stts) = x.stts {
                 //     sample_delta = stts.samples[0].sample_delta;
                 // }
@@ -166,26 +166,28 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp
                 if let Some(samples) = mp4parse::unstable::create_sample_table(&x, 0.into()) {
                     let mut sample_data = Vec::new();
                     let mut sample_index = 0u64;
-                    for x in samples {
+                    for s in samples {
                         if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) { break; }
 
-                        let mut sample_size = (x.end_offset.0 - x.start_offset.0) as usize;
+                        let mut sample_size = (s.end_offset.0 - s.start_offset.0) as usize;
                         if let Some(max_sample_size) = max_sample_size {
                             if sample_size > max_sample_size {
                                 sample_size = max_sample_size;
                             }
                         }
-                        let sample_timestamp_ms = x.start_composition.0 as f64 / 1000.0;
-                        let sample_duration_ms = (x.end_composition.0 - x.start_composition.0) as f64 / 1000.0;
+                        let start_comp_ms = mp4parse::unstable::track_time_to_us(mp4parse::TrackScaledTime::<i64>(s.start_composition.0, x.id), mp4parse::TrackTimeScale::<i64>(timescale.0 as i64, timescale.1)).ok_or(mp4parse::Error::InvalidData(mp4parse::Status::MvhdBadTimescale))?.0 as f64 / 1000.0;
+                        let end_comp_ms   = mp4parse::unstable::track_time_to_us(mp4parse::TrackScaledTime::<i64>(s.end_composition.0,   x.id), mp4parse::TrackTimeScale::<i64>(timescale.0 as i64, timescale.1)).ok_or(mp4parse::Error::InvalidData(mp4parse::Status::MvhdBadTimescale))?.0 as f64 / 1000.0;
+                        let sample_timestamp_ms = start_comp_ms;
+                        let sample_duration_ms = end_comp_ms - start_comp_ms;
                         if sample_size > 4 {
                             if sample_data.len() != sample_size {
                                 sample_data.resize(sample_size, 0u8);
                             }
 
-                            stream.seek(SeekFrom::Start(x.start_offset.0 as u64))?;
+                            stream.seek(SeekFrom::Start(s.start_offset.0 as u64))?;
                             stream.read_exact(&mut sample_data[..])?;
 
-                            callback(SampleInfo { sample_index, track_index, timestamp_ms: sample_timestamp_ms, duration_ms: sample_duration_ms, tag_map: None }, &sample_data, x.start_offset.0 as u64);
+                            callback(SampleInfo { sample_index, track_index, timestamp_ms: sample_timestamp_ms, duration_ms: sample_duration_ms, tag_map: None }, &sample_data, s.start_offset.0 as u64);
 
                             //timestamp_ms += duration_ms;
                             sample_index += 1;
@@ -195,7 +197,7 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp
                         break;
                     }
                 }
-            // }
+            }
         }
         track_index += 1;
     }
