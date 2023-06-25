@@ -151,36 +151,40 @@ impl Insta360 {
         });
 
         crate::try_block!({
-            let mut exposures = std::collections::BTreeMap::<i64, f64>::new();
-            let md: &Vec<TimeScalar<f64>> = (tag_map.get(&GroupId::Exposure)?.get_t(TagId::Data) as Option<&Vec<TimeScalar<f64>>>)?;
-            let mut fft = self.first_frame_timestamp.unwrap(); // ms
-            let mut gyro_timestamp = self.gyro_timestamp.unwrap(); // ms
-            for x in md {
-                exposures.insert((x.t * 1000.0).round() as i64, x.v);
-            }
-
-            // Subtract 0.9 ms, no idea why but it works better
-            fft -= 0.9; // ms
-
-            // ms to s
-            fft /= 1000.0;
-            gyro_timestamp /= 1000.0;
-
+            let fft = self.first_frame_timestamp.unwrap_or_default() / 1000.0;
+            let gyro_timestamp = self.gyro_timestamp.unwrap_or_default() / 1000.0;
             let mut update_timestamps = |group: &GroupId| {
                 if let Some(g) = tag_map.get_mut(group) {
                     if let Some(g) = g.get_mut(&TagId::Data) {
-                        if let TagValue::Vec_TimeVector3_f64(g) = &mut g.value {
-                            for x in g.get_mut() {
-                                let exp_s = crate::util::interpolate_at_timestamp((x.t * 1000000.0).round() as i64, &exposures);
-
-                                x.t -= fft + gyro_timestamp - (exp_s / 2.0);
-                            }
+                        match &mut g.value {
+                            // Gyro/accel
+                            TagValue::Vec_TimeVector3_f64(g) => {
+                                for x in g.get_mut() {
+                                    x.t -= fft;
+                                    if self.is_raw_gyro {
+                                        x.t /= 1000.0;
+                                    }
+                                    x.t -= gyro_timestamp;
+                                }
+                            },
+                            // Exposure
+                            TagValue::Vec_TimeScalar_f64(g) => {
+                                let _ = g.get(); // make sure it's parsed
+                                for x in g.get_mut() {
+                                    x.t -= fft;
+                                    if self.is_raw_gyro {
+                                        x.t /= 1000.0;
+                                    }
+                                }
+                            },
+                            _ => { }
                         }
                     }
                 }
             };
             update_timestamps(&GroupId::Gyroscope);
             update_timestamps(&GroupId::Accelerometer);
+            update_timestamps(&GroupId::Exposure);
         });
     }
 

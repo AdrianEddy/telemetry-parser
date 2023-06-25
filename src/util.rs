@@ -545,7 +545,7 @@ pub fn interpolate_at_timestamp(timestamp_us: i64, offsets: &BTreeMap<i64, f64>)
                             return *offs1.1;
                         }
                         if let Some(offs2) = offsets.range(lookup_ts..).next() {
-                            let time_delta = (offs2.0 - offs1.0) as f64;
+                            let time_delta = ((offs2.0 - offs1.0) as f64).max(1.0);
                             let fract = (timestamp_us - offs1.0) as f64 / time_delta;
                             return offs1.1 + (offs2.1 - offs1.1) * fract;
                         }
