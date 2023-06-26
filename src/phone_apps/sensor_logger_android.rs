@@ -28,11 +28,11 @@ pub fn parse<T: Read + Seek, P: AsRef<std::path::Path>>(stream: &mut T, _size: u
         let h = csv.headers()?.clone();
 
         // Prefer uncalibrated data if available
-        if filename.contains("GyroscopeUncalibrated") && !gyro.is_empty() {
+        if filename.contains("GyroscopeUncalibrated") && !h.is_empty() && !gyro.is_empty() {
             gyro.clear();
-        } else if filename.contains("AccelerometerUncalibrated") && !accl.is_empty() {
+        } else if filename.contains("AccelerometerUncalibrated") && !h.is_empty() && !accl.is_empty() {
             accl.clear();
-        } else if filename.contains("MagnetometerUncalibrated") && !magn.is_empty() {
+        } else if filename.contains("MagnetometerUncalibrated") && !h.is_empty() && !magn.is_empty() {
             magn.clear();
         }
 
