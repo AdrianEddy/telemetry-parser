@@ -42,7 +42,8 @@ pub fn parse<T: Read + Seek>(stream: &mut T, size: usize) -> Result<Vec<SampleIn
     let mut csv = csv::ReaderBuilder::new()
         .has_headers(true)
         .trim(csv::Trim::All)
-        .delimiter(b' ')
+        .delimiter(if memmem::find(&buffer, b"Time Xg Yg Zg").is_some() { b' ' } else { b',' })
+        .flexible(true)
         .from_reader(d);
 
     let h = csv.headers()?.clone();

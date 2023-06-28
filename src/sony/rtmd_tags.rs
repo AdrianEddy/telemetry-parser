@@ -22,7 +22,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         0x8001 => tag!(Lens, FocusDistance,      "Focus Position (Image Plane)",           f32,  "{:.2}m",  |d| read_f16(d), tag_data),
         0x8002 => tag!(Lens, FocusDistance,      "Focus Position (Front Lens Vertex)",     f32,  "{:.2}m",  |d| read_f16(d), tag_data),
         0x8003 => tag!(Lens, MacroEnabled,       "Macro Setting",                          bool, "{:?}",    |d| Ok(d.read_i8()? == 1), tag_data),
-        0x8004 => tag!(Lens, LensZoom35mm,       "LensZoom (35mm Still Camera Equivalent", f32,  "{:.2}mm", |d| Ok(read_f16(d)? * 1000.0), tag_data),
+        0x8004 => tag!(Lens, LensZoom35mm,       "LensZoom (35mm Still Camera Equivalent)",f32,  "{:.2}mm", |d| Ok(read_f16(d)? * 1000.0), tag_data),
         0x8005 => tag!(Lens, LensZoomNative,     "LensZoom (Actual Focal Length)",         f32,  "{:.2}mm", |d| Ok(read_f16(d)? * 1000.0), tag_data),
         0x8006 => tag!(Lens, OpticalZoomPercent, "Optical Extender Magnification",         u16,  "{:.2}%",  |d| d.read_u16::<BigEndian>(), tag_data),
         0x8007 => tag!(Lens, LensAttributes,     "Lens Attributes",                        String, |v| v.to_string(),   |d| read_utf8(d), tag_data),
