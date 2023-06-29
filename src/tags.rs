@@ -27,6 +27,7 @@ declare_ids! {
     IrisTStop,
     FocusDistance,
     MacroEnabled,
+    FocalLength,
     LensZoom35mm,
     LensZoomNative,
     OpticalZoomPercent,
@@ -63,6 +64,10 @@ declare_ids! {
     FrameReadoutTime,
     ExposureTime,
     TimeOffset,
+    SensorSizePixels,
+    PixelPitch,
+    CaptureAreaOrigin,
+    CaptureAreaSize,
 
     Name,
     Enabled,

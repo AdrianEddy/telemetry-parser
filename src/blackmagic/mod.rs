@@ -53,6 +53,38 @@ impl BlackmagicBraw {
         let mut samples = Vec::new();
         let mut frame_rate = None;
 
+        let mut firmware_version = String::new();
+        // let mut crop_factor = 1.0;
+        if let Ok(meta) = self.parse_meta(stream, size) {
+            if let Some(cam) = meta.get("camera_type").and_then(|x| x.as_str()) {
+                self.model = Some(cam.trim_start_matches("Blackmagic ").to_string());
+            }
+            if let Some(fw) = meta.get("firmware_version").and_then(|x| x.as_str()) {
+                firmware_version = fw.to_string();
+            }
+            if let Some(v) = meta.get("crop_origin").and_then(|v| v.as_array()).and_then(|x| Some((x.get(0)?.as_f64()? as u32, x.get(1)?.as_f64()? as u32))) {
+                util::insert_tag(&mut map, tag!(parsed GroupId::Imager, TagId::CaptureAreaOrigin, "Capture area origin", u32x2, |v| format!("{v:?}"), v, vec![]));
+            }
+            if let Some(v) = meta.get("sensor_area_captured").and_then(|v| v.as_array()).and_then(|x| Some((x.get(0)?.as_f64()? as u32, x.get(1)?.as_f64()? as u32))) {
+                util::insert_tag(&mut map, tag!(parsed GroupId::Imager, TagId::CaptureAreaSize, "Capture area size", u32x2, |v| format!("{v:?}"), v, vec![]));
+            }
+            match self.model.as_deref() {
+                Some("Pocket Cinema Camera 6K Pro") |
+                Some("Pocket Cinema Camera 6K G2") |
+                Some("Pocket Cinema Camera 6K") => {
+                    util::insert_tag(&mut map, tag!(parsed GroupId::Imager, TagId::PixelPitch, "Pixel pitch", u32x2, |v| format!("{v:?}"), (3759, 3759), vec![]));
+                    // crop_factor = 1.5;
+                },
+                Some("Pocket Cinema Camera 4K") => {
+                    util::insert_tag(&mut map, tag!(parsed GroupId::Imager, TagId::PixelPitch, "Pixel pitch", u32x2, |v| format!("{v:?}"), (4628, 4628), vec![]));
+                    // crop_factor = 2.0;
+                },
+                _ => { }
+            }
+
+            util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), meta, vec![]));
+        }
+
         let _ = util::get_track_samples(stream, size, mp4parse::TrackType::Video, true, Some(8192), |mut info: SampleInfo, data: &[u8], file_position: u64| {
             if size > 0 {
                 progress_cb(file_position as f64 / size as f64 / 3.0);
@@ -68,7 +100,7 @@ impl BlackmagicBraw {
                 if let Some(v) = md.get("focal_length").and_then(|v| v.as_str()) {
                     let v = v.replace("mm", "");
                     if let Ok(v) = v.parse::<f32>() {
-                        util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::LensZoomNative, "Focal length", f32, |v| format!("{v:.3}"), v, vec![]));
+                        util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::FocalLength, "Focal length", f32, |v| format!("{v:.3}"), v, vec![]));
                     }
                 }
 
@@ -78,16 +110,6 @@ impl BlackmagicBraw {
             }
         }, cancel_flag.clone());
 
-        let mut firmware_version = String::new();
-        if let Ok(meta) = self.parse_meta(stream, size) {
-            if let Some(cam) = meta.get("camera_type").and_then(|x| x.as_str()) {
-                self.model = Some(cam.trim_start_matches("Blackmagic ").to_string());
-            }
-            if let Some(fw) = meta.get("firmware_version").and_then(|x| x.as_str()) {
-                firmware_version = fw.to_string();
-            }
-            util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), meta, vec![]));
-        }
         if let Some(fr) = frame_rate {
             util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::FrameRate, "Frame rate", f64, |v| format!("{:?}", v), fr, vec![]));
             if let Some(rs) = self.frame_readout_time {

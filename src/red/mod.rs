@@ -375,11 +375,24 @@ impl RedR3d {
         }
         if !md.is_empty() {
             if let Some(v) = md.get("focal_length").and_then(|v| v.as_f64()) {
-                util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::LensZoomNative, "Focal length", f32, |v| format!("{v:.3}"), v as f32, vec![]));
+                util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::FocalLength, "Focal length", f32, |v| format!("{v:.3}"), v as f32, vec![]));
             }
             if let Some(v) = md.get("lens_name").and_then(|v| v.as_str()) {
                 util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::Name, "Lens name", String, |v| v.clone(), v.into(), vec![]));
             }
+
+            let pixel_pitch = match self.model.as_deref() {
+                Some("KOMODO 6K")       => Some((4400, 4400)),
+                Some("V-RAPTOR 8K VV")  => Some((5000, 5000)),
+                Some("V-RAPTOR 8K S35") => Some((3200, 3200)),
+                Some("Raven")           => Some((5000, 5000)),
+                Some("DSMC2 DRAGON-X 6K S35") => Some((5000, 5000)),
+                _ => None
+            };
+            if let Some(pp) = pixel_pitch {
+                util::insert_tag(map, tag!(parsed GroupId::Imager, TagId::PixelPitch, "Pixel pitch", u32x2, |v| format!("{v:?}"), pp, vec![]));
+            }
+
             util::insert_tag(map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), serde_json::Value::Object(md), vec![]));
         }
         Ok(())

@@ -23,7 +23,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         0x8002 => tag!(Lens, FocusDistance,      "Focus Position (Front Lens Vertex)",     f32,  "{:.2}m",  |d| read_f16(d), tag_data),
         0x8003 => tag!(Lens, MacroEnabled,       "Macro Setting",                          bool, "{:?}",    |d| Ok(d.read_i8()? == 1), tag_data),
         0x8004 => tag!(Lens, LensZoom35mm,       "LensZoom (35mm Still Camera Equivalent)",f32,  "{:.2}mm", |d| Ok(read_f16(d)? * 1000.0), tag_data),
-        0x8005 => tag!(Lens, LensZoomNative,     "LensZoom (Actual Focal Length)",         f32,  "{:.2}mm", |d| Ok(read_f16(d)? * 1000.0), tag_data),
+        0x8005 => tag!(Lens, FocalLength,        "LensZoom (Actual Focal Length)",         f32,  "{:.2}mm", |d| Ok(read_f16(d)? * 1000.0), tag_data),
         0x8006 => tag!(Lens, OpticalZoomPercent, "Optical Extender Magnification",         u16,  "{:.2}%",  |d| d.read_u16::<BigEndian>(), tag_data),
         0x8007 => tag!(Lens, LensAttributes,     "Lens Attributes",                        String, |v| v.to_string(),   |d| read_utf8(d), tag_data),
         0x8009 => tag!(Lens, IrisRingPosition,   "Iris Ring Position",                     f32,  "{:.2}%",  |d| Ok(d.read_u16::<BigEndian>()? as f32 / 65536.0 * 100.0), tag_data),
@@ -367,24 +367,24 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             let z = d.read_i16::<BigEndian>()?;
             Ok(Vector3 { x, y, z })
         }, tag_data),
-        0xe405 => tag!(Imager, Unknown(tag as u32), "Sensor pixel size", u32x2, "{:?}", |d| {
+        0xe405 => tag!(Imager, SensorSizePixels, "Sensor pixel size", u32x2, "{:?}", |d| {
             let width = d.read_u16::<BigEndian>()? as u32;
             let height = d.read_u16::<BigEndian>()? as u32;
             Ok((width, height))
         }, tag_data),
         0xe406 => tag!(Imager, Unknown(tag as u32), "Imager i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
-        0xe407 => tag!(Imager, Unknown(tag as u32), "Pixel pitch", u32x2, "{:?}", |d| {
+        0xe407 => tag!(Imager, PixelPitch, "Pixel pitch", u32x2, "{:?}", |d| {
             let x = d.read_i16::<BigEndian>()? as u32;
             let y = d.read_i16::<BigEndian>()? as u32;
             Ok((x, y))
         }, tag_data),
         0xe408 => tag!(Imager, Unknown(tag as u32), "Imager i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
-        0xe409 => tag!(Imager, Unknown(tag as u32), "Sensor crop origin", u32x2, "{:?}", |d| {
+        0xe409 => tag!(Imager, CaptureAreaOrigin, "Sensor crop origin", u32x2, "{:?}", |d| {
             let x = d.read_u32::<BigEndian>()?;
             let y = d.read_u32::<BigEndian>()?;
             Ok((x, y))
         }, tag_data),
-        0xe40a => tag!(Imager, Unknown(tag as u32), "Sensor crop size", u32x2, "{:?}", |d| {
+        0xe40a => tag!(Imager, CaptureAreaSize, "Sensor crop size", u32x2, "{:?}", |d| {
             let width = d.read_u32::<BigEndian>()? as u32;
             let height = d.read_u32::<BigEndian>()? as u32;
             Ok((width, height))
@@ -520,10 +520,12 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
                     d.read_i16::<BigEndian>()?, // y
                 ));
             }
+            let scale = if cc != 0 { 32768.0 / cc as f64 } else { 1.0 };
+
             Ok(serde_json::json!({
                 "unk1": aa,
                 "unk2": bb,
-                "unk3": cc,
+                "scale": scale,
                 "unk4": ret
             }))
         }, tag_data),
