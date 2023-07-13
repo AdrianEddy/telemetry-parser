@@ -613,12 +613,29 @@ pub struct VideoMetadata {
 
 pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Result<VideoMetadata> { // -> (width, height, fps, duration_s, rotation)
     let mut header = [0u8; 4];
+    let mut last16kb = vec![0u8; 16384];
     stream.read_exact(&mut header)?;
+    if filesize > 16384 {
+        stream.seek(SeekFrom::End(-16384))?;
+        stream.read_exact(&mut last16kb)?;
+    }
     stream.seek(SeekFrom::Start(0))?;
+
     if header == [0x06, 0x0E, 0x2B, 0x34] { // MXF header
         let mut md = VideoMetadata::default();
         crate::sony::mxf::parse(stream, filesize, |_|(), Arc::new(AtomicBool::new(false)), Some(&mut md))?;
         return Ok(md);
+    }
+
+    // Special case for BRAW
+    let mut override_size = None;
+    if memmem::find(&last16kb, b"Blackmagic Design").is_some() {
+        let mut bmd = crate::blackmagic::BlackmagicBraw::default();
+        if let Ok(md) = bmd.parse_meta(stream, filesize) {
+            if let Some(size) = md.get("crop_size").and_then(|x| x.as_array()).filter(|x| x.len() == 2).and_then(|x| Some((x[0].as_f64()? as usize, x[1].as_f64()? as usize))) {
+                override_size = Some(size);
+            }
+        }
     }
 
     let mp = parse_mp4(stream, filesize)?;
@@ -631,8 +648,8 @@ pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Re
                 }
             }
             if let Some(ref tkhd) = track.tkhd {
-                let w = tkhd.width >> 16;
-                let h = tkhd.height >> 16;
+                let mut w = (tkhd.width >> 16) as usize;
+                let mut h = (tkhd.height >> 16) as usize;
                 let matrix = (
                     tkhd.matrix.a >> 16,
                     tkhd.matrix.b >> 16,
@@ -646,9 +663,13 @@ pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Re
                     _ => 0,
                 };
                 let fps = get_fps_from_track(&track).unwrap_or_default();
+                if let Some(os) = override_size {
+                    w = os.0;
+                    h = os.1;
+                }
                 return Ok(VideoMetadata {
-                    width: w as usize,
-                    height: h as usize,
+                    width: w,
+                    height: h,
                     fps,
                     duration_s: duration_sec,
                     rotation
