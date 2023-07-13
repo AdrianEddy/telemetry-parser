@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright © 2021 Adrian <adrian.eddy at gmail>
 
+use std::collections::BTreeMap;
 use std::io::*;
 use std::sync::{ Arc, atomic::AtomicBool };
 use byteorder::{ ReadBytesExt, BigEndian };
@@ -8,9 +9,11 @@ use byteorder::{ ReadBytesExt, BigEndian };
 use crate::*;
 use crate::tags_impl::*;
 
-pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
+pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, metadata_only: Option<&mut util::VideoMetadata>) -> Result<Vec<SampleInfo>> {
     let mut stream = std::io::BufReader::with_capacity(128*1024, stream);
     let mut samples = Vec::new();
+
+    let mut frame_rate = 25.0;
 
     let mut index = 0;
     let mut id = [0u8; 16];
@@ -40,13 +43,33 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_c
 
         // log::debug!("{}: {}", util::to_hex(&id), length);
 
+        if id == [0x06, 0x0e, 0x2b, 0x34, 0x02, 0x53, 0x01, 0x01, 0x0D, 0x01, 0x01, 0x01, 0x01, 0x01, 0x28, 0x00] || // CdciVideoDescriptor
+           id == [0x06, 0x0e, 0x2b, 0x34, 0x02, 0x53, 0x01, 0x01, 0x0D, 0x01, 0x01, 0x01, 0x01, 0x01, 0x29, 0x00] { // RgbaVideoDescriptor
+            let mut data = vec![0; length];
+            stream.read_exact(&mut data)?;
+            if let Ok(data) = parse_set(&data) {
+                if let Some(v) = data.get(&MxfMetaTag::SampleRate).and_then(|x| x.as_f64()) {
+                    frame_rate = v;
+                }
+                if let Some(md) = metadata_only {
+                    *md = util::VideoMetadata {
+                        duration_s: data.get(&MxfMetaTag::ContainerDuration).or_else(|| data.get(&MxfMetaTag::Duration)).and_then(|x| x.as_u64()).unwrap_or_default() as f64 / frame_rate,
+                        fps: frame_rate,
+                        width: data.get(&MxfMetaTag::DisplayWidth).and_then(|x| x.as_u64()).unwrap_or_default() as usize,
+                        height: data.get(&MxfMetaTag::DisplayHeight).and_then(|x| x.as_u64()).unwrap_or_default() as usize,
+                        rotation: 0,
+                    };
+                    return Ok(Vec::new());
+                }
+            }
+        }
+
         if id == [0x06, 0x0e, 0x2b, 0x34, 0x01, 0x02, 0x01, 0x01, 0x0d, 0x01, 0x03, 0x01, 0x17, 0x01, 0x02, 0x01] { // Metadata, Ancillary, SMPTE ST 436
             let mut data = vec![0; length];
             stream.read_exact(&mut data)?;
             let data = parse_ancillary(&data)?;
 
             if let Ok(map) = super::Sony::parse_metadata(&data) {
-                let mut frame_rate = 25.0; // Probably wrong assumption, but it's better than 0 (at least we'll have some timestamps)
                 if let Some(group) = map.get(&GroupId::Default) {
                     if let Some(val) = group.get(&TagId::FrameRate) {
                         match &val.value {
@@ -125,4 +148,61 @@ fn parse_ancillary(buffer: &[u8]) -> Result<Vec<u8>> {
         slice.seek(SeekFrom::Current(array_size as i64))?;
     }
     Ok(full_data)
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
+enum MxfMetaTag {
+    Duration,
+    RoundedTimecodeBase,
+    StartTimecode,
+    DropFrame,
+    SampleRate,
+    ContainerDuration,
+    StoredHeight,
+    StoredWidth,
+    SampledHeight,
+    SampledWidth,
+    SampledXOffset,
+    SampledYOffset,
+    DisplayHeight,
+    DisplayWidth,
+    DisplayXOffset,
+    DisplayYOffset,
+    AspectRatio,
+    ColorRange
+}
+
+fn parse_set(buffer: &[u8]) -> Result<BTreeMap<MxfMetaTag, serde_json::Value>> {
+    let mut slice = Cursor::new(&buffer);
+    let mut map = BTreeMap::<MxfMetaTag, serde_json::Value>::new();
+
+    while slice.position() < buffer.len() as u64 {
+        let tag = slice.read_u16::<BigEndian>()?;
+        let length = slice.read_u16::<BigEndian>()?;
+
+        match tag {
+            0x0202 => { map.insert(MxfMetaTag::Duration,            slice.read_u64::<BigEndian>()?.into()); },
+            0x1502 => { map.insert(MxfMetaTag::RoundedTimecodeBase, slice.read_u16::<BigEndian>()?.into()); },
+            0x1501 => { map.insert(MxfMetaTag::StartTimecode,       slice.read_u64::<BigEndian>()?.into()); },
+            0x1503 => { map.insert(MxfMetaTag::DropFrame,           slice.read_u8()?.into()); },
+            0x3001 => { map.insert(MxfMetaTag::SampleRate,          (slice.read_u32::<BigEndian>()? as f64 / slice.read_u32::<BigEndian>()? as f64).into()); },
+            0x3002 => { map.insert(MxfMetaTag::ContainerDuration,   slice.read_u64::<BigEndian>()?.into()); },
+            0x3202 => { map.insert(MxfMetaTag::StoredHeight,        slice.read_u32::<BigEndian>()?.into()); },
+            0x3203 => { map.insert(MxfMetaTag::StoredWidth,         slice.read_u32::<BigEndian>()?.into()); },
+            0x3204 => { map.insert(MxfMetaTag::SampledHeight,       slice.read_u32::<BigEndian>()?.into()); },
+            0x3205 => { map.insert(MxfMetaTag::SampledWidth,        slice.read_u32::<BigEndian>()?.into()); },
+            0x3206 => { map.insert(MxfMetaTag::SampledXOffset,      slice.read_u32::<BigEndian>()?.into()); },
+            0x3207 => { map.insert(MxfMetaTag::SampledYOffset,      slice.read_u32::<BigEndian>()?.into()); },
+            0x3208 => { map.insert(MxfMetaTag::DisplayHeight,       slice.read_u32::<BigEndian>()?.into()); },
+            0x3209 => { map.insert(MxfMetaTag::DisplayWidth,        slice.read_u32::<BigEndian>()?.into()); },
+            0x320A => { map.insert(MxfMetaTag::DisplayXOffset,      slice.read_u32::<BigEndian>()?.into()); },
+            0x320B => { map.insert(MxfMetaTag::DisplayYOffset,      slice.read_u32::<BigEndian>()?.into()); },
+            0x320E => { map.insert(MxfMetaTag::AspectRatio,         (slice.read_u32::<BigEndian>()? as f64 / slice.read_u32::<BigEndian>()? as f64).into()); },
+            0x3306 => { map.insert(MxfMetaTag::ColorRange,          slice.read_u32::<BigEndian>()?.into()); },
+            _ => {
+                slice.seek(SeekFrom::Current(length as i64))?;
+            }
+        }
+    }
+    Ok(map)
 }

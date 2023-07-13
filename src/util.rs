@@ -602,7 +602,7 @@ pub fn get_fps_from_track(track: &mp4parse::Track) -> Option<f64> {
     None
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct VideoMetadata {
     pub width: usize,
     pub height: usize,
@@ -612,6 +612,15 @@ pub struct VideoMetadata {
 }
 
 pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Result<VideoMetadata> { // -> (width, height, fps, duration_s, rotation)
+    let mut header = [0u8; 4];
+    stream.read_exact(&mut header)?;
+    stream.seek(SeekFrom::Start(0))?;
+    if header == [0x06, 0x0E, 0x2B, 0x34] { // MXF header
+        let mut md = VideoMetadata::default();
+        crate::sony::mxf::parse(stream, filesize, |_|(), Arc::new(AtomicBool::new(false)), Some(&mut md))?;
+        return Ok(md);
+    }
+
     let mp = parse_mp4(stream, filesize)?;
     for track in mp.tracks {
         if track.track_type == TrackType::Video {

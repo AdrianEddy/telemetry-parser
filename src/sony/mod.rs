@@ -1,8 +1,8 @@
-mod rtmd_tags;
-mod mxf;
-
 // SPDX-License-Identifier: MIT OR Apache-2.0
-// Copyright © 2021 Adrian <adrian.eddy at gmail>
+// Copyright © 2021-2023 Adrian <adrian.eddy at gmail>
+
+mod rtmd_tags;
+pub mod mxf;
 
 #[cfg(feature="sony-xml")]
 pub mod xml_metadata;
@@ -64,7 +64,7 @@ impl Sony {
         stream.seek(SeekFrom::Start(0))?;
 
         let mut samples = if header == [0x06, 0x0E, 0x2B, 0x34] { // MXF header
-            mxf::parse(stream, size, progress_cb, cancel_flag)?
+            mxf::parse(stream, size, progress_cb, cancel_flag, None)?
         } else {
             let mut samples = Vec::new();
             util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64| {
