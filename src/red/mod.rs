@@ -75,14 +75,21 @@ impl RedR3d {
                 let rmd = format!("{}.rmd", &filename[0..pos]).to_ascii_lowercase();
 
                 if let Some(parent) = path.parent() {
-                    for x in parent.read_dir()? {
-                        let x = x?;
-                        let fname = x.file_name().to_string_lossy().to_string();
-                        let fname_lower = fname.to_lowercase();
-                        if (fname.starts_with(filename_base) && fname_lower.ends_with(".r3d")) || (fname_lower == rmd) {
-                            if let Some(p) = x.path().to_str() {
-                                ret.push(p.to_string());
+                    match parent.read_dir() {
+                        Ok(dir) => {
+                            for x in dir {
+                                let x = x?;
+                                let fname = x.file_name().to_string_lossy().to_string();
+                                let fname_lower = fname.to_lowercase();
+                                if (fname.starts_with(filename_base) && fname_lower.ends_with(".r3d")) || (fname_lower == rmd) {
+                                    if let Some(p) = x.path().to_str() {
+                                        ret.push(p.to_string());
+                                    }
+                                }
                             }
+                        },
+                        Err(e) => {
+                            log::warn!("Failed to read directory \"{path:?}\": {e:?}");
                         }
                     }
                 }
