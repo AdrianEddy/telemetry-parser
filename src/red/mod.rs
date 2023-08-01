@@ -89,7 +89,7 @@ impl RedR3d {
                             }
                         },
                         Err(e) => {
-                            log::warn!("Failed to read directory \"{path:?}\": {e:?}");
+                            log::warn!("Failed to read directory {parent:?}: {e:?}");
                         }
                     }
                 }
