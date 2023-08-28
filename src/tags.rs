@@ -19,6 +19,7 @@ declare_groups! {
     GravityVector,
     CameraOrientation,
     ImageOrientation,
+    Cooke,
 }
 
 declare_ids! {
@@ -68,6 +69,8 @@ declare_ids! {
     PixelPitch,
     CaptureAreaOrigin,
     CaptureAreaSize,
+    Shading,
+    Distortion,
 
     Name,
     Enabled,
