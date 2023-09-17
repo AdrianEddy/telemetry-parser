@@ -532,30 +532,44 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         0xe424 => tag!(GroupId::Custom("MeshCorrection".into()), Enabled, "MeshCorrection::Mesh bool", bool, "{}", |d| Ok(d.read_u8()? != 0), tag_data),
         0xe425 => tag!(GroupId::Custom("MeshCorrection".into()), TagId::Unknown(tag as u32), "MeshCorrection::Mesh i16", i16, "{}", |d| d.read_i16::<BigEndian>(), tag_data),
         0xe42f => tag!(GroupId::Custom("MeshCorrection".into()), Data,    "MeshCorrection::Mesh", Json, |v| v.to_string(), |x| {
-            let aa = x.read_i16::<BigEndian>()?; // confirmed i16
+            let unk1 = x.read_i16::<BigEndian>()?;
 
-            let bb = x.read_u32::<BigEndian>()?; // confirmed i32
-            let cc = x.read_u32::<BigEndian>()?; // confirmed i32
+            let offset_x = x.read_i32::<BigEndian>()?;
+            let offset_y = x.read_i32::<BigEndian>()?;
 
-            let dd = x.read_i16::<BigEndian>()?; // confirmed i16
-            let ee = x.read_i16::<BigEndian>()?; // confirmed i16
+            let size_x = x.read_u16::<BigEndian>()?;
+            let size_y = x.read_u16::<BigEndian>()?;
 
             let mut xs = Vec::with_capacity(81);
             let mut ys = Vec::with_capacity(81);
             for _ in 0..81 { xs.push(x.read_i16::<BigEndian>()?); }
             for _ in 0..81 { ys.push(x.read_i16::<BigEndian>()?); }
 
-            let f1 = x.read_u8()?;
-            let f2 = x.read_u8()?;
-            let f3 = x.read_u8()?;
-            let f4 = x.read_u8()?;
+            let divisions_x_2d = 2.0_f64.powi(x.read_u8()? as i32);
+            let divisions_y_2d = 2.0_f64.powi(x.read_u8()? as i32);
+            let divisions_x = x.read_u8()? as usize;
+            let divisions_y = x.read_u8()? as usize;
+
+            let total = divisions_x * divisions_y;
+            let mut mesh_2d = Vec::new();
+            for y in 0..divisions_y as usize {
+                for x in 0..divisions_x as usize {
+                    let idx = total - 1 - (y * divisions_x + x);
+                    mesh_2d.push((
+                        (size_x as f64 / 8.0) * x as f64 + (xs[idx] as f64 / divisions_x_2d),
+                        (size_y as f64 / 8.0) * y as f64 + (ys[idx] as f64 / divisions_y_2d)
+                    ));
+                }
+            }
 
             Ok(serde_json::json!({
-                "unk1": aa,
-                "unk2": [bb, cc],
-                "size": [dd, ee],
-                "points": xs.into_iter().zip(ys).collect::<Vec<_>>(),
-                "unk3": [f1, f2, f3, f4]
+                "unk1": unk1,
+                "offset": [offset_x, offset_y],
+                "size": [size_x, size_y],
+                "mesh": mesh_2d,
+                "raw_mesh": xs.into_iter().zip(ys.into_iter()).collect::<Vec<_>>(),
+                "divisions_2d": [divisions_x_2d as i32, divisions_y_2d as i32],
+                "divisions": [divisions_x, divisions_y]
             }))
         }, tag_data),
         ////////////////////////////////////////// DistortionCorrection //////////////////////////////////////////
