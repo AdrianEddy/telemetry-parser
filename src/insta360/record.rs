@@ -3,6 +3,7 @@
 
 use std::io::*;
 use byteorder::{ReadBytesExt, LittleEndian};
+use std::collections::BTreeMap;
 
 use crate::insta360::extra_info;
 use crate::tag;
@@ -12,7 +13,8 @@ use crate::tags_impl::GroupId::*;
 use crate::util::insert_tag;
 
 #[allow(non_snake_case, non_upper_case_globals)]
-mod RecordType {
+pub mod RecordType {
+    pub const Offsets            : u8 = 0;
     pub const Metadata           : u8 = 1;
     pub const Thumbnail          : u8 = 2;
     pub const Gyro               : u8 = 3;
@@ -39,13 +41,26 @@ mod RecordFormat {
 }
 
 impl super::Insta360 {
-    pub fn parse_record(&mut self, id: u8, format: u8, _version: u32, data: &[u8]) -> Result<GroupedTagMap> {
+    pub fn parse_record(&mut self, id: u8, format: u8, _version: u32, data: &[u8], mut offsets: Option<&mut BTreeMap<u8, (u32, u32)>>) -> Result<GroupedTagMap> {
         let mut map = GroupedTagMap::new();
 
         let mut d = Cursor::new(data);
         let len = data.len() as u64;
 
         match id {
+            RecordType::Offsets => {
+                while d.position() < len as u64 {
+                    let id      = d.read_u8()?;
+                    let _format = d.read_u8()?;
+                    let size   = d.read_u32::<LittleEndian>()?;
+                    let offset = d.read_u32::<LittleEndian>()?;
+                    if id > 0 {
+                        if let Some(offsets) = offsets.as_mut() {
+                            offsets.insert(id, (offset, size));
+                        }
+                    }
+                }
+            },
             RecordType::Metadata => { // Metadata in protobuf format
                 use prost::Message;
                 let info = extra_info::ExtraMetadata::decode(data)?;

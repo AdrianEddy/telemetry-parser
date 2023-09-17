@@ -7,6 +7,7 @@ pub mod record;
 use std::io::*;
 use std::sync::{ Arc, atomic::AtomicBool, atomic::Ordering::Relaxed };
 use byteorder::{ ReadBytesExt, LittleEndian };
+use std::collections::BTreeMap;
 
 use crate::{try_block, tag, tags_impl::*};
 use crate::tags_impl::{GroupId::*, TagId::*};
@@ -61,13 +62,49 @@ impl Insta360 {
         let mut buf = vec![0u8; HEADER_SIZE];
         stream.seek(SeekFrom::End(-(HEADER_SIZE as i64)))?;
         stream.read_exact(&mut buf)?;
+        let mut offsets = BTreeMap::new();
         if &buf[HEADER_SIZE-32..] == MAGIC {
             let mut map = GroupedTagMap::new();
 
             let extra_size = (&buf[32..]).read_u32::<LittleEndian>()? as i64;
             let version    = (&buf[36..]).read_u32::<LittleEndian>()?;
+            let extra_start = size - extra_size as usize;
 
             let mut offset = (HEADER_SIZE + 4+1+1) as i64;
+
+            stream.seek(SeekFrom::End(-offset + 1))?;
+            let first_id = stream.read_u8()?;
+            if first_id == record::RecordType::Offsets {
+                let size = stream.read_u32::<LittleEndian>()? as i64;
+                buf.resize(size as usize, 0);
+                stream.seek(SeekFrom::End(-offset - size))?;
+                stream.read_exact(&mut buf)?;
+                self.parse_record(first_id, 0, version, &buf, Some(&mut offsets))?;
+
+                if !offsets.is_empty() {
+                    for (id, (offset, record_size)) in &offsets {
+                        if cancel_flag.load(Relaxed) { break; }
+                        if size > 0 {
+                            progress_cb(stream.stream_position()? as f64 / size as f64);
+                        }
+
+                        stream.seek(SeekFrom::Start(extra_start as u64 + *offset as u64))?;
+                        buf.resize(*record_size as usize, 0);
+                        stream.read_exact(&mut buf)?;
+
+                        let format = stream.read_u8()?;
+                        let id2    = stream.read_u8()?;
+                        let size2 = stream.read_u32::<LittleEndian>()?;
+                        if size2 == *record_size && *id == id2 && id2 > 0 {
+                            for (g, v) in self.parse_record(id2, format, version, &buf, None)? {
+                                map.entry(g).or_insert_with(TagMap::new).extend(v);
+                            }
+                        }
+                    }
+                    return Ok(map);
+                }
+            }
+
             while offset < extra_size {
                 stream.seek(SeekFrom::End(-offset))?;
 
@@ -85,7 +122,7 @@ impl Insta360 {
                 stream.seek(SeekFrom::End(-offset - size))?;
                 stream.read_exact(&mut buf)?;
 
-                for (g, v) in self.parse_record(id, format, version, &buf).unwrap() {
+                for (g, v) in self.parse_record(id, format, version, &buf, None)? {
                     let group_map = map.entry(g).or_insert_with(TagMap::new);
                     group_map.extend(v);
                 }
@@ -112,9 +149,10 @@ impl Insta360 {
         let imu_orientation = if has_offset_v3 {
             match self.model.as_deref() {
                 Some("Insta360 GO 2")  => "XYZ",
+                Some("Insta360 GO 3")  => "XYZ",
                 Some("Insta360 OneR")  => "Xyz",
                 Some("Insta360 OneRS") => "Xyz",
-                _                      => "XYZ"
+                _                      => "Xyz"
             }
         } else {
             match self.model.as_deref() {
