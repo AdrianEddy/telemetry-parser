@@ -92,14 +92,14 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
             }
             0x5559 => { // Quaternion
                 if let Ok(mut d) = checksum(tag, &mut stream, 8) {
-                    quat.push(TimeArray4 {
-                        t: last_timestamp as f64,
-                        v: [
-                            d.read_i16::<LittleEndian>()? as f64 / 32768.0,
-                            d.read_i16::<LittleEndian>()? as f64 / 32768.0,
-                            d.read_i16::<LittleEndian>()? as f64 / 32768.0,
-                            d.read_i16::<LittleEndian>()? as f64 / 32768.0
-                        ]
+                    quat.push(TimeQuaternion {
+                        t: last_timestamp as f64 * 1000.0,
+                        v: Quaternion {
+                            w: d.read_i16::<LittleEndian>()? as f64 / 32768.0,
+                            x: d.read_i16::<LittleEndian>()? as f64 / 32768.0,
+                            y: d.read_i16::<LittleEndian>()? as f64 / 32768.0,
+                            z: d.read_i16::<LittleEndian>()? as f64 / 32768.0
+                        }
                     });
                 }
             }
@@ -127,7 +127,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
     util::insert_tag(&mut map, tag!(parsed GroupId::Custom("Angle".into()),        TagId::Data, "Angle data", Vec_TimeVector3_f64, |v| format!("{:?}", v), angl, vec![]));
     util::insert_tag(&mut map, tag!(parsed GroupId::Custom("Angle".into()),        TagId::Unit, "Angle unit", String, |v| v.to_string(), "deg".into(),  Vec::new()));
 
-    util::insert_tag(&mut map, tag!(parsed GroupId::Quaternion,   TagId::Data, "Quaternion data",   Vec_TimeArray4_f64,  |v| format!("{:?}", v), quat, vec![]));
+    util::insert_tag(&mut map, tag!(parsed GroupId::Quaternion,   TagId::Data, "Quaternion data",   Vec_TimeQuaternion_f64,  |v| format!("{:?}", v), quat, vec![]));
 
     Ok(vec![
         SampleInfo { timestamp_ms: first_timestamp as f64, duration_ms: last_timestamp as f64, tag_map: Some(map), ..Default::default() }
