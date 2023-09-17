@@ -308,6 +308,8 @@ impl RedR3d {
                     0x25 => "camera_firmware_version",
                     0x30 => "gmt_date",
                     0x31 => "gmt_time",
+                    0x39 => "lens_cooke_i_static",
+                    0x3A => "lens_cooke_i_dynamic",
                     0x3b => "iso",
                     0x56 => "file_name",
                     0x65 => "firmware_revision",
@@ -349,6 +351,13 @@ impl RedR3d {
                     "camera_rotation"     => 3, // x/y/z
                     _ => 1,
                 };
+                if id.starts_with("lens_cooke") {
+                    let d = &d[2..];
+                    if let Some(v) = crate::cooke::bin::parse(&d) {
+                        md.insert(id.clone(), v.into());
+                        continue;
+                    }
+                }
 
                 let mut items = vec![];
                 for i in 0..num_items {

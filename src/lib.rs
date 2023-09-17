@@ -17,6 +17,7 @@ mod vuze;
 mod kandao;
 mod camm;
 mod esplog;
+mod cooke;
 
 pub mod tags_impl;
 pub mod util;
@@ -113,4 +114,5 @@ impl_formats! {
     KanDao    => kandao::KanDao,
     Camm      => camm::Camm,
     EspLog    => esplog::EspLog,
+    Cooke     => cooke::Cooke,
 }

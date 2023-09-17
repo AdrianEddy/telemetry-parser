@@ -98,6 +98,18 @@ impl Sony {
                         self.frame_readout_time = Some(*v);
                     }
                 }
+                if let Some(cooke) = map.get_mut(&GroupId::Cooke) {
+                    let mut cooke_data: Vec<u8> = Vec::new();
+                    if let Some(v) = cooke.get(&TagId::Unknown(0xe208)) { if let TagValue::Unknown(x) = &v.value { cooke_data.extend(&x.raw_data); } }
+                    if let Some(v) = cooke.get(&TagId::Unknown(0xe209)) { if let TagValue::Unknown(x) = &v.value { cooke_data.extend(&x.raw_data); } }
+                    if !cooke_data.is_empty() {
+                        cooke.remove(&TagId::Unknown(0xe208));
+                        cooke.remove(&TagId::Unknown(0xe209));
+                        cooke.insert(TagId::Data2, tag!(GroupId::Cooke, TagId::Data2, "BinaryMetadata2", Json, "{:?}", |d| {
+                            Ok(serde_json::Value::Array(crate::cooke::bin::parse(d.get_ref()).unwrap())) // TODO: unwrap
+                        }, cooke_data));
+                    }
+                }
             }
         }
     }

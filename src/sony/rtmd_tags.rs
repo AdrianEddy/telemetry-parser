@@ -297,27 +297,18 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             0x01010605 => "S-Log3-Cine"               .into(),
             _ => format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3)
         } }, |d| read_uuid(d), tag_data),
-        /*0xe201 => tag!(Default, TagId::Custom("CookeProtocol_BinaryMetadata".into()),    "CookeProtocol_BinaryMetadata",    Json, "{:?}", |d| {
-            // TODO: Implement parsing of this type
-            // https://github.com/MediaArea/MediaInfoLib/blob/master/Source/MediaInfo/Multiple/File_Mxf.cpp#L12584 - UserDefinedAcquisitionMetadata_Sony_E201
-            "FocusDistance",
-            "ApertureValue",
-            "ApertureScale",
-            "EffectiveFocaleLength",
-            "HyperfocalDistance",
-            "NearFocusDistance",
-            "FarFocusDistance",
-            "HorizontalFieldOfView",
-            "EntrancePupilPosition",
-            "NormalizedZoomValue",
-            "LensSerialNumber",
-        }, tag_data), */
-        0xe202 => tag!(Default, TagId::Custom("CookeProtocol_UserMetadata".into()),    "CookeProtocol_UserMetadata",      String, "{}", |d| read_utf8(d), tag_data),
-        0xe203 => tag!(Default, TagId::Custom("CookeProtocol_CalibrationType".into()), "CookeProtocol_CalibrationType",   u8, |v| { match v {
+        0xe114 => tag!(Default, TagId::Custom("PostCDLTransform".into()), "Post-CDL transform", String, "{}", |d| read_utf8(d), tag_data),
+        0xe201 => tag!(Cooke, TagId::Data,    "BinaryMetadata",    Json, "{:?}", |d| {
+            Ok(serde_json::Value::Array(crate::cooke::bin::parse(d.get_ref()).unwrap())) // TODO: unwrap
+        }, tag_data),
+        0xe202 => tag!(Cooke, TagId::Custom("UserMetadata".into()),    "UserMetadata",      String, "{}", |d| read_utf8(d), tag_data),
+        0xe203 => tag!(Cooke, TagId::Custom("CalibrationType".into()), "CalibrationType",   u8, |v| { match v {
             0 => "mm".into(),
             1 => "in".into(),
             _ => format!("{}", v)
         } }, |d| d.read_u8(), tag_data),
+        0xe208 => tag!(Cooke, Unknown(tag as u32), "", tag_data), // will be parsed in process_map
+        0xe209 => tag!(Cooke, Unknown(tag as u32), "", tag_data), // continuation of 0xe208, will be parsed in process_map
         0xe108 => tag!(Default, Unknown(0xe108), "Unknown_e108", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
         0xe10d => tag!(Default, Unknown(0xe10d), "Unknown_e10d", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
         0xe10e => tag!(Default, Unknown(0xe10e), "Unknown_e10e", Uuid, |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), |d| read_uuid(d), tag_data),
