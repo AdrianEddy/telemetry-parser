@@ -110,7 +110,7 @@ impl BlackBox {
                     let group = Self::group_from_key(&$name);
                     let tag = Self::tag_id(&$name);
 
-                    let tag_desc = tag!(parsed group, tag, $name, $entry_type, |v| format!("{:?}", v), Vec::with_capacity(10000), vec![]);
+                    let tag_desc = tag!(parsed group, tag, $name, $entry_type, |v| format!("{:?}", v), Vec::new(), vec![]);
 
                     columns.descriptions.push(Rc::new(RefCell::new(tag_desc)));
                 }
