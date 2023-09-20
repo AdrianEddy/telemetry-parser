@@ -30,6 +30,9 @@ pub mod RecordType {
     pub const Magnetic           : u8 = 13;
     pub const Euler              : u8 = 14;
     pub const SecGyro            : u8 = 15;
+    pub const Speed              : u8 = 16;
+    pub const TBox               : u8 = 17;
+    pub const Quaternions        : u8 = 18;
     pub const TimeMap            : u8 = 128;
 }
 
@@ -270,8 +273,11 @@ impl super::Insta360 {
             RecordType::Euler | // Unknown format
             RecordType::SecGyro | // Unknown format
             RecordType::TimeMap | // Unknown format
+            RecordType::Speed | // Unknown format
+            RecordType::TBox | // Unknown format
+            RecordType::Quaternions | // Unknown format
             _ => {
-                log::warn!("Unknown Insta360 record: {}, format: {}, {}", id, format, pretty_hex::pretty_hex(&data));
+                log::warn!("Unknown Insta360 record: {}, size: {}, format: {}, {}", id, data.len(), format, pretty_hex::pretty_hex(&&data[0..data.len().min(256)]));
             }
         }
         Ok(map)
