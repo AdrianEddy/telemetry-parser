@@ -10,6 +10,8 @@ use crate::tags_impl::*;
 use crate::*;
 
 pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
+    let gyro_only = std::env::var("IS_GYROFLOW").is_ok();
+
     let mut metadata = BTreeMap::new();
 
     let mut headers = None;
@@ -37,9 +39,9 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress
             for (col, value) in h.columns.iter().zip(row.iter()) {
                 let mut desc = col.desc.as_ref().borrow_mut();
                 if let Ok(f) = value.parse::<f64>() {
-                    super::BlackBox::insert_value_to_vec(&mut desc, time, f, col.index);
+                    super::BlackBox::insert_value_to_vec(&mut desc, time, f, col.index, gyro_only);
                 } else {
-                    super::BlackBox::insert_value_to_vec(&mut desc, time, f64::NAN, col.index);
+                    super::BlackBox::insert_value_to_vec(&mut desc, time, f64::NAN, col.index, gyro_only);
                     // eprintln!("Invalid float {}", value);
                 }
             }

@@ -11,6 +11,8 @@ use fc_blackbox::BlackboxRecord;
 use fc_blackbox::MultiSegmentBlackboxReader;
 
 pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress_cb: F, _cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
+    let gyro_only = std::env::var("IS_GYROFLOW").is_ok();
+
     let mut samples = Vec::new();
     let mut bytes = Vec::new();
     stream.read_to_end(&mut bytes)?;
@@ -55,7 +57,7 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress
                     last_timestamp = Some(time);
                     for (col, &value) in column_struct.columns.iter().zip(values) {
                         let mut desc = col.desc.as_ref().borrow_mut();
-                        super::BlackBox::insert_value_to_vec(&mut desc, time, value as f64, col.index);
+                        super::BlackBox::insert_value_to_vec(&mut desc, time, value as f64, col.index, gyro_only);
                     }
                 }
                 BlackboxRecord::Event(fc_blackbox::frame::event::Frame::EndOfLog) => {
