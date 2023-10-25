@@ -575,6 +575,11 @@ pub fn find_between_with_offset(buffer: &[u8], from: &[u8], to: u8, offset: i32)
 pub fn find_between(buffer: &[u8], from: &[u8], to: u8) -> Option<String> {
     find_between_with_offset(buffer, from, to, 0)
 }
+pub fn find_from_to(buffer: &[u8], from: &[u8], to: &[u8]) -> Option<String> {
+    let pos = memmem::find(buffer, from)?;
+    let end = memmem::find(&buffer[pos+from.len()..], to)?;
+    Some(String::from_utf8_lossy(&buffer[pos..pos+from.len()+end+to.len()]).into())
+}
 
 pub fn insert_tag(map: &mut GroupedTagMap, tag: TagDescription) {
     let group_map = map.entry(tag.group.clone()).or_insert_with(TagMap::new);

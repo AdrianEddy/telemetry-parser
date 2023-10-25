@@ -23,13 +23,13 @@ argh = "0.1"
 memchr = "2.6"
 fc-blackbox = "0.2"
 csv = "1.3"
-human-sort = "0.2.2"
+human-sort = "0.2"
 log = "0.4"
 
 [build-dependencies]
 #prost-build = "*"
 
-quick-xml = { version = "0.30", optional = true }
+quick-xml = { version = "0.31", optional = true }
 
 [features]
 sony-xml = ["quick-xml"]
