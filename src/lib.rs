@@ -18,6 +18,7 @@ mod kandao;
 mod camm;
 mod esplog;
 mod cooke;
+mod senseflow;
 
 pub mod tags_impl;
 pub mod util;
@@ -115,4 +116,5 @@ impl_formats! {
     Camm      => camm::Camm,
     EspLog    => esplog::EspLog,
     Cooke     => cooke::Cooke,
+    SenseFlow => senseflow::SenseFlow,
 }
