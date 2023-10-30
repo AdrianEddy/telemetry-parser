@@ -38,21 +38,12 @@ impl SenseFlow {
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         if buffer.len() > 12 && memmem::find(&buffer[0..12], b"SenseFlow").is_some() {
-            return Some(Self {
-                format: Format::Binary,
-                model: None,
-            });
+            return Some(Self { format: Format::Binary, model: None });
         }
         None
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(
-        &mut self,
-        stream: &mut T,
-        size: usize,
-        _progress_cb: F,
-        _cancel_flag: Arc<AtomicBool>,
-    ) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, _progress_cb: F, _cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
         match self.format {
             Format::Binary => binary::parse(stream, size),
         }
