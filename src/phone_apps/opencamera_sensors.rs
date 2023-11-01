@@ -10,7 +10,7 @@ fn is_numbers_only(buf: &[u8]) -> bool {
 
     for c in buf {
         // OpenCamera Sensors produces csv files without any letters/headers, so numbers and comma are the only valid contents
-        if !(c.is_ascii_digit() || *c == b'.' || *c == b',' || *c == b'-' || c.is_ascii_whitespace()) {
+        if !(c.is_ascii_digit() || *c == b'.' || *c == b'e' || *c == b'E' || *c == b',' || *c == b'-' || c.is_ascii_whitespace()) {
             return false;
         }
     }
