@@ -248,7 +248,15 @@ pub mod extra_metadata {
         FovTypePov           = 5,
         FovTypeLinearPlus    = 6,
         FovTypeLinearHorizon = 7,
-        Unknown1             = 8,
+        Unknown8             = 8,
+        Unknown9             = 9,
+        Unknown10            = 10,
+        Unknown11            = 11,
+        Unknown12            = 12,
+        Unknown13            = 13,
+        Unknown14            = 14,
+        Unknown15            = 15,
+        Unknown16            = 16,
     }
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration, ::serde::Serialize)]
     #[repr(i32)]
@@ -375,8 +383,10 @@ macro_rules! enum_serializer {
         paste::paste! {
             #[allow(non_snake_case)]
             fn [<$name _serializer>]<S>(x: &i32, s: S) -> Result<S::Ok, S::Error> where S: serde::Serializer {
-                let xx: $type = unsafe { std::mem::transmute(*x) };
-                serde::ser::Serialize::serialize(&xx, s)
+                match (*x).try_into().ok() as Option<$type> {
+                    Some(v) => serde::ser::Serialize::serialize(&v, s),
+                    None    => serde::ser::Serialize::serialize(x, s),
+                }
             }
         }
     };
@@ -386,8 +396,9 @@ macro_rules! enum_serializer {
             fn [<$name _serializer>]<S>(x: &[i32], s: S) -> Result<S::Ok, S::Error> where S: serde::Serializer {
                 let mut copy = Vec::with_capacity(x.len());
                 for v in x {
-                    let xx: $type = unsafe { std::mem::transmute(*v) };
-                    copy.push(xx);
+                    if let Some(v) = (*v).try_into().ok() as Option<$type> {
+                        copy.push(v);
+                    }
                 }
                 serde::ser::Serialize::serialize(&copy, s)
             }
