@@ -62,7 +62,6 @@ pub fn hide_wave_box(all: &mut Vec<u8>) {
     while let Some(pos) = memchr::memmem::find(&all[offs..], b"wave") {
         if all.len() > offs+pos+12 && &all[offs+pos+8..offs+pos+12] == b"frma" {
             all[offs + pos + 3] = b'_';
-            return;
         }
         offs += pos + 4;
     }
