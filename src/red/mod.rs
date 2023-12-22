@@ -2,7 +2,6 @@
 // Copyright © 2022 Adrian <adrian.eddy at gmail>
 
 use std::io::*;
-use std::path::Path;
 use std::sync::{ Arc, atomic::AtomicBool };
 use std::collections::HashMap;
 
@@ -39,71 +38,64 @@ impl RedR3d {
     }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
-        if let Some(ext) = filepath.as_ref().extension() {
-            if ext.to_ascii_lowercase() != "r3d" {
-                if filepath.as_ref().with_extension("R3D").exists() {
-                    return Some(Self {
-                        model: None,
-                        record_framerate: None,
-                        all_parts: Self::detect_all_parts(filepath.as_ref().with_extension("R3D").as_path()).unwrap_or_default()
-                    })
-                }
-                if filepath.as_ref().with_extension("").exists() {
-                    let all_parts = Self::detect_all_parts(filepath.as_ref().with_extension("").as_path()).unwrap_or_default();
-                    if all_parts.is_empty() { return None; }
-                    return Some(Self { model: None, record_framerate: None, all_parts });
-                }
-                return None;
+        let path = filepath.as_ref().to_str().unwrap_or_default().to_owned();
+
+        let ext = filesystem::get_extension(&path);
+        if ext != "r3d" {
+            if let Some(p) = filesystem::file_with_extension(&path, "R3D") {
+                return Some(Self {
+                    model: None,
+                    record_framerate: None,
+                    all_parts: Self::detect_all_parts(&p).unwrap_or_default()
+                })
             }
+            if let Some(p) = filesystem::file_with_extension(&path, "") {
+                let all_parts = Self::detect_all_parts(&p).unwrap_or_default();
+                if all_parts.is_empty() { return None; }
+                return Some(Self { model: None, record_framerate: None, all_parts });
+            }
+            return None;
         }
         if buffer.len() > 8 && &buffer[4..8] == b"RED2" {
             Some(Self {
                 model: None,
                 record_framerate: None,
-                all_parts: Self::detect_all_parts(filepath.as_ref()).unwrap_or_default()
+                all_parts: Self::detect_all_parts(&path).unwrap_or_default()
             })
         } else {
             None
         }
     }
 
-    fn detect_all_parts(path: &Path) -> Result<Vec<String>> {
+    fn detect_all_parts(path: &str) -> Result<Vec<String>> {
         let mut ret = Vec::new();
-        if let Some(filename) = path.file_name().map(|x| x.to_string_lossy()) {
+        let filename = filesystem::get_filename(path);
+        if !filename.is_empty() {
             if let Some(pos) = filename.rfind('_') {
                 let filename_base = &filename[0..pos + 1];
                 let rmd = format!("{}.rmd", &filename[0..pos]).to_ascii_lowercase();
 
-                if let Some(parent) = path.parent() {
-                    match parent.read_dir() {
-                        Ok(dir) => {
-                            for x in dir {
-                                let x = x?;
-                                let fname = x.file_name().to_string_lossy().to_string();
-                                let fname_lower = fname.to_lowercase();
-                                if (fname.starts_with(filename_base) && fname_lower.ends_with(".r3d")) || (fname_lower == rmd) {
-                                    if let Some(p) = x.path().to_str() {
-                                        ret.push(p.to_string());
-                                    }
-                                }
-                            }
-                        },
-                        Err(e) => {
-                            log::warn!("Failed to read directory {parent:?}: {e:?}");
-                        }
+                let files = filesystem::list_folder(&filesystem::get_folder(path));
+                if files.is_empty() {
+                    log::warn!("Failed to read directory of file {path}");
+                }
+                for x in files.into_iter() {
+                    let fname = x.0;
+                    let fname_lower = fname.to_lowercase();
+                    if (fname.starts_with(filename_base) && fname_lower.ends_with(".r3d")) || (fname_lower == rmd) {
+                        ret.push(x.1);
                     }
                 }
             }
         }
-        if ret.is_empty() && path.extension().unwrap_or_default().to_ascii_lowercase().to_string_lossy().ends_with("r3d") {
-            if let Some(p) = path.to_str() {
-                ret.push(p.to_string());
-            }
+        if ret.is_empty() && filename.to_ascii_lowercase().ends_with("r3d") {
+            ret.push(path.to_owned());
         }
         ret.sort_by(|a, b| human_sort::compare(a, b));
         Ok(ret)
     }
     pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, _stream: &mut T, _size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
+        let fs = filesystem::get_base();
         let mut gyro = Vec::new();
         let mut accl = Vec::new();
         let mut first_timestamp = None;
@@ -111,24 +103,24 @@ impl RedR3d {
         let mut samples = Vec::new();
 
         let all_parts = self.all_parts.clone();
-        let mut data4096 = Vec::with_capacity(4096);
-        data4096.resize(4096, 0);
+        let mut data4096 = vec![0u8; 4096];
 
         let mut csv = String::new();
         let mut rmd = HashMap::<String, String>::new();
 
         let total_count = all_parts.len() as f64;
 
-        for (i, file) in all_parts.into_iter().enumerate() {
-            if file.to_ascii_lowercase().ends_with(".rmd") {
-                rmd.extend(Self::parse_rmd(&file));
+        for (i, path) in all_parts.into_iter().enumerate() {
+            let ext = filesystem::get_extension(path.as_str());
+            if ext == "rmd" {
+                rmd.extend(Self::parse_rmd(&path));
                 continue;
             }
 
-            let stream = std::fs::File::open(file)?;
-            let filesize = stream.metadata()?.len() as usize;
+            let mut stream = filesystem::open_file(&fs, &path)?;
+            let filesize = stream.size;
 
-            let mut stream = std::io::BufReader::with_capacity(128*1024, stream);
+            let mut stream = std::io::BufReader::with_capacity(128*1024, &mut stream.file);
 
             while let Ok(size) = stream.read_u32::<BigEndian>() {
                 let mut name = [0u8; 4];
@@ -416,8 +408,7 @@ impl RedR3d {
 
     fn parse_rmd(file: &str) -> HashMap<String, String> {
         let mut rmd = HashMap::<String, String>::new();
-        if let Ok(contents) = std::fs::read_to_string(file) {
-            let contents = contents.as_bytes();
+        if let Ok(contents) = filesystem::read_file(file) {
             let mut find = |name: &str, typ| {
                 if let Some(v) = util::find_between(&contents, format!("<{} type=\"{}\" value=\"", name, typ).as_bytes(), b'"') {
                     if !v.is_empty() {

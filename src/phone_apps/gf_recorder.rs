@@ -8,7 +8,7 @@ use crate::tags_impl::*;
 use crate::*;
 use memchr::memmem;
 
-pub fn detect(buffer: &[u8], _filename: &str) -> bool {
+pub fn detect(buffer: &[u8]) -> bool {
     let hdr = &buffer[..200.min(buffer.len() - 1)];
 
     memmem::find(hdr, b"Time").is_some() &&

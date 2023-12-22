@@ -11,7 +11,7 @@ use fc_blackbox::BlackboxRecord;
 use fc_blackbox::MultiSegmentBlackboxReader;
 
 pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress_cb: F, _cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
-    let gyro_only = std::env::var("IS_GYROFLOW").is_ok();
+    let gyro_only = util::get_load_gyro_only();
 
     let mut samples = Vec::new();
     let mut bytes = Vec::new();

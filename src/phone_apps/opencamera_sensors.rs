@@ -17,50 +17,54 @@ fn is_numbers_only(buf: &[u8]) -> bool {
     return true;
 }
 
-pub fn get_possible_paths<P: AsRef<std::path::Path>>(filepath: P) -> Vec<std::path::PathBuf> {
-    let filename = filepath.as_ref().file_name().map(|x| x.to_string_lossy()).unwrap_or_default();
+fn get_possible_paths(path: &str) -> Vec<String> {
+    let fs = filesystem::get_base();
+    let filename = filesystem::get_filename(path);
 
     let mut ret = Vec::new();
     let mut buf = vec![0u8; 200];
 
-    if let Ok(mut f) = std::fs::File::open(&filepath) {
-        if let Ok(_) = f.read_exact(&mut buf) {
+    if let Ok(mut f) = filesystem::open_file(&fs, &path) {
+        if let Ok(_) = f.file.read_exact(&mut buf) {
             if filename.ends_with("gyro.csv") || filename.ends_with("accel.csv") || filename.ends_with("_imu_timestamps.csv") || filename.ends_with("magnetic.csv") {
                 if is_numbers_only(&buf) {
                     let name_start = filename.replace("gyro.csv", "")
-                                                   .replace("accel.csv", "")
-                                                   .replace("_imu_timestamps.csv", "")
-                                                   .replace("magnetic.csv", "");
-
-                    { let p = filepath.as_ref().with_file_name(format!("{}gyro.csv",     name_start)); if p.exists() { ret.push(p); } }
-                    { let p = filepath.as_ref().with_file_name(format!("{}accel.csv",    name_start)); if p.exists() { ret.push(p); } }
-                    { let p = filepath.as_ref().with_file_name(format!("{}magnetic.csv", name_start)); if p.exists() { ret.push(p); } }
+                                             .replace("accel.csv", "")
+                                             .replace("_imu_timestamps.csv", "")
+                                             .replace("magnetic.csv", "");
+                    let files = filesystem::list_folder(&filesystem::get_folder(path));
+                    let expected = [ format!("{}gyro.csv", name_start), format!("{}accel.csv", name_start), format!("{}magnetic.csv", name_start) ];
+                    for x in files.iter().filter_map(|(n, p)| if expected.contains(n) { Some(p) } else { None }) {
+                        ret.push(x.clone());
+                    }
                 }
             }
             if filename.ends_with(".mp4") {
-                let part = filename.replace("VID_", "").replace(".mp4", "");
-                let mut path2 = filepath.as_ref().with_file_name(part);
-                path2.push(format!("{}gyro.csv", filename.replace(".mp4", "")));
-                if path2.exists() {
-                    return get_possible_paths(&path2);
-                }
+                let new_name = format!("{}gyro.csv", filename.replace(".mp4", ""));
 
-                let path3 = filepath.as_ref().with_file_name(format!("{}gyro.csv", filename.replace(".mp4", "")));
-                if path3.exists() {
-                    return get_possible_paths(&path3);
+                let part = filename.replace("VID_", "").replace(".mp4", "");
+                let files = filesystem::list_folder(&filesystem::get_folder(path));
+                if let Some(p) = files.iter().find_map(|(name, path)| if name == &part { Some(path) } else { None }) {
+                    let files = filesystem::list_folder(p);
+                    if let Some(p) = files.iter().find_map(|(name, path)| if name == &new_name { Some(path) } else { None }) {
+                        return get_possible_paths(&p);
+                    }
+                }
+                if let Some(p) = files.iter().find_map(|(name, path)| if name == &new_name { Some(path) } else { None }) {
+                    return get_possible_paths(&p);
                 }
             }
         }
     }
-
     ret
 }
 
-pub fn detect<P: AsRef<std::path::Path>>(_buffer: &[u8], filepath: P) -> bool {
+pub fn detect(_buffer: &[u8], filepath: &str) -> bool {
     !get_possible_paths(filepath).is_empty()
 }
 
-pub fn parse<T: Read + Seek, P: AsRef<std::path::Path>>(_stream: &mut T, _size: usize, filepath: P) -> Result<Vec<SampleInfo>> {
+pub fn parse<T: Read + Seek>(_stream: &mut T, _size: usize, filepath: &str) -> Result<Vec<SampleInfo>> {
+    let fs = filesystem::get_base();
     let paths = get_possible_paths(filepath);
 
     let mut gyro = Vec::new();
@@ -71,13 +75,14 @@ pub fn parse<T: Read + Seek, P: AsRef<std::path::Path>>(_stream: &mut T, _size: 
     let mut first_timestamp = 0.0;
 
     for path in paths {
-        let filename = path.file_name().map(|x| x.to_string_lossy()).unwrap_or_default();
+        let filename = filesystem::get_filename(&path);
+        let mut file = filesystem::open_file(&fs, &path)?;
 
         let mut csv = csv::ReaderBuilder::new()
             .has_headers(false)
             .trim(csv::Trim::All)
             .delimiter(b',')
-            .from_path(&path)?;
+            .from_reader(&mut file.file);
 
         for row in csv.records() {
             let row = row?;

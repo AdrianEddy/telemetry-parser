@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright © 2021 Adrian <adrian.eddy at gmail>
 
-use once_cell::unsync::OnceCell;
 use serde::Serialize;
 use std::collections::*;
 
@@ -184,7 +183,7 @@ type ParseFn<T> = fn(&mut std::io::Cursor::<&[u8]>) -> std::io::Result<T>;
 pub struct ValueType<T> {
     parse_fn: Option<ParseFn<T>>,
     format_fn: fn(&T) -> String,
-    parsed_value: OnceCell<T>,
+    parsed_value: std::cell::OnceCell<T>,
     pub raw_data: Vec<u8>
 }
 impl<T: Default> ValueType<T> {
@@ -193,11 +192,11 @@ impl<T: Default> ValueType<T> {
             parse_fn: Some(parse_fn),
             format_fn,
             raw_data,
-            parsed_value: once_cell::unsync::OnceCell::new()
+            parsed_value: std::cell::OnceCell::new()
         }
     }
     pub fn new_parsed(format_fn: fn(&T) -> String, parsed_value: T, raw_data: Vec<u8>) -> ValueType<T> {
-        let v = once_cell::unsync::OnceCell::new();
+        let v = std::cell::OnceCell::new();
         let _ = v.set(parsed_value);
         ValueType {
             parse_fn: None,

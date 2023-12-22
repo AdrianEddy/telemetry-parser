@@ -7,7 +7,7 @@ use crate::tags_impl::*;
 use crate::*;
 use memchr::memmem;
 
-pub fn detect(buffer: &[u8], _filename: &str) -> bool {
+pub fn detect(buffer: &[u8]) -> bool {
     memmem::find(buffer, b"Time, Rotation Rate (X), Rotation Rate (Y), Rotation Rate (Z)").is_some()
 }
 

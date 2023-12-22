@@ -700,6 +700,14 @@ pub fn read_box<R: Read + Seek>(reader: &mut R) -> Result<(u32, u64, u64, i64)> 
     }
 }
 
+static mut LOAD_GYRO_ONLY: bool = false;
+pub fn set_load_gyro_only(v: bool) {
+    unsafe { LOAD_GYRO_ONLY = v; }
+}
+pub fn get_load_gyro_only() -> bool{
+    unsafe { LOAD_GYRO_ONLY }
+}
+
 #[macro_export]
 macro_rules! try_block {
     ($type:ty, $body:block) => {

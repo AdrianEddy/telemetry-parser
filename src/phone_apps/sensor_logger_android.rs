@@ -7,11 +7,11 @@ use crate::tags_impl::*;
 use crate::*;
 use memchr::memmem;
 
-pub fn detect(buffer: &[u8], _filename: &str) -> bool {
+pub fn detect(buffer: &[u8]) -> bool {
     memmem::find(buffer, b"time,seconds_elapsed,z,y,x").is_some()
 }
 
-pub fn parse<T: Read + Seek, P: AsRef<std::path::Path>>(stream: &mut T, _size: usize, filepath: P) -> Result<Vec<SampleInfo>> {
+pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize, path: &str) -> Result<Vec<SampleInfo>> {
     let mut gyro = Vec::new();
     let mut accl = Vec::new();
     let mut magn = Vec::new();
@@ -19,7 +19,7 @@ pub fn parse<T: Read + Seek, P: AsRef<std::path::Path>>(stream: &mut T, _size: u
     let mut last_timestamp = 0.0;
     let mut first_timestamp = 0.0;
 
-    let mut read_from_stream = |filename: &std::borrow::Cow<str>, stream: &mut dyn Read| -> Result<()> {
+    let mut read_from_stream = |filename: &str, stream: &mut dyn Read| -> Result<()> {
         let mut csv = csv::ReaderBuilder::new()
             .has_headers(true)
             .trim(csv::Trim::All)
@@ -80,17 +80,16 @@ pub fn parse<T: Read + Seek, P: AsRef<std::path::Path>>(stream: &mut T, _size: u
         Ok(())
     };
 
-    let filename = filepath.as_ref().file_name().map(|x| x.to_string_lossy()).unwrap_or_default();
+    let filename = filesystem::get_filename(&path);
     read_from_stream(&filename, stream)?;
 
-    let other_filenames = vec!["Accelerometer.csv", "Gyroscope.csv", "Magnetometer.csv", "AccelerometerUncalibrated.csv", "GyroscopeUncalibrated.csv", "MagnetometerUncalibrated.csv" ];
-    for x in other_filenames {
-        if filename == x { continue; }
-
-        let other_file = filepath.as_ref().with_file_name(x);
-        if other_file.exists() {
-            if let Ok(mut f) = std::fs::File::open(&other_file) {
-                read_from_stream(&std::borrow::Cow::Borrowed(x), &mut f)?;
+    let fs = filesystem::get_base();
+    let other_filenames = [ "Accelerometer.csv", "Gyroscope.csv", "Magnetometer.csv", "AccelerometerUncalibrated.csv", "GyroscopeUncalibrated.csv", "MagnetometerUncalibrated.csv" ];
+    for x in filesystem::list_folder(&filesystem::get_folder(path)) {
+        if filename == x.0 { continue; }
+        if other_filenames.contains(&x.0.as_str()) {
+            if let Ok(mut buffer) = filesystem::open_file(&fs, &x.1) {
+                read_from_stream(&x.0, &mut buffer.file)?;
             }
         }
     }

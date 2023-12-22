@@ -4,7 +4,8 @@
 use std::collections::BTreeMap;
 use std::io::*;
 use std::sync::{ Arc, atomic::AtomicBool };
-use std::path::{ Path, PathBuf };
+use std::path::Path;
+use std::borrow::Cow;
 
 use crate::tags_impl::*;
 use crate::*;
@@ -12,7 +13,7 @@ use crate::*;
 #[derive(Default)]
 pub struct Gyroflow {
     pub model: Option<String>,
-    pub gyro_path: Option<PathBuf>,
+    pub gyro_buffer: Vec<u8>,
     vendor: String,
     frame_readout_time: Option<f64>
 }
@@ -37,26 +38,27 @@ impl Gyroflow {
     }
 
     pub fn detect<P: AsRef<Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
-        let filename = filepath.as_ref().file_name().map(|x| x.to_string_lossy()).unwrap_or_default();
+        let filepath = filepath.as_ref().to_str().unwrap_or_default().to_owned();
+        let ext = filesystem::get_extension(&filepath);
 
-        let mut gyro_path = None;
-        if !filename.to_ascii_lowercase().ends_with(".gcsv") && filepath.as_ref().with_extension("gcsv").exists() {
-            gyro_path = Some(filepath.as_ref().with_extension("gcsv").into());
-        }
-        let gyro_buf = if let Some(gyro) = &gyro_path {
-            std::fs::read(gyro).ok()?
+        let gyro_buffer = if ext != "gcsv" {
+            if let Some(gyro_path) = filesystem::file_with_extension(&filepath, "gcsv") {
+                Cow::Owned(crate::filesystem::read_file(&gyro_path).ok()?)
+            } else {
+                Cow::Borrowed(buffer)
+            }
         } else {
-            buffer.to_vec()
+            Cow::Borrowed(buffer)
         };
 
         let match_hdr = |line: &[u8]| -> bool {
-            &gyro_buf[0..line.len().min(gyro_buf.len())] == line
+            &gyro_buffer[0..line.len().min(gyro_buffer.len())] == line
         };
         if match_hdr(b"GYROFLOW IMU LOG") || match_hdr(b"CAMERA IMU LOG") {
             let mut header = BTreeMap::new();
 
             // get header block
-            let header_block = &gyro_buf[0..gyro_buf.len().min(500)];
+            let header_block = &gyro_buffer[0..gyro_buffer.len().min(500)];
 
             let mut csv = csv::ReaderBuilder::new()
                 .has_headers(false)
@@ -90,7 +92,7 @@ impl Gyroflow {
             } else { None };
 
             let model = Some(id);
-            return Some(Self { model, gyro_path, vendor, frame_readout_time });
+            return Some(Self { model, gyro_buffer: gyro_buffer.into(), vendor, frame_readout_time });
         }
         None
     }
@@ -98,12 +100,12 @@ impl Gyroflow {
     pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, _size: usize, _progress_cb: F, _cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
         let e = |_| -> Error { ErrorKind::InvalidData.into() };
 
-        let gyro_buf = if let Some(gyro) = &self.gyro_path {
-            std::fs::read(gyro)?
+        let gyro_buf = if !self.gyro_buffer.is_empty() {
+            Cow::Borrowed(&self.gyro_buffer)
         } else {
             let mut vec = Vec::new();
             stream.read_to_end(&mut vec)?;
-            vec
+            Cow::Owned(vec)
         };
 
         let mut header = BTreeMap::new();
@@ -116,7 +118,7 @@ impl Gyroflow {
             .has_headers(false)
             .flexible(true)
             .trim(csv::Trim::All)
-            .from_reader(Cursor::new(gyro_buf));
+            .from_reader(Cursor::new(gyro_buf.as_ref()));
 
         let mut passed_header = false;
 

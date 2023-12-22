@@ -22,6 +22,7 @@ mod senseflow;
 
 pub mod tags_impl;
 pub mod util;
+pub mod filesystem;
 
 use std::io::*;
 use std::sync::{ Arc, atomic::AtomicBool };
