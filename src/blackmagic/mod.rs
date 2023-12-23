@@ -24,7 +24,10 @@ impl BlackmagicBraw {
         }
     }
     pub fn has_accurate_timestamps(&self) -> bool {
-        true
+        match self.model.as_deref() {
+            Some("Micro Studio Camera 4K G2") => false,
+            _ => true
+        }
     }
     pub fn possible_extensions() -> Vec<&'static str> {
         vec!["braw"]
@@ -76,6 +79,11 @@ impl BlackmagicBraw {
                     // crop_factor = 1.5;
                 },
                 Some("Pocket Cinema Camera 4K") => {
+                    util::insert_tag(&mut map, tag!(parsed GroupId::Imager, TagId::PixelPitch, "Pixel pitch", u32x2, |v| format!("{v:?}"), (4628, 4628), vec![]));
+                    // crop_factor = 2.0;
+                },
+                Some("Micro Studio Camera 4K G2") => {
+                    // TODO: this is not confirmed
                     util::insert_tag(&mut map, tag!(parsed GroupId::Imager, TagId::PixelPitch, "Pixel pitch", u32x2, |v| format!("{v:?}"), (4628, 4628), vec![]));
                     // crop_factor = 2.0;
                 },
@@ -152,7 +160,10 @@ impl BlackmagicBraw {
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "m/s²".into(),  Vec::new()));
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Unit, "Gyroscope unit",     String, |v| v.to_string(), "rad/s".into(), Vec::new()));
 
-        let imu_orientation = "yxz";
+        let imu_orientation = match self.model.as_deref() {
+            Some("Micro Studio Camera 4K G2") => "yXZ",
+            _ => "yxz"
+        };
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
 
