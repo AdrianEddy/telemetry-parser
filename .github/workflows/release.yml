@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    tags: [ 'v*' ]
+    #tags: [ 'v*' ]
 
 jobs:
   build:
@@ -66,21 +66,21 @@ jobs:
           name: gyro2bb
           path: dist/gyro2bb*
 
-  github_release:
-    name: Create GitHub release
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v3
-        with:
-          name: gyro2bb
-
-      - run: ls -l
-
-      - name: Publish
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-         files: ./*
+  #github_release:
+  #  name: Create GitHub release
+  #  needs: build
+  #  runs-on: ubuntu-latest
+  #  steps:
+  #    - name: Download artifacts
+  #      uses: actions/download-artifact@v3
+  #      with:
+  #        name: gyro2bb
+  #
+  #    - run: ls -l
+  #
+  #    - name: Publish
+  #      uses: softprops/action-gh-release@v1
+  #      if: startsWith(github.ref, 'refs/tags/')
+  #      with:
+  #       files: ./*
 
