@@ -760,7 +760,7 @@ checksum = "69758bda2e78f098e4ccb393021a0963bb3442eac05f135c30f61b7370bbafae"
 
 [[package]]
 name = "telemetry-parser"
-version = "0.2.8"
+version = "0.3.0"
 dependencies = [
  "argh",
  "byteorder",
@@ -783,7 +783,7 @@ dependencies = [
 
 [[package]]
 name = "telemetry-parser-py"
-version = "0.2.8"
+version = "0.3.0"
 dependencies = [
  "pyo3",
  "pythonize",

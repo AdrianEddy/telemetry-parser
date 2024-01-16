@@ -619,7 +619,7 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "telemetry-parser"
-version = "0.2.8"
+version = "0.3.0"
 dependencies = [
  "argh",
  "byteorder",
@@ -642,7 +642,7 @@ dependencies = [
 
 [[package]]
 name = "telemetry-parser-wasm"
-version = "0.2.8"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde-wasm-bindgen",

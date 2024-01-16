@@ -1,6 +1,6 @@
 [package]
 name = "telemetry-parser"
-version = "0.2.8"
+version = "0.3.0"
 authors = ["Adrian <adrian.eddy@gmail.com>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
