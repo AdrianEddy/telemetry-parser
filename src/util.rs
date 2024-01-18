@@ -28,36 +28,32 @@ pub struct SampleInfo {
 
 // Read all boxes and make sure all top-level boxes are named using ascii and have correct size.
 // If there's any garbage at the end of the file, it is removed.
-pub fn verify_and_fix_mp4_structure(bytes: &mut Vec<u8>) {
-    crate::try_block!({
-        let mut good_size = 0;
-        let mut pos = 0;
-        while pos < bytes.len() - 1 {
-            let start_pos = pos;
-            let mut len = (&bytes[pos..]).read_u32::<BigEndian>().ok()? as u64;
-            pos += 4;
-            let name_good = bytes.len() >= pos + 4 && bytes[pos..pos+4].iter().all(|x| x.is_ascii() && *x > 13);
-            pos += 4;
-            if len == 1 { // Large box
-                len = (&bytes[pos..]).read_u64::<BigEndian>().ok()?;
-            }
-            pos = start_pos + len as usize;
-            let size_good = bytes.len() >= pos;
-            if name_good && size_good {
-                good_size = pos;
-            } else {
-                break;
-            }
+pub fn get_mp4_good_size<T: Read + Seek>(stream: &mut T, size: u64) -> Result<usize> {
+    let mut good_size = 0;
+    while stream.stream_position()? < size {
+        let start_pos = stream.stream_position()?;
+        let mut len = stream.read_u32::<BigEndian>()? as u64;
+        let mut name = [0u8; 4];
+        let name_read_ok = stream.read_exact(&mut name).is_ok();
+        let name_good = name_read_ok && name.iter().all(|x| x.is_ascii() && *x > 13);
+        if len == 1 { // Large box
+            len = stream.read_u64::<BigEndian>()?;
         }
-        if bytes.len() > good_size {
-            log::warn!("Garbage found at the end of the file, removing {} bytes from the end.", bytes.len() - good_size);
-            bytes.resize(good_size, 0);
+        let end_pos = start_pos + len;
+        let size_good = size >= end_pos;
+        if name_good && size_good {
+            good_size = end_pos as usize;
+            stream.seek(SeekFrom::Start(end_pos))?;
+        } else {
+            break;
         }
-    });
+    }
+    stream.seek(SeekFrom::Start(0))?;
+    Ok(good_size)
 }
 
 // wave box in .braw files can't be parsed by `mp4parse-rust` - rename it to wav_
-pub fn hide_wave_box(all: &mut Vec<u8>) {
+pub fn hide_wave_box(all: &mut [u8]) {
     let mut offs = 0;
     while let Some(pos) = memchr::memmem::find(&all[offs..], b"wave") {
         if all.len() > offs+pos+12 && &all[offs+pos+8..offs+pos+12] == b"frma" {
@@ -68,7 +64,7 @@ pub fn hide_wave_box(all: &mut Vec<u8>) {
 }
 
 // if mdhd timescale is 0, try to patch it if we know valid value
-pub fn patch_mdhd_timescale(all: &mut Vec<u8>) {
+pub fn patch_mdhd_timescale(all: &mut [u8]) {
     let mut offs = 0;
     while let Some(pos) = memchr::memmem::find(&all[offs..], b"mdhd") {
         if all.len() > offs+pos+70 && &all[offs+pos+32..offs+pos+36] == b"hdlr" {
@@ -93,6 +89,38 @@ pub fn patch_mdhd_timescale(all: &mut Vec<u8>) {
             }
         }
         offs += pos + 4;
+    }
+}
+
+pub struct PatchingLimitingStream<R: Read + Seek> {
+    pub inner: R,
+    pub stream_size: usize,
+    pub total: usize,
+    pub limit: usize
+}
+impl<R: Read + Seek> Read for PatchingLimitingStream<R> {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+        let read = self.inner.read(buf)?;
+        hide_wave_box(buf);
+        patch_mdhd_timescale(buf);
+        self.total += read;
+        if self.total > self.limit {
+            return Ok(read.saturating_sub(self.total - self.limit));
+        }
+        Ok(read)
+    }
+}
+impl<R: Read + Seek> Seek for PatchingLimitingStream<R> {
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
+        let res = self.inner.seek(pos);
+        if res.is_ok() {
+            self.total = match pos {
+                SeekFrom::Start(pos) => pos as usize,
+                SeekFrom::End(pos) => self.stream_size.saturating_add(pos as usize),
+                SeekFrom::Current(pos) => self.total.saturating_add(pos as usize),
+            };
+        }
+        res
     }
 }
 
@@ -125,20 +153,33 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
         if let Some(pos) = memchr::memmem::find(&all, b"mdat") {
             let how_much_less = (size - all.len()) as u64;
             let mut len = (&all[pos-4..]).read_u32::<BigEndian>()? as u64;
-            if len == 1 { // Large box
-                len = (&all[pos+4..]).read_u64::<BigEndian>()? - how_much_less;
-                all[pos+4..pos+12].copy_from_slice(&len.to_be_bytes());
+            if how_much_less > len {
+                // Something went wrong, we need the full data
+                if let Ok(good_size) = get_mp4_good_size(stream, size as u64) {
+                    let mut limited_stream = BufReader::with_capacity(512 * 1024, PatchingLimitingStream { inner: stream, stream_size: size, total: 0, limit: good_size });
+                    return mp4parse::read_mp4(&mut limited_stream);
+                }
+                return mp4parse::read_mp4(stream);
             } else {
-                len -= how_much_less;
-                all[pos-4..pos].copy_from_slice(&(len as u32).to_be_bytes());
+                if len == 1 { // Large box
+                    len = (&all[pos+4..]).read_u64::<BigEndian>()? - how_much_less;
+                    all[pos+4..pos+12].copy_from_slice(&len.to_be_bytes());
+                } else {
+                    len -= how_much_less;
+                    all[pos-4..pos].copy_from_slice(&(len as u32).to_be_bytes());
+                }
             }
 
-            verify_and_fix_mp4_structure(&mut all);
+            if let Ok(good_size) = get_mp4_good_size(&mut std::io::Cursor::new(&all), all.len() as u64) {
+                if all.len() > good_size {
+                    log::warn!("Garbage found at the end of the file, removing {} bytes from the end.", all.len() - good_size);
+                    all.resize(good_size, 0);
+                }
+            }
             hide_wave_box(&mut all);
             patch_mdhd_timescale(&mut all);
 
-            let mut c = std::io::Cursor::new(&all);
-            return mp4parse::read_mp4(&mut c);
+            return mp4parse::read_mp4(&mut std::io::Cursor::new(&all));
         }
     }
     mp4parse::read_mp4(stream)
