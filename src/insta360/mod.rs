@@ -188,7 +188,7 @@ impl Insta360 {
             }
         });
 
-        crate::try_block!({
+        {
             let fft = self.first_frame_timestamp.unwrap_or_default() / 1000.0;
             let gyro_timestamp = self.gyro_timestamp.unwrap_or_default() / 1000.0;
             let mut update_timestamps = |group: &GroupId| {
@@ -223,7 +223,7 @@ impl Insta360 {
             update_timestamps(&GroupId::Gyroscope);
             update_timestamps(&GroupId::Accelerometer);
             update_timestamps(&GroupId::Exposure);
-        });
+        }
     }
 
     fn insert_lens_profile(&self, tag_map: &mut GroupedTagMap, size: (u32, u32), _src: (u32, u32), dst: (u32, u32), offset_v3: &[f64]) {
