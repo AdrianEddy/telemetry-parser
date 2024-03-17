@@ -179,7 +179,7 @@ impl KLV {
         let s  = data[10..12].parse::<u32>().map_err(e)?;
         let ms = data[13..16].parse::<u32>().map_err(e)?;
 
-        Ok(chrono::NaiveDate::from_ymd_opt(y, m, d).and_then(|x| x.and_hms_milli_opt(h, i, s, ms)).unwrap_or_default().timestamp_millis() as u64)
+        Ok(chrono::NaiveDate::from_ymd_opt(y, m, d).and_then(|x| x.and_hms_milli_opt(h, i, s, ms)).unwrap_or_default().and_utc().timestamp_millis() as u64)
     }
     fn parse_uuid(d: &mut Cursor::<&[u8]>) -> Result<(u32,u32,u32,u32)> {
         d.seek(SeekFrom::Current(8))?; // Skip header

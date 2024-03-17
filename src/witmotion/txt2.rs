@@ -28,7 +28,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, size: usize) -> Result<Vec<SampleIn
             let map: std::collections::BTreeMap<&str, &str> = h.iter().zip(row).map(|(a, b)| (&a[..], b.trim())).collect();
 
             if let Ok(ts) = chrono::NaiveDateTime::parse_from_str(&format!("{} {}", map.get("Date").unwrap_or(&""), map.get("Time").unwrap_or(&"")), "%Y-%m-%d %H:%M:%S%.3f") {
-                let ts = ts.timestamp_millis() as f64 / 1000.0;
+                let ts = ts.and_utc().timestamp_millis() as f64 / 1000.0;
                 if first_timestamp == 0.0 {
                     first_timestamp = ts;
                 }

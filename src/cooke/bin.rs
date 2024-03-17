@@ -54,7 +54,9 @@ pub fn parse(mut d: &[u8]) -> Option<Vec<serde_json::Value>> {
         if d.is_empty() || d == [0x0a, 0x0d] { break; }
         match d[0] {
             b'N' if d[1] == b'N' => { // 5.1.35 NN: New (Optional) Start-up Command with Shading and Distortion Data
-                todo!()
+                // todo!()
+                log::error!("Cooke data not implemented: {}", pretty_hex::pretty_hex(&d));
+                return None;
             },
             b'N' => { // 5.1.1 N: Fixed Data in ASCII Format
                 let mut json = serde_json::json!({
@@ -79,7 +81,9 @@ pub fn parse(mut d: &[u8]) -> Option<Vec<serde_json::Value>> {
                 values.push(serde_json::to_value(json).unwrap());
             },
             b'D' => { // 5.1.2 D: Pre-Defined Set of Calculated Data in ASCII Format
-                todo!()
+                // todo!()
+                log::error!("Cooke data not implemented: {}", pretty_hex::pretty_hex(&d));
+                return None;
             },
             b'd' => { // 5.1.3 Kd: Packed Binary Data
                 d = &d[1..];
@@ -132,30 +136,46 @@ pub fn parse(mut d: &[u8]) -> Option<Vec<serde_json::Value>> {
             b'K' => {
                 match d[1] {
                     b'3' => { // 5.1.4 K3: Name of Lens Manufacturer
-                        todo!()
+                        // todo!()
+                        log::error!("Cooke data not implemented: {}", pretty_hex::pretty_hex(&d));
+                        return None;
                     },
                     b'4' => { // 5.1.5 K4: Name of Lens Type
-                        todo!()
+                        // todo!()
+                        log::error!("Cooke data not implemented: {}", pretty_hex::pretty_hex(&d));
+                        return None;
                     },
                     b'6' if d[2] == b'1' => { // 5.1.29 K61: Inertial Calibration Coefficients
-                        todo!()
+                        // todo!()
+                        log::error!("Cooke data not implemented: {}", pretty_hex::pretty_hex(&d));
+                        return None;
                     },
                     b'8' => { // 5.1.30 K8: Picture Width
-                        todo!()
+                        // todo!()
+                        log::error!("Cooke data not implemented: {}", pretty_hex::pretty_hex(&d));
+                        return None;
                     },
                     b'9' if d[2] == b'1' => { // 5.1.31 K91: Anamorphic Squeeze Factor
-                        todo!()
+                        // todo!()
+                        log::error!("Cooke data not implemented: {}", pretty_hex::pretty_hex(&d));
+                        return None;
                     },
                     b'K' => {
                         match d[2] {
                             b'i' if d[3] == b'd' => { // 5.1.34 KKid: Retrieve Lens Distortion Map and Shading Data
-                                todo!()
+                                // todo!()
+                                log::error!("Cooke data not implemented: {}", pretty_hex::pretty_hex(&d));
+                                return None;
                             },
                             b'i' => { // 5.1.32 KKi: Shading Data
-                                todo!()
+                                // todo!()
+                                log::error!("Cooke data not implemented: {}", pretty_hex::pretty_hex(&d));
+                                return None;
                             },
                             b'd' => { // 5.1.33 KKd: Distortion Map
-                                todo!()
+                                // todo!()
+                                log::error!("Cooke data not implemented: {}", pretty_hex::pretty_hex(&d));
+                                return None;
                             },
                             _ => {
                                 panic!("Unknown Cooke d: {}", pretty_hex::pretty_hex(&d));
@@ -169,13 +189,19 @@ pub fn parse(mut d: &[u8]) -> Option<Vec<serde_json::Value>> {
                 }
             },
             b'P' => { // 5.1.6 P: Lens Temperature
-                todo!()
+                // todo!()
+                log::error!("Cooke data not implemented: {}", pretty_hex::pretty_hex(&d));
+                return None;
             },
             b'B' => { // 5.1.7 B: Firmware Version Number
-                todo!()
+                // todo!()
+                log::error!("Cooke data not implemented: {}", pretty_hex::pretty_hex(&d));
+                return None;
             },
             b'O' => { // 5.1.23 OS: [EDSU] Current Channel Settings
-                todo!()
+                // todo!()
+                log::error!("Cooke data not implemented: {}", pretty_hex::pretty_hex(&d));
+                return None;
             },
             b'z' => { // ZEISS eXtended Data
                 if d.len() >= 35 {

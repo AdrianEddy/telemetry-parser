@@ -338,7 +338,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             let m   = read_as_dec(x)?;
             let s   = read_as_dec(x)?;
 
-            Ok(chrono::NaiveDate::from_ymd_opt((yy1 * 100.0 + yy2) as i32, mm, dd).and_then(|x| x.and_hms_opt(h, m, s)).unwrap_or_default().timestamp() as u64)
+            Ok(chrono::NaiveDate::from_ymd_opt((yy1 * 100.0 + yy2) as i32, mm, dd).and_then(|x| x.and_hms_opt(h, m, s)).unwrap_or_default().and_utc().timestamp() as u64)
         }, tag_data),
 
         // Possible values: zFar, zNear, aspect, temporal_position, temporal_rotation

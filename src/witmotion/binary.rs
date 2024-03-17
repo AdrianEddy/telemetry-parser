@@ -35,7 +35,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
                     let s  = d.read_u8()? as u32;
                     let ms = d.read_u16::<LittleEndian>()? as u32;
 
-                    last_timestamp = chrono::NaiveDate::from_ymd_opt(yy, mm, dd).and_then(|x| x.and_hms_milli_opt(h, m, s, ms)).unwrap_or_default().timestamp_millis() as f64 / 1000.0;
+                    last_timestamp = chrono::NaiveDate::from_ymd_opt(yy, mm, dd).and_then(|x| x.and_hms_milli_opt(h, m, s, ms)).unwrap_or_default().and_utc().timestamp_millis() as f64 / 1000.0;
 
                     if first_timestamp == 0.0 {
                         first_timestamp = last_timestamp;
