@@ -46,7 +46,7 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_c
 
     let mut samples = Vec::new();
 
-    util::get_metadata_track_samples(stream, size, false, |info: SampleInfo, data: &[u8], file_position: u64| {
+    util::get_metadata_track_samples(stream, size, false, |info: SampleInfo, data: &[u8], file_position: u64, _video_md: Option<&VideoMetadata>| {
         if size > 0 {
             progress_cb(((info.track_index as f64 - 1.0) + (file_position as f64 / size as f64)) / 3.0);
         }

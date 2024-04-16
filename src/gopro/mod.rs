@@ -83,7 +83,7 @@ impl GoPro {
         if let Some(extra) = &self.extra_gpmf {
             samples.push(SampleInfo { tag_map: Some(extra.clone()), ..Default::default() });
         }
-        let ctx = util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64| {
+        let ctx = util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64, _video_md: Option<&VideoMetadata>| {
             if size > 0 {
                 progress_cb(file_position as f64 / size as f64);
             }

@@ -186,7 +186,7 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
 }
 
 pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4parse::TrackType, single: bool, max_sample_size: Option<usize>, mut callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
-    where F: FnMut(SampleInfo, &[u8], u64)
+    where F: FnMut(SampleInfo, &[u8], u64, Option<&VideoMetadata>)
 {
 
     let ctx = parse_mp4(stream, size).or_else(|_| mp4parse::read_mp4(stream))?;
@@ -195,7 +195,12 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp
     // let mut sample_delta = 0u32;
     // let mut timestamp_ms = 0f64;
 
+    let mut video_md = None;
+
     for x in &ctx.tracks {
+        if x.track_type == mp4parse::TrackType::Video && video_md.is_none() {
+            video_md = get_video_metadata_from_track(x).ok();
+        }
         if x.track_type == typ {
             if let Some(timescale) = x.timescale {
                 // if let Some(ref stts) = x.stts {
@@ -227,7 +232,7 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp
                             stream.seek(SeekFrom::Start(s.start_offset.0 as u64))?;
                             stream.read_exact(&mut sample_data[..])?;
 
-                            callback(SampleInfo { sample_index, track_index, timestamp_ms: sample_timestamp_ms, duration_ms: sample_duration_ms, tag_map: None }, &sample_data, s.start_offset.0 as u64);
+                            callback(SampleInfo { sample_index, track_index, timestamp_ms: sample_timestamp_ms, duration_ms: sample_duration_ms, tag_map: None }, &sample_data, s.start_offset.0 as u64, video_md.as_ref());
 
                             //timestamp_ms += duration_ms;
                             sample_index += 1;
@@ -245,12 +250,12 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp
 }
 
 pub fn get_metadata_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, single: bool, callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
-    where F: FnMut(SampleInfo, &[u8], u64)
+    where F: FnMut(SampleInfo, &[u8], u64, Option<&VideoMetadata>)
 {
     get_track_samples(stream, size, mp4parse::TrackType::Metadata, single, None, callback, cancel_flag)
 }
 pub fn get_other_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, single: bool, callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
-    where F: FnMut(SampleInfo, &[u8], u64)
+    where F: FnMut(SampleInfo, &[u8], u64, Option<&VideoMetadata>)
 {
     get_track_samples(stream, size, mp4parse::TrackType::Unknown, single, None, callback, cancel_flag)
 }
@@ -656,6 +661,41 @@ pub struct VideoMetadata {
     pub rotation: i32
 }
 
+pub fn get_video_metadata_from_track(track: &mp4parse::Track) -> Result<VideoMetadata> {
+    let mut duration_sec = 0.0;
+    if let Some(d) = track.duration {
+        if let Some(ts) = track.timescale {
+            duration_sec = d.0 as f64 / ts.0 as f64;
+        }
+    }
+    if let Some(ref tkhd) = track.tkhd {
+        let w = (tkhd.width >> 16) as usize;
+        let h = (tkhd.height >> 16) as usize;
+        let matrix = (
+            tkhd.matrix.a >> 16,
+            tkhd.matrix.b >> 16,
+            tkhd.matrix.c >> 16,
+            tkhd.matrix.d >> 16,
+        );
+        let rotation = match matrix {
+            (0, 1, -1, 0) => 90,   // rotate 90 degrees
+            (-1, 0, 0, -1) => 180, // rotate 180 degrees
+            (0, -1, 1, 0) => 270,  // rotate 270 degrees
+            _ => 0,
+        };
+        let fps = get_fps_from_track(&track).unwrap_or_default();
+        Ok(VideoMetadata {
+            width: w,
+            height: h,
+            fps,
+            duration_s: duration_sec,
+            rotation
+        })
+    } else {
+        Err(ErrorKind::Other.into())
+    }
+}
+
 pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Result<VideoMetadata> { // -> (width, height, fps, duration_s, rotation)
     let mut header = [0u8; 4];
     let mut last16kb = vec![0u8; 16384];
@@ -686,40 +726,12 @@ pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Re
     let mp = parse_mp4(stream, filesize)?;
     for track in mp.tracks {
         if track.track_type == TrackType::Video {
-            let mut duration_sec = 0.0;
-            if let Some(d) = track.duration {
-                if let Some(ts) = track.timescale {
-                    duration_sec = d.0 as f64 / ts.0 as f64;
-                }
+            let mut md = get_video_metadata_from_track(&track)?;
+            if let Some(os) = override_size {
+                md.width = os.0;
+                md.height = os.1;
             }
-            if let Some(ref tkhd) = track.tkhd {
-                let mut w = (tkhd.width >> 16) as usize;
-                let mut h = (tkhd.height >> 16) as usize;
-                let matrix = (
-                    tkhd.matrix.a >> 16,
-                    tkhd.matrix.b >> 16,
-                    tkhd.matrix.c >> 16,
-                    tkhd.matrix.d >> 16,
-                );
-                let rotation = match matrix {
-                    (0, 1, -1, 0) => 90,   // rotate 90 degrees
-                    (-1, 0, 0, -1) => 180, // rotate 180 degrees
-                    (0, -1, 1, 0) => 270,  // rotate 270 degrees
-                    _ => 0,
-                };
-                let fps = get_fps_from_track(&track).unwrap_or_default();
-                if let Some(os) = override_size {
-                    w = os.0;
-                    h = os.1;
-                }
-                return Ok(VideoMetadata {
-                    width: w,
-                    height: h,
-                    fps,
-                    duration_s: duration_sec,
-                    rotation
-                });
-            }
+            return Ok(md);
         }
     }
     Err(ErrorKind::Other.into())

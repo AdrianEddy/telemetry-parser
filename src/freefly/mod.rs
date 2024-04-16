@@ -49,7 +49,7 @@ impl Freefly {
         let mut frame_timestamps = Vec::new();
         let mut imu_timestamps   = Vec::new();
 
-        util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64| {
+        util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64, video_md: Option<&VideoMetadata>| {
             if size > 0 {
                 progress_cb(file_position as f64 / size as f64);
             }
@@ -99,7 +99,7 @@ impl Freefly {
                                 let Scalar::i16(gz) = sample[6] else { continue; };
 
                                 let avg_frame_time = (last_frame_ts - first_frame_ts) as f64 / frame_timestamps.len() as f64 / 1000.0; // in ms
-                                let playback_frame_time = 1000.0 / 24.0; // TODO
+                                let playback_frame_time = 1000.0 / video_md.as_ref().map(|x| x.fps).unwrap_or(24.0);
 
                                 let ratio = playback_frame_time / avg_frame_time;
 

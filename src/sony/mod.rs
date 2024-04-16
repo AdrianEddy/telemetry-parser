@@ -67,7 +67,7 @@ impl Sony {
             mxf::parse(stream, size, progress_cb, cancel_flag, None)?
         } else {
             let mut samples = Vec::new();
-            util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64| {
+            util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64, _video_md: Option<&VideoMetadata>| {
                 if size > 0 {
                     progress_cb(file_position as f64 / size as f64);
                 }
