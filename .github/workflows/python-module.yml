@@ -11,7 +11,7 @@ jobs:
   macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
         with:
           python-version: 3.7
@@ -32,11 +32,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          default: true
+        uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
       - name: Build wheels - x86_64
@@ -64,18 +60,14 @@ jobs:
       matrix:
         target: [x64, x86]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
         with:
           python-version: "3.11"
           architecture: ${{ matrix.target }}
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          default: true
+        uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
       - name: Build wheels
@@ -97,17 +89,13 @@ jobs:
       matrix:
         target: [i686, x86_64]
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: actions/setup-python@v4
       with:
         python-version: "3.11"
 
     - name: Install Rust toolchain
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        profile: minimal
-        default: true
+      uses: dtolnay/rust-toolchain@stable
     - uses: Swatinem/rust-cache@v2
 
     - name: Build Wheels
@@ -138,17 +126,13 @@ jobs:
           { version: "3.12", lib: "cp312-cp312" }
         ]
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-config.version }}
 
     - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        profile: minimal
-        default: true
+      uses: dtolnay/rust-toolchain@stable
     - uses: Swatinem/rust-cache@v2
 
     - name: Build Wheels

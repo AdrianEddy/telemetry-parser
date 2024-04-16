@@ -118,6 +118,8 @@ declare_types! {
     Vector3_i32: Vector3<i32>,
 
     Vec_String: Vec<String>,
+    Vec_Scalar: Vec<Scalar>,
+    Vec_Vec_Scalar: Vec<Vec<Scalar>>,
 
     Vec_i8:  Vec<i8>,  Vec_Vec_i8:  Vec<Vec<i8>>,  Vec_Vector3_i8:  Vec<Vector3<i8>>,  Vec_TimeVector3_i8:  Vec<TimeVector3<i8>>,
     Vec_u8:  Vec<u8>,  Vec_Vec_u8:  Vec<Vec<u8>>,  Vec_Vector3_u8:  Vec<Vector3<u8>>,  Vec_TimeVector3_u8:  Vec<TimeVector3<u8>>,

@@ -149,15 +149,17 @@ impl GoPro {
         data.len() > 8 && &data[0..4] == b"DEVC"
     }
 
-    fn parse_metadata(data: &[u8], group_id: GroupId, force_group: bool) -> Result<GroupedTagMap> {
+    pub fn parse_metadata(data: &[u8], group_id: GroupId, force_group: bool) -> Result<GroupedTagMap> {
         let mut slice = Cursor::new(data);
         let datalen = data.len() as u64;
         let mut map = GroupedTagMap::new();
 
+        let mut last_type = None;
+
         while slice.position() < datalen {
             let start_pos = slice.position() as usize;
             if datalen as i64 - start_pos as i64 >= 8 {
-                let klv = KLV::parse_header(&mut slice)?;
+                let mut klv = KLV::parse_header(&mut slice)?;
                 let pos = slice.position() as usize;
 
                 let len = klv.data_len();
@@ -175,6 +177,16 @@ impl GoPro {
                         group_map.extend(v);
                     }
                     continue;
+                }
+
+                if &klv.key == b"TYPE" {
+                    if let TagValue::String(typedef) = klv.parse_data(full_tag_data) {
+                        last_type = Some(typedef.get().clone());
+                        continue;
+                    }
+                }
+                if klv.data_type == b'?' && last_type.is_some() {
+                    klv.custom_type = last_type.clone();
                 }
 
                 util::insert_tag(&mut map, TagDescription {
@@ -350,7 +362,7 @@ impl GoPro {
         }
     }
 
-    fn get_last_klv(data: &[u8]) -> Result<&[u8]> {
+    pub fn get_last_klv(data: &[u8]) -> Result<&[u8]> {
         let mut slice = Cursor::new(data);
 
         let mut offset = 0;

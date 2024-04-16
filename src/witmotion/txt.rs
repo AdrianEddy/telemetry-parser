@@ -34,7 +34,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<SampleI
 
             let chip_time = *map.get("ChipTime").unwrap();
             let ts = if !chip_time.is_empty() {
-                chrono::NaiveDateTime::parse_from_str(chip_time, "%Y-%m-%d %H:%M:%S%.3f").unwrap_or_default().timestamp_millis() as f64 / 1000.0
+                chrono::NaiveDateTime::parse_from_str(chip_time, "%Y-%m-%d %H:%M:%S%.3f").unwrap_or_default().and_utc().timestamp_millis() as f64 / 1000.0
             } else {
                 last_timestamp + default_step
             };

@@ -168,6 +168,18 @@ macro_rules! declare_types {
 
 include!("tags.rs");
 
+#[derive(Debug, Clone, Serialize)]
+#[allow(non_camel_case_types)]
+pub enum Scalar {
+    u8(u8),   i8(i8),
+    u16(u16), i16(i16),
+    u32(u32), i32(i32),
+    u64(u64), i64(i64),
+    f32(f32), f64(f64),
+    String(String),
+    bool(bool),
+}
+
 #[derive(Debug, Clone)]
 pub struct TagDescription {
     pub group: GroupId,

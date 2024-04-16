@@ -2,19 +2,19 @@
 // Copyright © 2021 Adrian <adrian.eddy at gmail>
 
 use std::io::*;
-use byteorder::{ReadBytesExt, BigEndian};
+use byteorder::{ ReadBytesExt, WriteBytesExt, BigEndian };
 
 use crate::tags_impl::*;
 
 // TODO: Support TICK
-// TODO: Support custom types
 
 #[derive(Default)]
 pub struct KLV {
     pub key: [u8; 4],
     pub data_type: u8,
     pub size: usize,
-    pub repeat: usize
+    pub repeat: usize,
+    pub custom_type: Option<String>
 }
 impl KLV {
     pub fn parse_header(d: &mut Cursor<&[u8]>) -> Result<Self> {
@@ -77,7 +77,61 @@ impl KLV {
                     b'F' => TagValue::String(ValueType::new(|d| Self::parse_string(d),   |v| v.into(), tag_data.to_vec())),
                     b'G' => TagValue::Uuid  (ValueType::new(|d| Self::parse_uuid(d),     |v| format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3), tag_data.to_vec())),
                     b'U' => TagValue::u64   (ValueType::new(|d| Self::parse_utcdate(d),  |v| chrono::TimeZone::timestamp_millis_opt(&chrono::Utc, *v as i64).single().map(|x| x.to_string()).unwrap_or_default(), tag_data.to_vec())),
-                    // b'?' => unimplemented!(),
+                    b'?' => {
+                        if self.custom_type.as_ref().map(|x| x.is_empty()).unwrap_or(true) {
+                            return TagValue::Unknown(ValueType::new(|_| Ok(()), |_| "".into(), tag_data.to_vec()));
+                        }
+
+                        let custom_type = Self::resolve_custom_type(self.custom_type.as_ref().unwrap()).into_bytes();
+
+                        let mut concat_data = Vec::new();
+                        concat_data.write_u16::<BigEndian>(custom_type.len() as u16).unwrap();
+                        concat_data.extend(custom_type);
+                        concat_data.extend(tag_data);
+
+                        fn parse_custom(custom_type: &str, d: &mut Cursor<&[u8]>) -> Result<Vec<Scalar>> {
+                            let mut vals = Vec::new();
+                            for t in custom_type.chars() {
+                                match t as u8 {
+                                    b'b' => { vals.push(Scalar::i8( d.read_i8()?)) }
+                                    b'B' => { vals.push(Scalar::u8( d.read_u8()?)) }
+                                    b's' => { vals.push(Scalar::i16(d.read_i16::<BigEndian>()?)) }
+                                    b'S' => { vals.push(Scalar::u16(d.read_u16::<BigEndian>()?)) }
+                                    b'l' => { vals.push(Scalar::i32(d.read_i32::<BigEndian>()?)) }
+                                    b'L' => { vals.push(Scalar::u32(d.read_u32::<BigEndian>()?)) }
+                                    b'f' => { vals.push(Scalar::f32(d.read_f32::<BigEndian>()?)) }
+                                    b'd' => { vals.push(Scalar::f64(d.read_f64::<BigEndian>()?)) }
+                                    b'j' => { vals.push(Scalar::i64(d.read_i64::<BigEndian>()?)) }
+                                    b'J' => { vals.push(Scalar::u64(d.read_u64::<BigEndian>()?)) }
+                                    b'q' => { vals.push(Scalar::f32(d.read_i16::<BigEndian>()? as f32 + (d.read_u16::<BigEndian>()? as f32 / 65536.0))) }
+                                    b'Q' => { vals.push(Scalar::f64(d.read_i32::<BigEndian>()? as f64 + (d.read_u32::<BigEndian>()? as f64 / 4294967295.0))) }
+                                    _ => { }
+                                }
+                            }
+                            Ok(vals)
+                        }
+                        if self.repeat == 1 {
+                            TagValue::Vec_Scalar(ValueType::new(|d| {
+                                let def_size = d.read_u16::<BigEndian>()? as usize;
+                                let custom_type = String::from_utf8(d.get_ref()[d.position() as usize..d.position() as usize + def_size].to_vec()).unwrap();
+                                d.seek(SeekFrom::Current(def_size as _))?;
+
+                                d.seek(SeekFrom::Current(8))?; // Skip header
+
+                                parse_custom(&custom_type, d)
+                            }, |v| format!("{v:?}"), concat_data))
+                        } else {
+                            TagValue::Vec_Vec_Scalar(ValueType::new(|d| {
+                                let def_size = d.read_u16::<BigEndian>()? as usize;
+                                let custom_type = String::from_utf8(d.get_ref()[d.position() as usize..d.position() as usize + def_size].to_vec()).unwrap();
+                                d.seek(SeekFrom::Current(def_size as _))?;
+
+                                let repeat = Self::parse_header(d)?.repeat;
+
+                                (0..repeat).map(|_| parse_custom(&custom_type, d)).collect()
+                            }, |v| format!("{v:?}"), concat_data))
+                        }
+                    },
                     _ => TagValue::Unknown(ValueType::new(|_| Ok(()), |_| "".into(), tag_data.to_vec()))
                 }
             };
@@ -144,6 +198,34 @@ impl KLV {
             b"ISOE" => GroupId::Custom("SensorISO".into()),
             x => GroupId::Custom(x[..].iter().map(|&c| c as char).collect::<String>())
         }
+    }
+
+    fn resolve_custom_type(x: &str) -> String {
+        let mut ret = String::with_capacity(x.len());
+        let mut num = String::new();
+        let mut in_num = false;
+        for c in x.chars() {
+            if c == '[' {
+                in_num = true;
+                continue;
+            } else if c == ']' {
+                in_num = false;
+                let inum = num.parse::<usize>().unwrap_or_default();
+                num.clear();
+                if inum > 1 && ret.len() > 0 {
+                    for _ in 0..inum - 1 {
+                        ret.push(ret.as_bytes()[ret.len() - 1] as char);
+                    }
+                }
+                continue;
+            }
+            if in_num {
+                num.push(c);
+                continue;
+            }
+            ret.push(c);
+        }
+        ret
     }
 
     // ---------- Value parsers ----------

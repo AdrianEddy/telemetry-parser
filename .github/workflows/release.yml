@@ -21,14 +21,11 @@ jobs:
       ]
     runs-on: ${{ matrix.targets.os }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          profile: minimal
-          override: true
-          target: ${{ matrix.targets.target }}
+          targets: "${{ matrix.targets.target }}"
       - uses: Swatinem/rust-cache@v2
 
       - name: Add rust target
