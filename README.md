@@ -3,9 +3,9 @@ A tool to parse real-time metadata embedded in video files or telemetry from oth
 
 # Supported formats:
 - [x] GoPro (HERO 5 and later)
-- [x] Sony (a1, a7c, a7r IV, a7 IV, a7s III, a9 II, FX3, FX6, FX9, RX0 II, RX100 VII, ZV1, ZV-E10)
+- [x] Sony (a1, a7c, a7r IV, a7 IV, a7s III, a9 II, a9 III, FX3, FX6, FX9, RX0 II, RX100 VII, ZV1, ZV-E10)
 - [x] Insta360 (OneR, OneRS, SMO 4k, Go, GO2, Caddx Peanut)
-- [x] DJI (Avata, O3 Air Unit, Action 2)
+- [x] DJI (Avata, Avata 2, O3 Air Unit, Action 2)
 - [x] Blackmagic RAW (*.braw)
 - [x] RED RAW (V-Raptor, KOMODO) (*.r3d)
 - [x] Betaflight blackbox (*.bfl, *.bbl, *.csv)
