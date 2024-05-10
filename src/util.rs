@@ -52,17 +52,6 @@ pub fn get_mp4_good_size<T: Read + Seek>(stream: &mut T, size: u64) -> Result<us
     Ok(good_size)
 }
 
-// wave box in .braw files can't be parsed by `mp4parse-rust` - rename it to wav_
-pub fn hide_wave_box(all: &mut [u8]) {
-    let mut offs = 0;
-    while let Some(pos) = memchr::memmem::find(&all[offs..], b"wave") {
-        if all.len() > offs+pos+12 && &all[offs+pos+8..offs+pos+12] == b"frma" {
-            all[offs + pos + 3] = b'_';
-        }
-        offs += pos + 4;
-    }
-}
-
 // if mdhd timescale is 0, try to patch it if we know valid value
 pub fn patch_mdhd_timescale(all: &mut [u8]) {
     let mut offs = 0;
@@ -101,7 +90,6 @@ pub struct PatchingLimitingStream<R: Read + Seek> {
 impl<R: Read + Seek> Read for PatchingLimitingStream<R> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         let read = self.inner.read(buf)?;
-        hide_wave_box(buf);
         patch_mdhd_timescale(buf);
         self.total += read;
         if self.total > self.limit {
@@ -129,7 +117,7 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
         // With large files we can save a lot of time by only parsing actual MP4 box structure, skipping track data itself.
         // We do that by reading 15 MB from each end of the file, then patching `mdat` box to make the 30 MB buffer a correct MP4 file.
         // This is hacky, but it's worth a try and if we fail we fallback to full parsing anyway.
-        let mut read_mb = if size as u64 > 30u64*1024*1024*1024 { // If file is greater than 60 GB, read 50 MB header/footer
+        let mut read_mb = if size as u64 > 30u64*1024*1024*1024 { // If file is greater than 30 GB, read 50 MB header/footer
             50
         } else if size as u64 > 5u64*1024*1024*1024 { // If file is greater than 5 GB, read 25 MB header/footer
             25
@@ -153,8 +141,12 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
         if let Some(pos) = memchr::memmem::find(&all, b"mdat") {
             let how_much_less = (size - all.len()) as u64;
             let mut len = (&all[pos-4..]).read_u32::<BigEndian>()? as u64;
+            if len == 1 {
+                len = (&all[pos+4..]).read_u64::<BigEndian>()?;
+            }
             if how_much_less > len {
                 // Something went wrong, we need the full data
+                log::warn!("Reading full mp4 {how_much_less} {len} {size} {}", all.len());
                 if let Ok(good_size) = get_mp4_good_size(stream, size as u64) {
                     let mut limited_stream = BufReader::with_capacity(512 * 1024, PatchingLimitingStream { inner: stream, stream_size: size, total: 0, limit: good_size });
                     return mp4parse::read_mp4(&mut limited_stream);
@@ -176,7 +168,6 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
                     all.resize(good_size, 0);
                 }
             }
-            hide_wave_box(&mut all);
             patch_mdhd_timescale(&mut all);
 
             return mp4parse::read_mp4(&mut std::io::Cursor::new(&all));
