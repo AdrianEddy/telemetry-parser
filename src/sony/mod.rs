@@ -93,9 +93,30 @@ impl Sony {
                     util::insert_tag(map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(), Vec::new()));
                 }
 
-                if let Some(imager) = map.get(&GroupId::Imager) {
+                if let Some(imager) = map.get_mut(&GroupId::Imager) {
                     if let Some(v) = imager.get_t(TagId::FrameReadoutTime) as Option<&f64> {
                         self.frame_readout_time = Some(*v);
+                    }
+
+                    let mut crop_scale = 1.0;
+                    if let Some(v) = imager.get(&TagId::Unknown(0xe408)) { if let TagValue::i32(x) = &v.value { crop_scale = *x.get() as f32; } }
+                    if crop_scale != 1.0 && crop_scale > 0.0 {
+                        if let Some(v) = imager.get_mut(&TagId::CaptureAreaOrigin) {
+                            if let TagValue::f32x2(x) = &mut v.value {
+                                let _ = x.get(); // make sure it's parsed
+                                let vv = x.get_mut();
+                                vv.0 /= crop_scale;
+                                vv.1 /= crop_scale;
+                            }
+                        }
+                        if let Some(v) = imager.get_mut(&TagId::CaptureAreaSize) {
+                            if let TagValue::f32x2(x) = &mut v.value {
+                                let _ = x.get(); // make sure it's parsed
+                                let vv = x.get_mut();
+                                vv.0 /= crop_scale;
+                                vv.1 /= crop_scale;
+                            }
+                        }
                     }
                 }
                 if let Some(cooke) = map.get_mut(&GroupId::Cooke) {

@@ -65,11 +65,11 @@ impl BlackmagicBraw {
             if let Some(fw) = meta.get("firmware_version").and_then(|x| x.as_str()) {
                 firmware_version = fw.to_string();
             }
-            if let Some(v) = meta.get("crop_origin").and_then(|v| v.as_array()).and_then(|x| Some((x.get(0)?.as_f64()? as u32, x.get(1)?.as_f64()? as u32))) {
-                util::insert_tag(&mut map, tag!(parsed GroupId::Imager, TagId::CaptureAreaOrigin, "Capture area origin", u32x2, |v| format!("{v:?}"), v, vec![]));
+            if let Some(v) = meta.get("crop_origin").and_then(|v| v.as_array()).and_then(|x| Some((x.get(0)?.as_f64()? as f32, x.get(1)?.as_f64()? as f32))) {
+                util::insert_tag(&mut map, tag!(parsed GroupId::Imager, TagId::CaptureAreaOrigin, "Capture area origin", f32x2, |v| format!("{v:?}"), v, vec![]));
             }
-            if let Some(v) = meta.get("sensor_area_captured").and_then(|v| v.as_array()).and_then(|x| Some((x.get(0)?.as_f64()? as u32, x.get(1)?.as_f64()? as u32))) {
-                util::insert_tag(&mut map, tag!(parsed GroupId::Imager, TagId::CaptureAreaSize, "Capture area size", u32x2, |v| format!("{v:?}"), v, vec![]));
+            if let Some(v) = meta.get("sensor_area_captured").and_then(|v| v.as_array()).and_then(|x| Some((x.get(0)?.as_f64()? as f32, x.get(1)?.as_f64()? as f32))) {
+                util::insert_tag(&mut map, tag!(parsed GroupId::Imager, TagId::CaptureAreaSize, "Capture area size", f32x2, |v| format!("{v:?}"), v, vec![]));
             }
             match self.model.as_deref() {
                 Some("Pocket Cinema Camera 6K Pro") |

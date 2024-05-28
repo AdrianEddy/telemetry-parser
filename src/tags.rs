@@ -99,6 +99,7 @@ declare_types! {
     String: String,
     bool:   bool,
     u32x2:  (u32, u32),
+    f32x2:  (f32, f32),
     Uuid:   (u32, u32, u32, u32),
     f64x3:  (f64, f64, f64),
 

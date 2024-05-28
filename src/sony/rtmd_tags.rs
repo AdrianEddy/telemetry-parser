@@ -369,15 +369,15 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             let y = d.read_i16::<BigEndian>()? as u32;
             Ok((x, y))
         }, tag_data),
-        0xe408 => tag!(Imager, Unknown(tag as u32), "Imager i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
-        0xe409 => tag!(Imager, CaptureAreaOrigin, "Sensor crop origin", u32x2, "{:?}", |d| {
-            let x = d.read_u32::<BigEndian>()?;
-            let y = d.read_u32::<BigEndian>()?;
+        0xe408 => tag!(Imager, Unknown(tag as u32), "Crop scaler", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
+        0xe409 => tag!(Imager, CaptureAreaOrigin, "Sensor crop origin", f32x2, "{:?}", |d| {
+            let x = d.read_u32::<BigEndian>()? as f32;
+            let y = d.read_u32::<BigEndian>()? as f32;
             Ok((x, y))
         }, tag_data),
-        0xe40a => tag!(Imager, CaptureAreaSize, "Sensor crop size", u32x2, "{:?}", |d| {
-            let width = d.read_u32::<BigEndian>()? as u32;
-            let height = d.read_u32::<BigEndian>()? as u32;
+        0xe40a => tag!(Imager, CaptureAreaSize, "Sensor crop size", f32x2, "{:?}", |d| {
+            let width = d.read_u32::<BigEndian>()? as f32;
+            let height = d.read_u32::<BigEndian>()? as f32;
             Ok((width, height))
         }, tag_data),
         0xe40b => tag!(Imager, Unknown(tag as u32), "Imager i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
