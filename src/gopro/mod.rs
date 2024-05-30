@@ -18,6 +18,7 @@ pub struct GoPro {
     extra_gpmf: Option<GroupedTagMap>,
     frame_readout_time: Option<f64>,
     has_cori: bool,
+    is_raw_gpmf: bool,
 }
 
 impl GoPro {
@@ -28,7 +29,7 @@ impl GoPro {
         self.has_cori
     }
     pub fn possible_extensions() -> Vec<&'static str> {
-        vec!["mp4", "mov", "360"]
+        vec!["mp4", "mov", "360", "gpmf"]
     }
     pub fn frame_readout_time(&self) -> Option<f64> {
         self.frame_readout_time
@@ -39,6 +40,24 @@ impl GoPro {
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         let mut ret = None;
+
+        if buffer.len() > 8 && &buffer[0..4] == b"DEVC" {
+            if let Ok(map) = Self::parse_metadata(buffer, GroupId::Default, true) {
+                let mut obj = Self::default();
+                for v in map.values() {
+                    if let Some(v) = v.get_t(TagId::Unknown(0x4D494E46/*MINF*/)) as Option<&String> {
+                        obj.model = Some(v.clone());
+                    }
+                    if let Some(v) = v.get_t(TagId::Unknown(0x53524F54/*SROT*/)) as Option<&f32> {
+                        obj.frame_readout_time = Some(*v as f64);
+                    }
+                    if obj.model.is_some() && obj.frame_readout_time.is_some() { break; }
+                }
+                obj.extra_gpmf = Some(map);
+                obj.is_raw_gpmf = true;
+                ret = Some(obj);
+            }
+        }
 
         if let Some(pos) = memmem::find(buffer, b"GPMFDEVC") {
             let mut obj = Self::default();
@@ -83,21 +102,37 @@ impl GoPro {
         if let Some(extra) = &self.extra_gpmf {
             samples.push(SampleInfo { tag_map: Some(extra.clone()), ..Default::default() });
         }
-        let ctx = util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64, _video_md: Option<&VideoMetadata>| {
-            if size > 0 {
-                progress_cb(file_position as f64 / size as f64);
-            }
-            if Self::detect_metadata(data) {
-                if let Ok(mut map) = GoPro::parse_metadata(&data[8..], GroupId::Default, false) {
-                    self.process_map(&mut map);
-                    info.tag_map = Some(map);
-                    samples.push(info);
+
+        let mut fps = None;
+
+        if self.is_raw_gpmf {
+            let mut data = Vec::with_capacity(size);
+            stream.read_to_end(&mut data)?;
+            for pos in memmem::find_iter(&data, b"DEVC") {
+                let data = &data[pos..];
+                if Self::detect_metadata(data) {
+                    if let Ok(mut map) = GoPro::parse_metadata(&data[8..], GroupId::Default, false) {
+                        self.process_map(&mut map);
+                        samples.push(SampleInfo { tag_map: Some(map), ..Default::default() });
+                    }
                 }
             }
-        }, cancel_flag)?;
-        let mut fps = None;
-        if !ctx.tracks.is_empty() {
-            fps = util::get_fps_from_track(&ctx.tracks[0]);
+        } else {
+            let ctx = util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64, _video_md: Option<&VideoMetadata>| {
+                if size > 0 {
+                    progress_cb(file_position as f64 / size as f64);
+                }
+                if Self::detect_metadata(data) {
+                    if let Ok(mut map) = GoPro::parse_metadata(&data[8..], GroupId::Default, false) {
+                        self.process_map(&mut map);
+                        info.tag_map = Some(map);
+                        samples.push(info);
+                    }
+                }
+            }, cancel_flag)?;
+            if !ctx.tracks.is_empty() {
+                fps = util::get_fps_from_track(&ctx.tracks[0]);
+            }
         }
         self.process_samples(&mut samples, fps);
 
