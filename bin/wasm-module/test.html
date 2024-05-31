@@ -12,31 +12,31 @@
         <div class="hdr">
             <input type="file" />
             <input type="range" min="0" max="1" step="1" style="width: 100%" />
-            
+
             <div id="camera"></div>
         </div>
         <pre id="result"></pre>
-        
+
         <script type="module">
             let collapseStates = {};
-                
+
             import init, {Parser} from "./pkg/telemetry_parser.js";
             init().then(() => {
-            
+
                 document.querySelector('input[type=file]').addEventListener('change', function() {
                     let reader = new FileReader();
                     reader.onload = function() {
                         console.log('starting parser');
                         const parsed = new Parser(new Uint8Array(this.result), 'test');
                         $("#camera").text(`Detected camera: ${parsed.camera} ${parsed.model}`);
-                        
+
                         const telemetry = parsed.telemetry(false);
-                        
+
                         document.querySelector('input[type=range]').max = telemetry.length;
                         $('input[type=range]').prop('max', telemetry.length).on('input', function() {
                             let tm = telemetry[this.value];
                             // delete tm['Gyroscope'];
-                            /*try { 
+                            /*try {
                                 tm['Default']['Metadata'] = JSON.parse(tm['Default']['Metadata']);
                             } catch(e) {
                                 console.log(e, telemetry[this.value]);
@@ -52,7 +52,7 @@
                     reader.readAsArrayBuffer(this.files[0]);
                 }, false);
             });
-            
+
             function saveState() {
                 $(this).siblings('ul.json-dict, ol.json-array').each(function() {
                     const el = $(this).siblings('a.json-toggle');
@@ -64,7 +64,7 @@
                     const el = getElementFromPath(x);
                     if (!collapseStates[x]) {
                         $(el).trigger('click');
-                    }                    
+                    }
                 }
             }
             function getPath(el) {
@@ -79,7 +79,7 @@
                     return getPath(this) == path;
                 });
             }
-            
+
         </script>
     </body>
 </html>

@@ -77,7 +77,7 @@ impl Parser {
 }
 
 #[pymodule]
-fn telemetry_parser(_py: Python, m: &PyModule) -> PyResult<()> {
+fn telemetry_parser(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Parser>()?;
 
     Ok(())
