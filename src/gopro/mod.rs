@@ -109,9 +109,11 @@ impl GoPro {
             let mut data = Vec::with_capacity(size);
             stream.read_to_end(&mut data)?;
             for pos in memmem::find_iter(&data, b"DEVC") {
-                let data = &data[pos..];
-                if Self::detect_metadata(data) {
-                    if let Ok(mut map) = GoPro::parse_metadata(&data[8..], GroupId::Default, false) {
+                let chunk = &data[pos..];
+                if Self::detect_metadata(chunk) {
+                    let next = memmem::find(&chunk[8..], b"DEVC").unwrap_or(chunk.len() - 8) + 8;
+                    let res = GoPro::parse_metadata(&chunk[8..next], GroupId::Default, false);
+                    if let Ok(mut map) = res {
                         self.process_map(&mut map);
                         samples.push(SampleInfo { tag_map: Some(map), ..Default::default() });
                     }
