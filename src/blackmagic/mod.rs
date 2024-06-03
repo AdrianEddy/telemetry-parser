@@ -108,7 +108,7 @@ impl BlackmagicBraw {
                 if let Some(v) = md.get("focal_length").and_then(|v| v.as_str()) {
                     let v = v.replace("mm", "");
                     if let Ok(v) = v.parse::<f32>() {
-                        util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::FocalLength, "Focal length", f32, |v| format!("{v:.3}"), v, vec![]));
+                        util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::FocalLength, "Focal length", f32, |v| format!("{v:.2} mm"), v, vec![]));
                     }
                 }
 
