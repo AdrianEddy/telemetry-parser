@@ -318,8 +318,8 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
                     }).unwrap_or(1.0);
 
                     let mut io = match map.get_t(TagId::Orientation) as Option<&String> {
-                        Some(v) => v.clone(),
-                        None => "XYZ".into()
+                        Some(v) if v.len() == 3 => v.clone(),
+                        _ => "XYZ".into()
                     };
                     io = input.normalize_imu_orientation(io);
                     if let Some(imuo) = &orientation {
@@ -488,8 +488,8 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
                     }).unwrap_or(1.0);
 
                     let mut io = match map.get_t(TagId::Orientation) as Option<&String> {
-                        Some(v) => v.clone(),
-                        None => "XYZ".into()
+                        Some(v) if v.len() == 3 => v.clone(),
+                        _ => "XYZ".into()
                     };
                     io = input.normalize_imu_orientation(io);
                     if let Some(imuo) = &orientation {
