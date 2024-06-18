@@ -569,12 +569,17 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
 
             let total = divisions_x * divisions_y;
             let mut mesh_2d = Vec::new();
+            let mut mesh_2d_inv = Vec::new();
             for y in 0..divisions_y as usize {
                 for x in 0..divisions_x as usize {
                     let idx = total - 1 - (y * divisions_x + x);
                     mesh_2d.push((
                         (size_x as f64 / 8.0) * x as f64 + (xs[idx] as f64 / divisions_x_2d),
                         (size_y as f64 / 8.0) * y as f64 + (ys[idx] as f64 / divisions_y_2d)
+                    ));
+                    mesh_2d_inv.push((
+                        (size_x as f64 / 8.0) * x as f64 - (xs[idx] as f64 / divisions_x_2d),
+                        (size_y as f64 / 8.0) * y as f64 - (ys[idx] as f64 / divisions_y_2d)
                     ));
                 }
             }
@@ -584,6 +589,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
                 "offset": [offset_x, offset_y],
                 "size": [size_x, size_y],
                 "mesh": mesh_2d,
+                "inverse_mesh": mesh_2d_inv,
                 "raw_mesh": xs.into_iter().zip(ys.into_iter()).collect::<Vec<_>>(),
                 "divisions_2d": [divisions_x_2d as i32, divisions_y_2d as i32],
                 "divisions": [divisions_x, divisions_y]
