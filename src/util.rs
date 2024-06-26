@@ -23,6 +23,7 @@ pub struct SampleInfo {
     pub track_index: usize,
     pub timestamp_ms: f64,
     pub duration_ms: f64,
+    pub video_rotation: Option<i32>,
     pub tag_map: Option<GroupedTagMap>
 }
 
@@ -187,10 +188,12 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp
     // let mut timestamp_ms = 0f64;
 
     let mut video_md = None;
+    let mut video_rotation = None;
 
     for x in &ctx.tracks {
         if x.track_type == mp4parse::TrackType::Video && video_md.is_none() {
             video_md = get_video_metadata_from_track(x).ok();
+            video_rotation = video_md.as_ref().map(|x| x.rotation);
         }
         if x.track_type == typ {
             if let Some(timescale) = x.timescale {
@@ -223,7 +226,7 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp
                             stream.seek(SeekFrom::Start(s.start_offset.0 as u64))?;
                             stream.read_exact(&mut sample_data[..])?;
 
-                            callback(SampleInfo { sample_index, track_index, timestamp_ms: sample_timestamp_ms, duration_ms: sample_duration_ms, tag_map: None }, &sample_data, s.start_offset.0 as u64, video_md.as_ref());
+                            callback(SampleInfo { sample_index, track_index, timestamp_ms: sample_timestamp_ms, duration_ms: sample_duration_ms, tag_map: None, video_rotation }, &sample_data, s.start_offset.0 as u64, video_md.as_ref());
 
                             //timestamp_ms += duration_ms;
                             sample_index += 1;

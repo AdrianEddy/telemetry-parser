@@ -177,7 +177,8 @@ impl Cooke {
                             track_index: 0,
                             timestamp_ms: 0.0,
                             duration_ms: 0.0,
-                            tag_map: Some(map)
+                            tag_map: Some(map),
+                            ..Default::default()
                         });
                         map = GroupedTagMap::new();
                     }
