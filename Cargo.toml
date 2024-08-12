@@ -14,7 +14,7 @@ byteorder = "1.5"
 pretty-hex = "0.4"
 chrono = "0.4"
 paste = "1.0"
-prost = "0.12"
+prost = "0.13"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_yaml = "0.9"
@@ -32,7 +32,7 @@ ndk-context = "0.1.1"
 [build-dependencies]
 #prost-build = "*"
 
-quick-xml = { version = "0.31", optional = true }
+quick-xml = { version = "0.36", optional = true }
 
 [features]
 sony-xml = ["quick-xml"]
