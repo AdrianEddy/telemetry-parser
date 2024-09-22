@@ -49,7 +49,7 @@ jobs:
           args: -m bin/python-module/Cargo.toml --release --universal2 --find-interpreter
 
       - name: Save Wheels
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: wheels
           path: bin/python-module/target/wheels/*.whl
@@ -78,7 +78,7 @@ jobs:
           args: -m bin/python-module/Cargo.toml --release --find-interpreter
 
       - name: Save Wheels
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: wheels
           path: bin/python-module/target/wheels/*.whl
@@ -107,7 +107,7 @@ jobs:
         args: -m bin/python-module/Cargo.toml --release --find-interpreter
 
     - name: Save Wheels
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: wheels
         path: bin/python-module/target/wheels/*
@@ -147,7 +147,7 @@ jobs:
         args: -m bin/python-module/Cargo.toml --release -i python${{ matrix.python-config.version }}
 
     - name: Save Wheels
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: wheels
         path: bin/python-module/target/wheels/*.whl
@@ -157,7 +157,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [ macos, windows, linux, linux-cross ]
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: wheels
       - uses: actions/setup-python@v4

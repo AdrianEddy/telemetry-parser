@@ -64,6 +64,33 @@ impl super::Insta360 {
                     }
                 }
             },
+            RecordType::TimeMap => {
+                insert_tag(&mut map, tag!(Default, TagId::Custom("TimeMap".into()), "TimeMap", Vec_TimeScalar_f64, |v| format!("{:?}", v), |d| {
+                    let len = d.get_ref().len();
+                    let mut tm = Vec::with_capacity(len as usize / (8+8));
+
+                    let _unk1     = d.read_u32::<LittleEndian>()?;
+                    let num_trims = d.read_u32::<LittleEndian>()?;
+                    let _unk3     = d.read_u32::<LittleEndian>()?;
+                    let _count    = d.read_u32::<LittleEndian>()?;
+                    for _ in 0..num_trims {
+                        let _trim_unk1 = d.read_f64::<LittleEndian>()?;
+                        let _trim_unk2 = d.read_f64::<LittleEndian>()?;
+                        let _trim_unk3 = d.read_f64::<LittleEndian>()?;
+                        let _trim_unk4 = d.read_f64::<LittleEndian>()?;
+                    }
+                    let _unk5 = d.read_f64::<LittleEndian>()?;
+                    while d.position() < len as u64 {
+                        let v1 = d.read_f64::<LittleEndian>()?;
+                        let v2 = d.read_f64::<LittleEndian>()?;
+                        tm.push(TimeScalar {
+                            t: v1,
+                            v: v2
+                        })
+                    }
+                    Ok(tm)
+                }, data));
+            },
             RecordType::Metadata => { // Metadata in protobuf format
                 use prost::Message;
                 let info = extra_info::ExtraMetadata::decode(data)?;
@@ -272,7 +299,6 @@ impl super::Insta360 {
             RecordType::Magnetic | // Unknown format
             RecordType::Euler | // Unknown format
             RecordType::SecGyro | // Unknown format
-            RecordType::TimeMap | // Unknown format
             RecordType::Speed | // Unknown format
             RecordType::TBox | // Unknown format
             RecordType::Quaternions | // Unknown format
