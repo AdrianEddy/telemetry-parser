@@ -284,22 +284,26 @@ impl BlackmagicBraw {
     fn iter_boxes<F: FnMut(&str, &[u8], usize) -> Result<()>>(data: &[u8], is_array: bool, mut cb: F) -> Result<()> {
         let mut offs = 0;
         while data.len() - offs > 8 {
-            let size = (&data[offs..offs+4]).read_u32::<BigEndian>()? as usize;
-            let d = &data[offs+8..offs+size];
-            if is_array {
-                let index = (&data[offs+4..offs+8]).read_u32::<BigEndian>()? as usize;
-                let size2 = (&data[offs+8..offs+12]).read_u32::<BigEndian>()? as usize;
-                let d = &data[offs+16..offs+8+size2];
-                if let Ok(name) = std::str::from_utf8(&data[offs+12..offs+16]) {
-                    cb(name, d, index - 1)?;
+            if let Some(mut size_slice) = data.get(offs..offs+4) {
+                let size = size_slice.read_u32::<BigEndian>()? as usize;
+                if let Some(d) = &data.get(offs+8..offs+size) {
+                    if is_array {
+                        let index = (&data[offs+4..offs+8]).read_u32::<BigEndian>()? as usize;
+                        let size2 = (&data[offs+8..offs+12]).read_u32::<BigEndian>()? as usize;
+                        let d = &data[offs+16..offs+8+size2];
+                        if let Ok(name) = std::str::from_utf8(&data[offs+12..offs+16]) {
+                            cb(name, d, index - 1)?;
+                        }
+                    } else {
+                        if let Ok(name) = std::str::from_utf8(&data[offs+4..offs+8]) {
+                            cb(name, d, 0)?;
+                        }
+                    }
                 }
+                offs += size;
             } else {
-                if let Ok(name) = std::str::from_utf8(&data[offs+4..offs+8]) {
-                    cb(name, d, 0)?;
-                }
+                break;
             }
-
-            offs += size;
         }
         Ok(())
     }
