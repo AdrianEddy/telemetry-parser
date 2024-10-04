@@ -345,7 +345,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         0xe113 => tag!(Default, Unknown(0xe113), "Unknown_e113", String, "{}", |d| read_utf8(d), tag_data),
 
         // -------------- Sony's proprietary --------------
-        0xe300 => tag!(Default, StabilizationEnabled, "Stabilization", u8, "{}", |d| d.read_u8(), tag_data),
+        0xe300 => tag!(Default, StabilizationAvailable, "Stabilization available", u8, "{}", |d| d.read_u8(), tag_data),
         0xe301 => tag!(Exposure, TagId::Custom("ISOValue3".into()), "ISO value", u32, "{}", |d| d.read_u32::<BigEndian>(), tag_data),
         0x8119 => tag!(Exposure, TagId::Custom("ISOValue4".into()), "ISO value", u32, "{}", |d| d.read_u32::<BigEndian>(), tag_data),
         0x811e => tag!(Exposure, TagId::Custom("ISOValue5".into()), "ISO value", u32, "{}", |d| d.read_u32::<BigEndian>(), tag_data),
