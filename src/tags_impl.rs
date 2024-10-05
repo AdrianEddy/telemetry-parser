@@ -262,7 +262,7 @@ impl Vector3<f64> {
         Vector3 { x: map(io[0]), y: map(io[1]), z: map(io[2]) }
     }
 }
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Clone, Serialize, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TimeVector3<T, TT = T> {
     pub t: TT,
     pub x: T,

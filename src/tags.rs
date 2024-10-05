@@ -59,7 +59,7 @@ declare_ids! {
     CameraAttributes,
     ColorMatrix,
     GroupIdentifier,
-    StabilizationAvailable,
+    ImageStabilizer,
     CaptureTimestamp,
     FirstFrameTimestamp,
     FrameReadoutTime,

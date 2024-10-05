@@ -345,8 +345,10 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         0xe113 => tag!(Default, Unknown(0xe113), "Unknown_e113", String, "{}", |d| read_utf8(d), tag_data),
 
         // -------------- Sony's proprietary --------------
-        0xe300 => tag!(Default, StabilizationAvailable, "Stabilization available", u8, "{}", |d| d.read_u8(), tag_data),
-        0xe301 => tag!(Exposure, TagId::Custom("ISOValue3".into()), "ISO value", u32, "{}", |d| d.read_u32::<BigEndian>(), tag_data),
+        0xe300 => tag!(Default,  ImageStabilizer, "ImageStabilizer", bool, "{}", |d| Ok(d.read_u8()? == 0), tag_data),
+        0xe301 => tag!(Exposure, TagId::Custom("ISOSensitivity".into()), "ISO Sensitivity", u32, "{}", |d| d.read_u32::<BigEndian>(), tag_data),
+        0xe302 => tag!(Default,  TagId::Custom("GainSettingType".into()), "Gain Setting Type", String, "{}", |d| Ok(String::from(if d.read_u8()? == 0 { "dB" } else { "ISO" })), tag_data),
+        0xe303 => tag!(Default,  TagId::Custom("LightingPreset".into()), "Lighting Preset", u8, "{}", |d| d.read_u8(), tag_data),
         0x8119 => tag!(Exposure, TagId::Custom("ISOValue4".into()), "ISO value", u32, "{}", |d| d.read_u32::<BigEndian>(), tag_data),
         0x811e => tag!(Exposure, TagId::Custom("ISOValue5".into()), "ISO value", u32, "{}", |d| d.read_u32::<BigEndian>(), tag_data),
         0xe304 => tag!(Default, CaptureTimestamp, "Capture timestamp", u64, |&v| chrono::TimeZone::timestamp_opt(&chrono::Utc, v as i64, 0).single().map(|x| x.to_string()).unwrap_or_default(), |x| {
@@ -480,7 +482,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             if length != 16 {
                 return Err(Error::new(ErrorKind::Other, "Invalid table"));
             }
-            if count > 0 {
+            if count >= 0 {
                 let mut ret = Vec::with_capacity(count as usize);
                 for _ in 0..count {
                     // XAVC::base_2D_TimeOffset<XAVC::base_3D<int>>
@@ -493,7 +495,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
                 }
                 Ok(ret)
             } else {
-                Ok(vec![])
+                Ok(vec![TimeVector3 { t: -1, x: -1, y: -1, z: -1 }])
             }
         }, tag_data),
         ////////////////////////////////////////// LensControlInformation (Lens OSS) //////////////////////////////////////////
