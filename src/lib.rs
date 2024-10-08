@@ -115,6 +115,7 @@ impl_formats! {
     ArduPilot => ardupilot::ArduPilot,
     Vuze      => vuze::Vuze,
     KanDao    => kandao::KanDao,
+    QoocamEgo => kandao::QoocamEgo,
     Camm      => camm::Camm,
     EspLog    => esplog::EspLog,
     Cooke     => cooke::Cooke,

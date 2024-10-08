@@ -9,6 +9,9 @@ use crate::tags_impl::*;
 use crate::*;
 use byteorder::{ ReadBytesExt, LittleEndian };
 
+mod qoocam_ego;
+pub use qoocam_ego::QoocamEgo;
+
 #[derive(Default)]
 pub struct KanDao {
     pub model: Option<String>,
