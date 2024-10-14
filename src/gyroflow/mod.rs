@@ -83,10 +83,10 @@ impl Gyroflow {
                 let readout_direction = header.remove("frame_readout_direction").unwrap_or("0".to_owned());
                 let readout_time = header.remove("frame_readout_time").unwrap_or("0.0".to_owned()).parse::<f64>().unwrap_or_default();
                 match readout_direction.as_str() {
-                    "0" => Some(readout_time), // top -> bottom
-                    "1" | "180" => Some(-readout_time), // bottom -> top
-                    "2" | "270" => Some(readout_time + 10000.0), // left -> right
-                    "3" | "90"  => Some(-(readout_time + 10000.0)), // right -> left
+                    "0" | "TopToBottom" => Some(readout_time), // top -> bottom
+                    "1" | "180" | "BottomToTop" => Some(-readout_time), // bottom -> top
+                    "2" | "270" | "LeftToRight" => Some(readout_time + 10000.0), // left -> right
+                    "3" | "90"  | "RightToLeft" => Some(-(readout_time + 10000.0)), // right -> left
                     _ => None
                 }
             } else { None };
