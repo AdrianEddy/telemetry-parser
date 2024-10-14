@@ -84,9 +84,9 @@ impl Gyroflow {
                 let readout_time = header.remove("frame_readout_time").unwrap_or("0.0".to_owned()).parse::<f64>().unwrap_or_default();
                 match readout_direction.as_str() {
                     "0" => Some(readout_time), // top -> bottom
-                    "1" => Some(-readout_time), // bottom -> top
-                    "2" => None, // left/right not supported
-                    "3" => None,
+                    "1" | "180" => Some(-readout_time), // bottom -> top
+                    "2" | "270" => Some(readout_time + 10000.0), // left -> right
+                    "3" | "90"  => Some(-(readout_time + 10000.0)), // right -> left
                     _ => None
                 }
             } else { None };
