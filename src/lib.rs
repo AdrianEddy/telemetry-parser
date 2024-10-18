@@ -52,7 +52,7 @@ macro_rules! impl_formats {
                     return Err(Error::new(ErrorKind::Other, "File is empty or there was an error trying to load it."));
                 }
                 let ext = filepath.as_ref().extension().map(|x| x.to_ascii_lowercase().to_string_lossy().to_owned().to_string());
-                $(
+                {$(
                     let exts = <$class>::possible_extensions();
                     let mut check = true;
                     if !exts.is_empty() {
@@ -68,7 +68,18 @@ macro_rules! impl_formats {
                             });
                         }
                     }
-                )*
+                )*}
+                // If nothing was detected, check if there's a file with the same name but different extension
+                if ext.as_deref() == Some("mp4") || ext.as_deref() == Some("mov") {
+                    let fs = filesystem::get_base();
+                    for try_ext in ["gcsv", "bbl", "bfl", "csv"] {
+                        if let Some(gyro_path) = filepath.as_ref().to_str().and_then(|x| filesystem::file_with_extension(x, try_ext)) {
+                            if let Ok(mut f) = filesystem::open_file(&fs, &gyro_path) {
+                                return Self::from_stream(&mut f.file, f.size, &gyro_path, progress_cb, cancel_flag);
+                            }
+                        }
+                    }
+                }
                 return Err(Error::new(ErrorKind::Other, "Unsupported file format"));
             }
             pub fn camera_type(&self) -> String {

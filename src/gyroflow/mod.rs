@@ -37,28 +37,15 @@ impl Gyroflow {
         v
     }
 
-    pub fn detect<P: AsRef<Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
-        let filepath = filepath.as_ref().to_str().unwrap_or_default().to_owned();
-        let ext = filesystem::get_extension(&filepath);
-
-        let gyro_buffer = if ext != "gcsv" {
-            if let Some(gyro_path) = filesystem::file_with_extension(&filepath, "gcsv") {
-                Cow::Owned(crate::filesystem::read_file(&gyro_path).ok()?)
-            } else {
-                Cow::Borrowed(buffer)
-            }
-        } else {
-            Cow::Borrowed(buffer)
-        };
-
+    pub fn detect<P: AsRef<Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
         let match_hdr = |line: &[u8]| -> bool {
-            &gyro_buffer[0..line.len().min(gyro_buffer.len())] == line
+            &buffer[0..line.len().min(buffer.len())] == line
         };
         if match_hdr(b"GYROFLOW IMU LOG") || match_hdr(b"CAMERA IMU LOG") {
             let mut header = BTreeMap::new();
 
             // get header block
-            let header_block = &gyro_buffer[0..gyro_buffer.len().min(500)];
+            let header_block = &buffer[0..buffer.len().min(500)];
 
             let mut csv = csv::ReaderBuilder::new()
                 .has_headers(false)
@@ -92,7 +79,7 @@ impl Gyroflow {
             } else { None };
 
             let model = Some(id);
-            return Some(Self { model, gyro_buffer: gyro_buffer.into(), vendor, frame_readout_time });
+            return Some(Self { model, gyro_buffer: buffer.into(), vendor, frame_readout_time });
         }
         None
     }
