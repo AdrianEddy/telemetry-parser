@@ -49,6 +49,8 @@ impl Freefly {
         let mut frame_timestamps = Vec::new();
         let mut imu_timestamps   = Vec::new();
 
+        let mut real_fps = None;
+
         util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64, video_md: Option<&VideoMetadata>| {
             if size > 0 {
                 progress_cb(file_position as f64 / size as f64);
@@ -107,9 +109,11 @@ impl Freefly {
 
                                 let ratio = playback_frame_time / avg_frame_time;
 
+                                real_fps = video_md.as_ref().map(|x| x.fps * ratio);
+
                                 let imu_rate = 1000.0; // Hz
 
-                                let t = (((last_imu_ts - first_frame_ts) / 1000_000.0) - (num_samples - i) as f64 / imu_rate) * ratio;
+                                let t = ((last_imu_ts - first_frame_ts) / 1000_000.0) - (num_samples - i) as f64 / imu_rate;
                                 accl.push(TimeVector3 {
                                     t,
                                     x: ax as f64 * -acc_cal.0 as f64,
@@ -127,7 +131,7 @@ impl Freefly {
                     }
                 }
 
-                let imu_orientation = "ZyX"; // TODO
+                let imu_orientation = "xYz";
                 if !gyro.is_empty() {
                     util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Data,        "Gyroscope data",  Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]));
                     util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Unit,        "Gyroscope unit",  String,              |v| v.to_string(), "rad/s".into(), Vec::new()));
@@ -143,6 +147,12 @@ impl Freefly {
                 samples.push(info);
             }
         }, cancel_flag)?;
+
+        if let Some(real_fps) = real_fps {
+            let mut map = GroupedTagMap::new();
+            util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::FrameRate, "Frame rate", f64, |v| format!("{:?}", v), real_fps.round(), vec![]));
+            samples.insert(0, SampleInfo { tag_map: Some(map), ..Default::default() });
+        }
 
         Ok(samples)
     }
