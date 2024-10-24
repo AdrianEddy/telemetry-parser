@@ -42,6 +42,9 @@ impl QoocamEgo {
         if memmem::find(buffer, b"QooCam EGO").is_some() {
             return Some(Self { model: Some("QooCam EGO".into()) });
         }
+        if memmem::find(buffer, b"QooCam 3 Ultra").is_some() {
+            return Some(Self {model:Some("QooCam 3 Ultra".into())});
+        }
         None
     }
 
@@ -62,6 +65,17 @@ impl QoocamEgo {
                     stream.read_exact(&mut buf)?;
                     Value::Json(serde_json::Value::String(String::from_utf8_lossy(&buf).trim_matches(char::from(0)).to_string()))
                 },
+                "S32" => {
+                    if length == 1 {
+                        Value::Json(serde_json::Value::Number(stream.read_i32::<LittleEndian>()?.into()))
+                    } else {
+                        let mut arr = Vec::new();
+                        for _ in 0..length {
+                            arr.push(serde_json::Value::Number(stream.read_i32::<LittleEndian>()?.into()))
+                        }
+                        Value::Json(serde_json::Value::Array(arr))
+                    }
+                }
                 "U32" => {
                     if length == 1 {
                         Value::Json(serde_json::Value::Number(stream.read_u32::<LittleEndian>()?.into()))
@@ -69,6 +83,32 @@ impl QoocamEgo {
                         let mut arr = Vec::new();
                         for _ in 0..length {
                             arr.push(serde_json::Value::Number(stream.read_u32::<LittleEndian>()?.into()))
+                        }
+                        Value::Json(serde_json::Value::Array(arr))
+                    }
+                }
+                "U64" => {
+                    if length == 1 {
+                        Value::Json(serde_json::Value::Number(stream.read_u64::<LittleEndian>()?.into()))
+                    } else {
+                        let mut arr = Vec::new();
+                        for _ in 0..length {
+                            arr.push(serde_json::Value::Number(stream.read_u64::<LittleEndian>()?.into()))
+                        }
+                        Value::Json(serde_json::Value::Array(arr))
+                    }
+                }
+                "DOUBLE" => {
+                    if length == 1 {
+                        let f = stream.read_f64::<LittleEndian>()?.into();
+                        let n = serde_json::Number::from_f64(f);
+                        Value::Json(serde_json::Value::Number(n.expect("Bad Double")))
+                    } else {
+                        let mut arr = Vec::new();
+                        for _ in 0..length {
+                            let f = stream.read_f64::<LittleEndian>()?.into();
+                            let n = serde_json::Number::from_f64(f);
+                            arr.push(serde_json::Value::Number(n.expect("Bad Double")))
                         }
                         Value::Json(serde_json::Value::Array(arr))
                     }
@@ -115,16 +155,37 @@ impl QoocamEgo {
             if typ == fourcc("kvar") { // Variable metadata
                 let md = Self::parse_data(stream, size as usize - header_size as usize)?;
                 //println!("Variable metadata: {:#?}", md);
+
+                let mut g_range = 2000.0;
+                let mut a_range = 4.0;
+                if let Some(Value::Json(serde_json::Value::String(v))) = md.get("INFO") {
+                    // v = "V_S_PTS=5812115123 V_E_PTS=5966273383 V_F_NUM=9252 V_FPS=60.0 V_MUX_FPS=60.0 V_IMU_F=6 V_G_RANGE=2000 V_A_RANGE=4 V_CROP_SCALE=0,0,0,0,1,1,0 V_VERSION=3"
+                    let info = v.split_whitespace()
+                                .map(|s| s.split('=').collect::<Vec<&str>>())
+                                .filter(|v| v.len() == 2)
+                                .map(|v| (v[0], v[1]))
+                                .collect::<HashMap<&str, &str>>();
+                    if let Some(gr) = info.get("V_G_RANGE").and_then(|x| x.parse::<f64>().ok()) {
+                        g_range = gr;
+                    }
+                    if let Some(ar) = info.get("V_A_RANGE").and_then(|x| x.parse::<f64>().ok()) {
+                        a_range = ar;
+                    }
+                }
+
+                g_range /= 2.0;
+                a_range /= 2.0;
+
                 if let Some(Value::Buffer(imu)) = md.get("IMU") {
                     let mut d = std::io::Cursor::new(&imu);
                     while d.position() < imu.len() as u64 {
                         let timestamp_ms = d.read_u64::<LittleEndian>()? as f64 / 1000.0;
-                        let gx = d.read_i16::<LittleEndian>()? as f64 / 16384.0;
-                        let gy = d.read_i16::<LittleEndian>()? as f64 / 16384.0;
-                        let gz = d.read_i16::<LittleEndian>()? as f64 / 16384.0;
-                        let ax = d.read_i16::<LittleEndian>()? as f64 / 16384.0;
-                        let ay = d.read_i16::<LittleEndian>()? as f64 / 16384.0;
-                        let az = d.read_i16::<LittleEndian>()? as f64 / 16384.0;
+                        let gx = d.read_i16::<LittleEndian>()? as f64 / g_range;
+                        let gy = d.read_i16::<LittleEndian>()? as f64 / g_range;
+                        let gz = d.read_i16::<LittleEndian>()? as f64 / g_range;
+                        let ax = d.read_i16::<LittleEndian>()? as f64 / a_range;
+                        let ay = d.read_i16::<LittleEndian>()? as f64 / a_range;
+                        let az = d.read_i16::<LittleEndian>()? as f64 / a_range;
                         if first_timestamp.is_none() {
                             first_timestamp = Some(timestamp_ms);
                         }
@@ -173,7 +234,10 @@ impl QoocamEgo {
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(), Vec::new()));
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Unit, "Gyroscope unit",     String, |v| v.to_string(), "rad/s".into(), Vec::new()));
 
-        let imu_orientation = "xYz";
+        let imu_orientation = match self.model.as_deref() {
+            Some("QooCam 3 Ultra") => "yxz",
+            _ => "xYz"
+        };
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
 
