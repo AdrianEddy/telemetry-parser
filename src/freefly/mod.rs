@@ -56,7 +56,7 @@ impl Freefly {
 
             if data.len() < 16 { return; }
 
-            let offset = if data[0..4] == [0x00, 0x00, 0x00, 0x5c] { 8 } else { 8 + 8 };
+            let offset = memmem::find(data, b"TYPE").unwrap_or(8);
 
             if let Ok(mut map) = GoPro::parse_metadata(&data[offset..], GroupId::Default, true) {
                 let mut gyro = Vec::new();
