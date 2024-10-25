@@ -43,7 +43,7 @@ impl QoocamEgo {
             return Some(Self { model: Some("QooCam EGO".into()) });
         }
         if memmem::find(buffer, b"QooCam 3 Ultra").is_some() {
-            return Some(Self {model:Some("QooCam 3 Ultra".into())});
+            return Some(Self { model: Some("QooCam 3 Ultra".into()) });
         }
         None
     }
@@ -135,6 +135,7 @@ impl QoocamEgo {
         let mut first_timestamp = None;
         let mut last_timestamp = None;
         let mut metadata = HashMap::new();
+        let mut rear_lens = false;
 
         let mut map = GroupedTagMap::new();
 
@@ -149,6 +150,11 @@ impl QoocamEgo {
                 for (k, v) in md.iter() {
                     if let Value::Json(v) = v {
                         metadata.insert(k.clone(), v.clone());
+                    }
+                }
+                if let Some(Value::Buffer(lens_index)) = md.get("LENS_INDEX") {
+                    if lens_index[0] == 1 {
+                        rear_lens = true;
                     }
                 }
             }
@@ -235,7 +241,7 @@ impl QoocamEgo {
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Unit, "Gyroscope unit",     String, |v| v.to_string(), "rad/s".into(), Vec::new()));
 
         let imu_orientation = match self.model.as_deref() {
-            Some("QooCam 3 Ultra") => "yxz",
+            Some("QooCam 3 Ultra") => if rear_lens { "yxz" } else { "yXZ" },
             _ => "xYz"
         };
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()));

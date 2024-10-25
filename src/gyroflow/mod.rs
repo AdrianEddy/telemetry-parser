@@ -5,7 +5,6 @@ use std::collections::BTreeMap;
 use std::io::*;
 use std::sync::{ Arc, atomic::AtomicBool };
 use std::path::Path;
-use std::borrow::Cow;
 
 use crate::tags_impl::*;
 use crate::*;
@@ -13,7 +12,6 @@ use crate::*;
 #[derive(Default)]
 pub struct Gyroflow {
     pub model: Option<String>,
-    pub gyro_buffer: Vec<u8>,
     vendor: String,
     frame_readout_time: Option<f64>
 }
@@ -79,21 +77,12 @@ impl Gyroflow {
             } else { None };
 
             let model = Some(id);
-            return Some(Self { model, gyro_buffer: buffer.into(), vendor, frame_readout_time });
+            return Some(Self { model, vendor, frame_readout_time });
         }
         None
     }
 
     pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, _size: usize, _progress_cb: F, _cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
-        let e = |_| -> Error { ErrorKind::InvalidData.into() };
-
-        let gyro_buf = if !self.gyro_buffer.is_empty() {
-            Cow::Borrowed(&self.gyro_buffer)
-        } else {
-            let mut vec = Vec::new();
-            stream.read_to_end(&mut vec)?;
-            Cow::Owned(vec)
-        };
 
         let mut header = BTreeMap::new();
 
@@ -105,14 +94,17 @@ impl Gyroflow {
             .has_headers(false)
             .flexible(true)
             .trim(csv::Trim::All)
-            .from_reader(Cursor::new(gyro_buf.as_ref()));
+            .from_reader(stream);
 
         let mut passed_header = false;
 
         let mut time_scale = 0.001; // default to millisecond
 
         for row in csv.records() {
-            let row = row?;
+            let row = match row {
+                Ok(row) => row,
+                Err(_) => { continue; }
+            };
 
             if row.len() == 1 {
                 continue; // first line
@@ -125,7 +117,10 @@ impl Gyroflow {
                 continue;
             }
 
-            let time = row[0].parse::<f64>().map_err(e)? * time_scale;
+            let time = match row[0].parse::<f64>() {
+                Ok(time) => time * time_scale,
+                Err(e) => { log::error!("Failed to parse time: {row:?} - {e:?}"); continue; }
+            };
             if row.len() >= 4 {
                 gyro.push(TimeVector3 {
                     t: time,
