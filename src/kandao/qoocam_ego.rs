@@ -242,7 +242,7 @@ impl QoocamEgo {
 
         let imu_orientation = match self.model.as_deref() {
             Some("QooCam 3 Ultra") => if rear_lens { "yxz" } else { "yXZ" },
-            _ => "xYz"
+            _ => "XYZ"
         };
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
