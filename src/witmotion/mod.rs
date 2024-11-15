@@ -10,13 +10,15 @@ use memchr::memmem;
 mod binary;
 mod txt;
 mod txt2;
+mod txt3;
 
 #[derive(Default)]
 enum Format {
     #[default]
     Binary,
     Txt,
-    Txt2
+    Txt2,
+    Txt3
 }
 
 #[derive(Default)]
@@ -52,6 +54,9 @@ impl WitMotion {
         if memmem::find(buffer, b"Time").is_some() && memmem::find(buffer, b"AngleX").is_some() && memmem::find(buffer, b"AngleY").is_some() {
             return Some(Self { format: Format::Txt2, model: None });
         }
+        if memmem::find(buffer, b"time").is_some() && memmem::find(buffer, b"AsX").is_some() && memmem::find(buffer, b"AsY").is_some() {
+            return Some(Self { format: Format::Txt3, model: None });
+        }
         None
     }
 
@@ -59,7 +64,8 @@ impl WitMotion {
         match self.format {
             Format::Binary => binary::parse(stream, size),
             Format::Txt    => txt::parse(stream, size),
-            Format::Txt2   => txt2::parse(stream, size)
+            Format::Txt2   => txt2::parse(stream, size),
+            Format::Txt3   => txt3::parse(stream, size)
         }
     }
 }

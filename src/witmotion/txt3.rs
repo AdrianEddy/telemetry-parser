@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-// Copyright © 2022 Adrian <adrian.eddy at gmail>
+// Copyright © 2024 Adrian <adrian.eddy at gmail>
 
 use std::io::*;
 
@@ -22,12 +22,12 @@ pub fn parse<T: Read + Seek>(stream: &mut T, size: usize) -> Result<Vec<SampleIn
     stream.read_to_string(&mut buffer)?;
 
     for line in buffer.lines() {
-        let row = line.split_ascii_whitespace();
+        let row = line.split('\t');
 
         if let Some(ref h) = headers {
             let map: std::collections::BTreeMap<&str, &str> = h.iter().zip(row).map(|(a, b)| (&a[..], b.trim())).collect();
 
-            if let Ok(ts) = chrono::NaiveDateTime::parse_from_str(&format!("{} {}", map.get("Date").unwrap_or(&""), map.get("Time").unwrap_or(&"")), "%Y-%m-%d %H:%M:%S%.3f") {
+            if let Ok(ts) = chrono::NaiveDateTime::parse_from_str(map.get("time").unwrap_or(&""), "%Y-%m-%d %-H:%-M:%-S:%3f") {
                 let ts = ts.and_utc().timestamp_millis() as f64 / 1000.0;
                 if first_timestamp == 0.0 {
                     first_timestamp = ts;
@@ -37,43 +37,43 @@ pub fn parse<T: Read + Seek>(stream: &mut T, size: usize) -> Result<Vec<SampleIn
                 crate::try_block!({
                     accl.push(TimeVector3 {
                         t: ts as f64,
-                        x: map.get("ax")?.replace(',', ".").parse::<f64>().ok()?,
-                        y: map.get("ay")?.replace(',', ".").parse::<f64>().ok()?,
-                        z: map.get("az")?.replace(',', ".").parse::<f64>().ok()?
+                        x: map.get("AccX(g)")?.replace(',', ".").parse::<f64>().ok()?,
+                        y: map.get("AccY(g)")?.replace(',', ".").parse::<f64>().ok()?,
+                        z: map.get("AccZ(g)")?.replace(',', ".").parse::<f64>().ok()?
                     });
                 });
                 crate::try_block!({
                     gyro.push(TimeVector3 {
                         t: ts as f64,
-                        x: map.get("wx")?.replace(',', ".").parse::<f64>().ok()?,
-                        y: map.get("wy")?.replace(',', ".").parse::<f64>().ok()?,
-                        z: map.get("wz")?.replace(',', ".").parse::<f64>().ok()?
+                        x: map.get("AsX(°/s)")?.replace(',', ".").parse::<f64>().ok()?,
+                        y: map.get("AsY(°/s)")?.replace(',', ".").parse::<f64>().ok()?,
+                        z: map.get("AsZ(°/s)")?.replace(',', ".").parse::<f64>().ok()?
                     });
                 });
                 crate::try_block!({
                     angl.push(TimeVector3 {
                         t: ts as f64,
-                        x: map.get("AngleX")?.replace(',', ".").parse::<f64>().ok()?, // Roll
-                        y: map.get("AngleY")?.replace(',', ".").parse::<f64>().ok()?, // Pitch
-                        z: map.get("AngleZ")?.replace(',', ".").parse::<f64>().ok()?  // Yaw
+                        x: map.get("AngleX(°)")?.replace(',', ".").parse::<f64>().ok()?, // Roll
+                        y: map.get("AngleY(°)")?.replace(',', ".").parse::<f64>().ok()?, // Pitch
+                        z: map.get("AngleZ(°)")?.replace(',', ".").parse::<f64>().ok()?  // Yaw
                     });
                 });
                 crate::try_block!({
                     magn.push(TimeVector3 {
                         t: ts as f64,
-                        x: map.get("hx")?.parse::<i64>().ok()?,
-                        y: map.get("hy")?.parse::<i64>().ok()?,
-                        z: map.get("hz")?.parse::<i64>().ok()?
+                        x: map.get("HX(uT)")?.parse::<i64>().ok()?,
+                        y: map.get("HY(uT)")?.parse::<i64>().ok()?,
+                        z: map.get("HZ(uT)")?.parse::<i64>().ok()?
                     });
                 });
                 crate::try_block!({
                     quat.push(TimeArray4 {
                         t: ts as f64,
                         v: [
-                            map.get("q0")?.replace(',', ".").parse::<f64>().ok()?,
-                            map.get("q1")?.replace(',', ".").parse::<f64>().ok()?,
-                            map.get("q2")?.replace(',', ".").parse::<f64>().ok()?,
-                            map.get("q3")?.replace(',', ".").parse::<f64>().ok()?
+                            map.get("Q0()")?.replace(',', ".").parse::<f64>().ok()?,
+                            map.get("Q1()")?.replace(',', ".").parse::<f64>().ok()?,
+                            map.get("Q2()")?.replace(',', ".").parse::<f64>().ok()?,
+                            map.get("Q3()")?.replace(',', ".").parse::<f64>().ok()?
                         ]
                     });
                 });
