@@ -8,7 +8,7 @@ use crate::*;
 use memchr::memmem;
 
 pub fn detect(buffer: &[u8]) -> bool {
-    memmem::find(buffer, b"time,seconds_elapsed,z,y,x").is_some()
+    memmem::find(buffer, b"time,seconds_elapsed").is_some()
 }
 
 pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize, path: &str) -> Result<Vec<SampleInfo>> {
