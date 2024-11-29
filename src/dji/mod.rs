@@ -38,7 +38,7 @@ impl Dji {
     }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
-        if memmem::find(buffer, b"djmd").is_some() && memmem::find(buffer, b"DJI meta").is_some() {
+        if memmem::find(buffer, b"djmd").is_some() && (memmem::find(buffer, b"DJI meta").is_some() || memmem::find(buffer, b"CAM meta").is_some()) {
             Some(Self {
                 model: None,
                 frame_readout_time: None
