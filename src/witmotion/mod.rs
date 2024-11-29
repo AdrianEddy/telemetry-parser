@@ -11,6 +11,7 @@ mod binary;
 mod txt;
 mod txt2;
 mod txt3;
+mod txt4;
 
 #[derive(Default)]
 enum Format {
@@ -18,7 +19,8 @@ enum Format {
     Binary,
     Txt,
     Txt2,
-    Txt3
+    Txt3,
+    Txt4,
 }
 
 #[derive(Default)]
@@ -57,6 +59,9 @@ impl WitMotion {
         if memmem::find(buffer, b"time").is_some() && memmem::find(buffer, b"AsX").is_some() && memmem::find(buffer, b"AsY").is_some() {
             return Some(Self { format: Format::Txt3, model: None });
         }
+        if memmem::find(buffer, b"Time").is_some() && memmem::find(buffer, b"Angular velocity X").is_some() && memmem::find(buffer, b"Quaternions 0").is_some() {
+            return Some(Self { format: Format::Txt4, model: None });
+        }
         None
     }
 
@@ -65,7 +70,8 @@ impl WitMotion {
             Format::Binary => binary::parse(stream, size),
             Format::Txt    => txt::parse(stream, size),
             Format::Txt2   => txt2::parse(stream, size),
-            Format::Txt3   => txt3::parse(stream, size)
+            Format::Txt3   => txt3::parse(stream, size),
+            Format::Txt4   => txt4::parse(stream, size),
         }
     }
 }
