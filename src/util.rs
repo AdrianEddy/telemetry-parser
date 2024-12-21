@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright © 2021 Adrian <adrian.eddy at gmail>
 
-use std::{ io::*, collections::BTreeSet, collections::BTreeMap };
+use std::sync::{ RwLock, LazyLock };
+use std::{ io::*, collections::{ BTreeSet, BTreeMap, HashSet } };
 use std::sync::{ Arc, atomic::AtomicBool };
 use byteorder::{ ReadBytesExt, BigEndian };
 use mp4parse::{ MediaContext, TrackType };
@@ -621,6 +622,12 @@ pub fn find_from_to(buffer: &[u8], from: &[u8], to: &[u8]) -> Option<String> {
 }
 
 pub fn insert_tag(map: &mut GroupedTagMap, tag: TagDescription) {
+    let whitelist_item = WhitelistItem((tag.group.clone(), tag.id.clone()));
+    let whitelist = TAG_WHITELIST.read().unwrap();
+    if !whitelist.is_empty() && !whitelist.contains(&whitelist_item) {
+        return;
+    }
+
     let group_map = map.entry(tag.group.clone()).or_insert_with(TagMap::new);
     group_map.insert(tag.id.clone(), tag);
 }
@@ -753,6 +760,15 @@ pub fn set_load_gyro_only(v: bool) {
 }
 pub fn get_load_gyro_only() -> bool{
     unsafe { LOAD_GYRO_ONLY }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct WhitelistItem((GroupId, TagId));
+
+static TAG_WHITELIST: LazyLock<RwLock<HashSet<WhitelistItem>>> = LazyLock::new(|| RwLock::new(HashSet::new()));
+
+pub fn set_tag_whitelist(whitelist: &HashSet<WhitelistItem>) {
+    *TAG_WHITELIST.write().unwrap() = whitelist.clone();
 }
 
 #[macro_export]
