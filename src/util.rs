@@ -763,12 +763,12 @@ pub fn get_load_gyro_only() -> bool{
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct WhitelistItem((GroupId, TagId));
+pub struct WhitelistItem(pub (GroupId, TagId));
 
 static TAG_WHITELIST: LazyLock<RwLock<HashSet<WhitelistItem>>> = LazyLock::new(|| RwLock::new(HashSet::new()));
 
-pub fn set_tag_whitelist(whitelist: &HashSet<WhitelistItem>) {
-    *TAG_WHITELIST.write().unwrap() = whitelist.clone();
+pub fn set_tag_whitelist(whitelist: HashSet<WhitelistItem>) {
+    *TAG_WHITELIST.write().unwrap() = whitelist;
 }
 
 #[macro_export]
