@@ -1,0 +1,15 @@
+[package]
+name = "goro-gps"
+version = "0.1.0"
+authors = ["Adrian <adrian.eddy@gmail.com>", "Tomi Leppikangas <tomi.leppikangas@gmail.com>"]
+edition = "2021"
+
+
+[[bin]]
+name = "gopro-gps"
+path = "gopro-gps.rs"
+
+[dependencies]
+argh = "0.1"
+telemetry-parser = { path = "../../" }
+chrono = "0.4.39"
