@@ -69,7 +69,6 @@ jobs:
       - name: Save Binaries
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.targets.bin }}
           path: dist/${{ matrix.targets.bin }}*
 
   github_release:
