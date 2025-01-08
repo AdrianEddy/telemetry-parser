@@ -33,14 +33,14 @@ pub fn parse(data: &[u8]) -> Metadata {
     let mut manufacturer = String::new();
 
     loop {
-        match reader.read_event(&mut buf) {
+        match reader.read_event_into(&mut buf) {
             Ok(Event::Empty(ref e)) => {
-                if e.name() == b"Duration" || e.name() == b"Device" {
+                if e.name().as_ref() == b"Duration" || e.name().as_ref() == b"Device" {
                     for ox in e.attributes() {
                         if let Ok(x) = ox {
-                            if x.key == b"value"        { frame_count = String::from_utf8_lossy(&x.value).parse::<usize>().unwrap(); }
-                            if x.key == b"modelName"    { model = String::from_utf8_lossy(&x.value).into(); }
-                            if x.key == b"manufacturer" { manufacturer = String::from_utf8_lossy(&x.value).into(); }
+                            if x.key.as_ref() == b"value"        { frame_count = String::from_utf8_lossy(&x.value).parse::<usize>().unwrap(); }
+                            if x.key.as_ref() == b"modelName"    { model = String::from_utf8_lossy(&x.value).into(); }
+                            if x.key.as_ref() == b"manufacturer" { manufacturer = String::from_utf8_lossy(&x.value).into(); }
                         }
                     }
                 }
