@@ -8,8 +8,13 @@ edition = "2021"
 name = "gyro2bb"
 path = "gyro2bb.rs"
 
+[[bin]]
+name = "gopro-gps"
+path = "gopro-gps.rs"
+
 [dependencies]
 argh = "0.1"
 telemetry-parser = { path = "../../" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
+chrono = "0.4.39"
