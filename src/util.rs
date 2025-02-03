@@ -119,7 +119,11 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
         // With large files we can save a lot of time by only parsing actual MP4 box structure, skipping track data itself.
         // We do that by reading 15 MB from each end of the file, then patching `mdat` box to make the 30 MB buffer a correct MP4 file.
         // This is hacky, but it's worth a try and if we fail we fallback to full parsing anyway.
-        let mut read_mb = if size as u64 > 30u64*1024*1024*1024 { // If file is greater than 30 GB, read 50 MB header/footer
+        let mut read_mb = if size as u64 > 100u64*1024*1024*1024 { // If file is greater than 100 GB, read 500 MB header/footer
+            500
+        } else if size as u64 > 60u64*1024*1024*1024 { // If file is greater than 60 GB, read 100 MB header/footer
+            100
+        } else if size as u64 > 30u64*1024*1024*1024 { // If file is greater than 30 GB, read 50 MB header/footer
             50
         } else if size as u64 > 5u64*1024*1024*1024 { // If file is greater than 5 GB, read 25 MB header/footer
             25
