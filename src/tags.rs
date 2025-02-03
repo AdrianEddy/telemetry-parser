@@ -73,6 +73,7 @@ declare_ids! {
     Distortion,
 
     Name,
+    DisplayName,
     Enabled,
     Data,
     Data2,

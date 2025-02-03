@@ -19,6 +19,7 @@ use memchr::memmem;
 #[derive(Default)]
 pub struct Sony {
     pub model: Option<String>,
+    pub lens: Option<String>,
     frame_readout_time: Option<f64>,
 }
 impl Sony {
@@ -52,6 +53,7 @@ impl Sony {
         if let Some(p1) = memmem::find(buffer, b"manufacturer=\"Sony\"") {
             return Some(Self {
                 model: util::find_between(&buffer[p1..(p1+1024).min(buffer.len())], b"modelName=\"", b'"'),
+                lens: util::find_between(&buffer[p1..(p1+1024).min(buffer.len())], b"Lens modelName=\"", b'"'),
                 frame_readout_time: None
             });
         }
@@ -130,6 +132,13 @@ impl Sony {
                             Ok(serde_json::Value::Array(crate::cooke::bin::parse(d.get_ref()).unwrap())) // TODO: unwrap
                         }, cooke_data));
                     }
+                }
+            }
+        }
+        if let Some(lens_name) = self.lens.as_ref() {
+            if let Some(first_sample) = samples.first_mut() {
+                if let Some(ref mut map) = first_sample.tag_map {
+                    util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::DisplayName, "Lens name", String, |v| v.to_string(), lens_name.clone(), Vec::new()));
                 }
             }
         }
