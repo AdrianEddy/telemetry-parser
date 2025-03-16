@@ -43,8 +43,8 @@ jobs:
       - name: Setup target ${{ matrix.targets.target }}
         if: ${{ matrix.targets.target == 'aarch64-apple-darwin' }}
         run: |
-          echo "SDKROOT=$(xcrun -sdk macosx11.1 --show-sdk-path)" >> $GITHUB_ENV
-          echo "MACOSX_DEPLOYMENT_TARGET=$(xcrun -sdk macosx11.1 --show-sdk-platform-version)" >> $GITHUB_ENV
+          echo "SDKROOT=$(xcrun --show-sdk-path)" >> $GITHUB_ENV
+          echo "MACOSX_DEPLOYMENT_TARGET=10.12" >> $GITHUB_ENV
 
       - name: Install cross
         if: ${{ matrix.targets.tool == 'cross' }}
