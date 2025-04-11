@@ -9,7 +9,7 @@ description = "Library to parse real-time metadata embedded in video files or te
 readme = "README.md"
 
 [dependencies]
-mp4parse = { version = "0.17", git = "https://github.com/AdrianEddy/mp4parse-rust.git", features = ["unstable-api", "meta-xml"] }
+mp4parse = { version = "0.17", git = "https://github.com/AdrianEddy/mp4parse-rust.git", features = ["unstable-api"] }
 byteorder = "1.5"
 pretty-hex = "0.4"
 chrono = "0.4"
