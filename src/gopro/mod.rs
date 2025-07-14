@@ -390,7 +390,7 @@ impl GoPro {
                 }
             }
         }
-        if first_tsus.is_some() && last_tsus.is_some() && count > 0 {
+        if first_tsus.is_some() && last_tsus.is_some() && count > 0 && last_tsus.unwrap() > first_tsus.unwrap() {
             Some((last_tsus.unwrap() as f64 - first_tsus.unwrap() as f64) / (count - last_len).max(1) as f64 / 1000.0)
         } else if count > 0 {
             Some(total_duration_ms / count as f64)
