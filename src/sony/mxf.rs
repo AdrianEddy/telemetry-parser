@@ -17,6 +17,7 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_c
 
     let mut index = 0;
     let mut id = [0u8; 16];
+    let mut max_duration = None;
     while let Ok(_) = stream.read_exact(&mut id) {
         if &id[0..4] != &[0x06, 0x0e, 0x2b, 0x34] {
             log::warn!("Unknown ID {} at 0x{:08x}", util::to_hex(&id), stream.stream_position()? - 16);
@@ -43,9 +44,21 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_c
 
         // log::debug!("{}: {}", util::to_hex(&id), length);
 
+        if id == [0x06, 0x0e, 0x2b, 0x34, 0x02, 0x53, 0x01, 0x01, 0x0D, 0x01, 0x01, 0x01, 0x01, 0x01, 0x11, 0x00] { // SourceClip
+            let mut data = vec![0; length];
+            stream.read_exact(&mut data)?;
+            if let Ok(data) = parse_set(&data) {
+                if let Some(duration) = data.get(&MxfMetaTag::ContainerDuration).or_else(|| data.get(&MxfMetaTag::Duration)).and_then(|x| x.as_u64()) {
+                    if max_duration.is_none_or(|x| duration > x) {
+                        max_duration = Some(duration);
+                    }
+                }
+            }
+        }
         if id == [0x06, 0x0e, 0x2b, 0x34, 0x02, 0x53, 0x01, 0x01, 0x0D, 0x01, 0x01, 0x01, 0x01, 0x01, 0x28, 0x00] || // CDCIDescriptor
            id == [0x06, 0x0e, 0x2b, 0x34, 0x02, 0x53, 0x01, 0x01, 0x0d, 0x01, 0x01, 0x01, 0x01, 0x01, 0x51, 0x00] || // MPEGPictureEssenceDescriptor
            id == [0x06, 0x0e, 0x2b, 0x34, 0x02, 0x53, 0x01, 0x01, 0x0d, 0x01, 0x01, 0x01, 0x01, 0x01, 0x5f, 0x00] || // VC1VideoDescriptor
+           id == [0x06, 0x0e, 0x2b, 0x34, 0x02, 0x53, 0x01, 0x01, 0x0d, 0x01, 0x01, 0x01, 0x01, 0x01, 0x27, 0x00] || // GenericPictureEssenceDescriptor
            id == [0x06, 0x0e, 0x2b, 0x34, 0x02, 0x53, 0x01, 0x01, 0x0D, 0x01, 0x01, 0x01, 0x01, 0x01, 0x29, 0x00] { // RGBAPictureEssenceDescriptor
             let mut data = vec![0; length];
             stream.read_exact(&mut data)?;
@@ -55,7 +68,7 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_c
                 }
                 if let Some(md) = metadata_only {
                     *md = util::VideoMetadata {
-                        duration_s: data.get(&MxfMetaTag::ContainerDuration).or_else(|| data.get(&MxfMetaTag::Duration)).and_then(|x| x.as_u64()).unwrap_or_default() as f64 / frame_rate,
+                        duration_s: data.get(&MxfMetaTag::ContainerDuration).or_else(|| data.get(&MxfMetaTag::Duration)).and_then(|x| x.as_u64()).unwrap_or(max_duration.unwrap_or_default()) as f64 / frame_rate,
                         fps: frame_rate,
                         width: data.get(&MxfMetaTag::DisplayWidth).and_then(|x| x.as_u64()).unwrap_or_default() as usize,
                         height: data.get(&MxfMetaTag::DisplayHeight).and_then(|x| x.as_u64()).unwrap_or_default() as usize,

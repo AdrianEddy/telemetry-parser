@@ -26,7 +26,7 @@ impl Gyroflow {
         false
     }
     pub fn possible_extensions() -> Vec<&'static str> {
-        vec!["mp4", "mov", "gcsv", "csv", "txt", "bin"]
+        vec!["mp4", "mov", "mkv", "gcsv", "csv", "txt", "bin"]
     }
     pub fn frame_readout_time(&self) -> Option<f64> {
         self.frame_readout_time
