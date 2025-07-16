@@ -38,11 +38,11 @@ impl GoPro {
         v
     }
 
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P, options: &crate::InputOptions) -> Option<Self> {
         let mut ret = None;
 
         if buffer.len() > 8 && &buffer[0..4] == b"DEVC" {
-            if let Ok(map) = Self::parse_metadata(buffer, GroupId::Default, true, &crate::InputOptions::default()) {
+            if let Ok(map) = Self::parse_metadata(buffer, GroupId::Default, true, options) {
                 let mut obj = Self::default();
                 for v in map.values() {
                     if let Some(v) = v.get_t(TagId::Unknown(0x4D494E46/*MINF*/)) as Option<&String> {

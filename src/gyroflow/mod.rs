@@ -35,7 +35,7 @@ impl Gyroflow {
         v
     }
 
-    pub fn detect<P: AsRef<Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
+    pub fn detect<P: AsRef<Path>>(buffer: &[u8], _filepath: P, _options: &crate::InputOptions) -> Option<Self> {
         let match_hdr = |line: &[u8]| -> bool {
             &buffer[0..line.len().min(buffer.len())] == line
         };

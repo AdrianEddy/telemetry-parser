@@ -32,7 +32,7 @@ impl Freefly {
         v
     }
 
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P, _options: &crate::InputOptions) -> Option<Self> {
         if memmem::find(buffer, b"com.freeflysystems.frame-metadata").is_some() {
             Some(Self::default())
         } else {

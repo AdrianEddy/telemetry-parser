@@ -36,7 +36,7 @@ impl SenseFlow {
         v
     }
 
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P, _options: &crate::InputOptions) -> Option<Self> {
         if buffer.len() > 12 && memmem::find(&buffer[0..12], b"SenseFlow").is_some() {
             return Some(Self { format: Format::Binary, model: None });
         }

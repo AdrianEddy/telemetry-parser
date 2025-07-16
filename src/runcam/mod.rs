@@ -36,12 +36,12 @@ impl Runcam {
         v
     }
 
-    pub fn detect<P: AsRef<Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
+    pub fn detect<P: AsRef<Path>>(buffer: &[u8], filepath: P, options: &crate::InputOptions) -> Option<Self> {
         let path = filepath.as_ref().to_str().unwrap_or_default().to_owned();
         let filename = filesystem::get_filename(&path);
 
         let mut gyro_path = None;
-        if filename.to_ascii_lowercase().ends_with(".mp4") {
+        if filename.to_ascii_lowercase().ends_with(".mp4") && !options.dont_look_for_sidecar_files {
             gyro_path = Self::detect_gyro_path(&path, &filename);
         }
         let gyro_buf = if let Some(gyro) = &gyro_path {

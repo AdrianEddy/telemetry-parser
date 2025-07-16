@@ -35,7 +35,7 @@ impl Camm {
         v
     }
 
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P, _options: &crate::InputOptions) -> Option<Self> {
         for camm_pos in memmem::find_iter(buffer, b"camm") {
             if buffer.len() > 16 + camm_pos && &buffer[4..8] == b"ftyp" && &buffer[camm_pos-4-4-4-4..camm_pos-4-4-4] == b"stsd" {
                 return Some(Self::default());

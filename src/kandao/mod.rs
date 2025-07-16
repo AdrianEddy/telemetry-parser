@@ -37,7 +37,7 @@ impl KanDao {
         v
     }
 
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P, _options: &crate::InputOptions) -> Option<Self> {
         if memmem::find(buffer, b"KANDAO_IMU_DATA").is_some() && memmem::find(buffer, b"GYROACC").is_some() {
             return Some(Self { model: None });
         }

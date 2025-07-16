@@ -37,7 +37,7 @@ impl RedR3d {
         v
     }
 
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P, _options: &crate::InputOptions) -> Option<Self> {
         let path = filepath.as_ref().to_str().unwrap_or_default().to_owned();
 
         let ext = filesystem::get_extension(&path);

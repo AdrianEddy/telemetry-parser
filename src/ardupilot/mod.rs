@@ -34,7 +34,7 @@ impl ArduPilot {
         v
     }
 
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P, _options: &crate::InputOptions) -> Option<Self> {
         if buffer.len() > 4 && buffer[..4] == [0xA3, 0x95, 0x80, 0x80] &&
            memmem::find(&buffer[..256], b"BBnNZ").is_some() &&
            memmem::find(&buffer[..256], b"Type,Length,Name,Format,Columns").is_some() {

@@ -39,7 +39,7 @@ impl EspLog {
         v
     }
 
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P, _options: &crate::InputOptions) -> Option<Self> {
         if buffer.len() > 7 && &buffer[0..7] == b"EspLog0" {
             return Some(Self { model: None });
         }

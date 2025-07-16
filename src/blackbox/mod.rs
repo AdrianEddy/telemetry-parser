@@ -36,7 +36,7 @@ impl BlackBox {
         "ZYx".into()
     }
 
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P, _options: &crate::InputOptions) -> Option<Self> {
         // BBL - container format, can contain multiple logs, each starting with "H Product:Blackbox flight data recorder by Nicholas Sherlock." and ending with "End of log\0"
         // BFL - single flight log file
 

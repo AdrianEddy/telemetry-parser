@@ -31,7 +31,7 @@ impl Vuze {
         v
     }
 
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P, _options: &crate::InputOptions) -> Option<Self> {
         if memmem::find(buffer, b"bmdt").is_some() &&
            memmem::find(buffer, b"modl").is_some() &&
            memmem::find(buffer, b"slno").is_some() &&

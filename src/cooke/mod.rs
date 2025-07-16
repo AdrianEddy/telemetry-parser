@@ -18,7 +18,7 @@ impl Cooke {
     pub fn possible_extensions() -> Vec<&'static str> { vec!["yml", "yaml"] }
     pub fn frame_readout_time(&self) -> Option<f64> { None }
     pub fn normalize_imu_orientation(v: String) -> String { v }
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P, _options: &crate::InputOptions) -> Option<Self> {
         if memmem::find(buffer, b"RecordType: rt.header.lens.info").is_some() || memmem::find(buffer, b"RecordType: rt.header.recorder.info").is_some() {
             Some(Self {
                 model: Some("YAML metadata".into()),

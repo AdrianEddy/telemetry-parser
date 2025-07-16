@@ -38,7 +38,7 @@ impl QoocamEgo {
         v
     }
 
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P, _options: &crate::InputOptions) -> Option<Self> {
         if memmem::find(buffer, b"QooCam EGO").is_some() {
             return Some(Self { model: Some("QooCam EGO".into()) });
         }

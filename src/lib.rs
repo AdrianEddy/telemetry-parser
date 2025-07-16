@@ -47,6 +47,8 @@ pub struct InputOptions {
     pub tag_whitelist: HashSet<TagFilter>,
     /// Skip tags on this list
     pub tag_blacklist: HashSet<TagFilter>,
+    /// If the main file doesn't contain any data, don't look for sidecar files
+    pub dont_look_for_sidecar_files: bool,
 }
 
 macro_rules! impl_formats {
@@ -88,7 +90,7 @@ macro_rules! impl_formats {
                         }
                     }
                     if check {
-                        if let Some(mut x) = <$class>::detect(&buf, &filepath) {
+                        if let Some(mut x) = <$class>::detect(&buf, &filepath, &options) {
                             return Ok(Input {
                                 samples: x.parse(stream, size, progress_cb, cancel_flag, options).ok(),
                                 inner: SupportedFormats::$name(x)
@@ -97,12 +99,14 @@ macro_rules! impl_formats {
                     }
                 )*}
                 // If nothing was detected, check if there's a file with the same name but different extension
+                if !options.dont_look_for_sidecar_files {
                 if ext.as_deref() == Some("mp4") || ext.as_deref() == Some("mov") {
                     let fs = filesystem::get_base();
                     for try_ext in ["gcsv", "bbl", "bfl", "csv", "GCSV", "BBL", "BFL", "CSV"] {
                         if let Some(gyro_path) = filepath.as_ref().to_str().and_then(|x| filesystem::file_with_extension(x, try_ext)) {
                             if let Ok(mut f) = filesystem::open_file(&fs, &gyro_path) {
                                 return Self::from_stream(&mut f.file, f.size, &gyro_path, progress_cb, cancel_flag);
+                                }
                             }
                         }
                     }
