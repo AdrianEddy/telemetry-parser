@@ -9,7 +9,7 @@ use byteorder::{ ReadBytesExt, BigEndian };
 use crate::*;
 use crate::tags_impl::*;
 
-pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, metadata_only: Option<&mut util::VideoMetadata>) -> Result<Vec<SampleInfo>> {
+pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, metadata_only: Option<&mut util::VideoMetadata>, options: &crate::InputOptions) -> Result<Vec<SampleInfo>> {
     let mut stream = std::io::BufReader::with_capacity(128*1024, stream);
     let mut samples = Vec::new();
 
@@ -84,7 +84,7 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_c
             stream.read_exact(&mut data)?;
             let data = parse_ancillary(&data)?;
 
-            if let Ok(map) = super::Sony::parse_metadata(&data) {
+            if let Ok(map) = super::Sony::parse_metadata(&data, options) {
                 if let Some(group) = map.get(&GroupId::Default) {
                     if let Some(val) = group.get(&TagId::FrameRate) {
                         match &val.value {
@@ -106,6 +106,10 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_c
                     ..Default::default()
                 });
                 index += 1;
+
+                if options.probe_only {
+                    cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
             }
         } else {
             stream.seek(SeekFrom::Current(length as i64))?;

@@ -53,9 +53,9 @@ impl Dji {
         }
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         if self.model.is_some() {
-            return csv::parse(stream, size);
+            return csv::parse(stream, size, options);
         }
 
         let mut samples = Vec::new();
@@ -74,6 +74,7 @@ impl Dji {
         let mut prev_quat: Option<Quaternion<f64>> = None;
         let mut inv = false;
 
+        let cancel_flag2 = cancel_flag.clone();
         let ctx = util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64, _video_md: Option<&VideoMetadata>| {
             if size > 0 {
                 progress_cb(file_position as f64 / size as f64);
@@ -99,7 +100,7 @@ impl Dji {
                         let v = serde_json::to_value(&clip).map_err(|_| Error::new(ErrorKind::Other, "Serialize error"));
                         if let Ok(vv) = v {
                             log::debug!("Metadata: {:?}", &vv);
-                            insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), vv, vec![]));
+                            insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), vv, vec![]), &options);
                         }
                         if let Some(ref stream) = parsed.stream_meta {
                             if let Some(ref meta) = stream.video_stream_meta {
@@ -210,7 +211,7 @@ impl Dji {
                                 }
 
                                 if info.sample_index == 0 { log::debug!("Quaternions: {:?}", &quats); }
-                                util::insert_tag(&mut tag_map, tag!(parsed GroupId::Quaternion, TagId::Data, "Quaternion data",  Vec_TimeQuaternion_f64, |v| format!("{:?}", v), quats, vec![]));
+                                util::insert_tag(&mut tag_map, tag!(parsed GroupId::Quaternion, TagId::Data, "Quaternion data",  Vec_TimeQuaternion_f64, |v| format!("{:?}", v), quats, vec![]), &options);
                             }
                         }
                     }
@@ -220,6 +221,10 @@ impl Dji {
                     info.tag_map = Some(tag_map);
 
                     samples.push(info);
+
+                    if options.probe_only {
+                        cancel_flag2.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
                 },
                 Err(e) => {
                     log::warn!("Failed to parse protobuf: {:?}", e);
@@ -234,7 +239,7 @@ impl Dji {
 
                     let profile = self.get_lens_profile(w, h, focal_length, &coeffs);
                     if let Some(ref mut tag_map) = sample.tag_map {
-                        insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::Data, "Lens profile", Json, |v| serde_json::to_string(v).unwrap(), profile, vec![]));
+                        insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::Data, "Lens profile", Json, |v| serde_json::to_string(v).unwrap(), profile, vec![]), &options);
                     }
                 }
             },

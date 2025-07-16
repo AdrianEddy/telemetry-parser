@@ -28,7 +28,7 @@ impl Cooke {
         }
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, _size: usize, _progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, _size: usize, _progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         let mut samples = Vec::new();
         let mut all_data = String::new();
         stream.read_to_string(&mut all_data)?;
@@ -69,13 +69,13 @@ impl Cooke {
                     //if tsi == 1 { println!("{:?}, ts: {:.2}", timecode, timestamp[tsi] as f64 / 150000.0); }
                     match rtype {
                         Some("rt.header.lens.info") => {
-                            util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::Metadata, "Lens info", Json, |v| format!("{:?}", v), data, vec![]));
+                            util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::Metadata, "Lens info", Json, |v| format!("{:?}", v), data, vec![]), &options);
                         },
                         Some("rt.header.lens.shading") => {
-                            util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::Shading, "Lens shading", Json, |v| format!("{:?}", v), data, vec![]));
+                            util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::Shading, "Lens shading", Json, |v| format!("{:?}", v), data, vec![]), &options);
                         },
                         Some("rt.header.lens.distortion") => {
-                            util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::Distortion, "Lens distortion", Json, |v| format!("{:?}", v), data, vec![]));
+                            util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::Distortion, "Lens distortion", Json, |v| format!("{:?}", v), data, vec![]), &options);
                         },
                         Some("rt.header.lens.cal.accelerometer") => { calibration_accl = Self::get_mtrx::<4>(&data); },
                         Some("rt.header.lens.cal.gyro")          => { calibration_gyro = Self::get_mtrx::<7>(&data); },
@@ -101,9 +101,9 @@ impl Cooke {
                                         z: data.2
                                     });
                                 }
-                                util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data,        "Accelerometer data",  Vec_TimeVector3_f64, |v| format!("{:?}", v), accl, vec![]));
-                                util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit,        "Accelerometer unit",  String, |v| v.to_string(), "m/s²".into(),  Vec::new()));
-                                util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation",     String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
+                                util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data,        "Accelerometer data",  Vec_TimeVector3_f64, |v| format!("{:?}", v), accl, vec![]), &options);
+                                util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit,        "Accelerometer unit",  String, |v| v.to_string(), "m/s²".into(),  Vec::new()), &options);
+                                util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation",     String, |v| v.to_string(), imu_orientation.into(), Vec::new()), &options);
                             }
                         },
                         Some("rt.temporal.lens.gyro.raw") => {
@@ -129,9 +129,9 @@ impl Cooke {
                                         z: data.2
                                     });
                                 }
-                                util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope, TagId::Data,        "Gyroscope data",  Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]));
-                                util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope, TagId::Unit,        "Gyroscope unit",  String, |v| v.to_string(), "rad/s".into(), Vec::new()));
-                                util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope, TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
+                                util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope, TagId::Data,        "Gyroscope data",  Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]), &options);
+                                util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope, TagId::Unit,        "Gyroscope unit",  String, |v| v.to_string(), "rad/s".into(), Vec::new()), &options);
+                                util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope, TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()), &options);
                             }
                         },
                         Some("rt.temporal.lens.magnetometer.raw") => {
@@ -155,16 +155,16 @@ impl Cooke {
                                         z: data.2
                                     });
                                 }
-                                util::insert_tag(&mut map, tag!(parsed GroupId::Magnetometer, TagId::Data,        "Magnetometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), magn, vec![]));
-                                util::insert_tag(&mut map, tag!(parsed GroupId::Magnetometer, TagId::Unit,        "Magnetometer unit", String, |v| v.to_string(), "T".into(), Vec::new()));
-                                util::insert_tag(&mut map, tag!(parsed GroupId::Magnetometer, TagId::Orientation, "IMU orientation",   String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
+                                util::insert_tag(&mut map, tag!(parsed GroupId::Magnetometer, TagId::Data,        "Magnetometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), magn, vec![]), &options);
+                                util::insert_tag(&mut map, tag!(parsed GroupId::Magnetometer, TagId::Unit,        "Magnetometer unit", String, |v| v.to_string(), "T".into(), Vec::new()), &options);
+                                util::insert_tag(&mut map, tag!(parsed GroupId::Magnetometer, TagId::Orientation, "IMU orientation",   String, |v| v.to_string(), imu_orientation.into(), Vec::new()), &options);
                             }
                         },
                         Some("rt.temporal.lens.general") => {
-                            util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::Data, "Lens data", Json, |v| format!("{:?}", v), data, vec![]));
+                            util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::Data, "Lens data", Json, |v| format!("{:?}", v), data, vec![]), &options);
                         },
                         Some("rt.header.recorder.info") => {
-                            util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::Metadata, "Recorder info", Json, |v| format!("{:?}", v), data, vec![]));
+                            util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::Metadata, "Recorder info", Json, |v| format!("{:?}", v), data, vec![]), &options);
                         },
                         _ => {
                             panic!("Unknown record: {data:?}");

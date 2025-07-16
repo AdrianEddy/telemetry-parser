@@ -55,11 +55,11 @@ impl BlackBox {
         None
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         if self.csv {
-            csv::parse(stream, size, progress_cb, cancel_flag)
+            csv::parse(stream, size, progress_cb, cancel_flag, options)
         } else {
-            binary::parse(stream, size, progress_cb, cancel_flag)
+            binary::parse(stream, size, progress_cb, cancel_flag, options)
         }
     }
 

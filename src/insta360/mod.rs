@@ -52,13 +52,13 @@ impl Insta360 {
         None
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
-        let mut tag_map = self.parse_file(stream, size, progress_cb, cancel_flag)?;
-        self.process_map(&mut tag_map);
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+        let mut tag_map = self.parse_file(stream, size, progress_cb, cancel_flag, &options)?;
+        self.process_map(&mut tag_map, &options);
         Ok(vec![SampleInfo { tag_map: Some(tag_map), ..std::default::Default::default() }])
     }
 
-    fn parse_file<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<GroupedTagMap> {
+    fn parse_file<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: &crate::InputOptions) -> Result<GroupedTagMap> {
         let mut buf = vec![0u8; HEADER_SIZE];
         stream.seek(SeekFrom::End(-(HEADER_SIZE as i64)))?;
         stream.read_exact(&mut buf)?;
@@ -79,7 +79,7 @@ impl Insta360 {
                 buf.resize(size as usize, 0);
                 stream.seek(SeekFrom::End(-offset - size))?;
                 stream.read_exact(&mut buf)?;
-                self.parse_record(first_id, 0, version, &buf, Some(&mut offsets))?;
+                self.parse_record(first_id, 0, version, &buf, Some(&mut offsets), options)?;
 
                 if !offsets.is_empty() {
                     for (id, (offset, record_size)) in &offsets {
@@ -96,7 +96,7 @@ impl Insta360 {
                         let id2    = stream.read_u8()?;
                         let size2 = stream.read_u32::<LittleEndian>()?;
                         if size2 == *record_size && *id == id2 && id2 > 0 {
-                            for (g, v) in self.parse_record(id2, format, version, &buf, None)? {
+                            for (g, v) in self.parse_record(id2, format, version, &buf, None, options)? {
                                 map.entry(g).or_insert_with(TagMap::new).extend(v);
                             }
                         }
@@ -122,7 +122,7 @@ impl Insta360 {
                 stream.seek(SeekFrom::End(-offset - size))?;
                 stream.read_exact(&mut buf)?;
 
-                for (g, v) in self.parse_record(id, format, version, &buf, None)? {
+                for (g, v) in self.parse_record(id, format, version, &buf, None, options)? {
                     let group_map = map.entry(g).or_insert_with(TagMap::new);
                     group_map.extend(v);
                 }
@@ -134,7 +134,7 @@ impl Insta360 {
         Err(ErrorKind::NotFound.into())
     }
 
-    fn process_map(&mut self, tag_map: &mut GroupedTagMap) {
+    fn process_map(&mut self, tag_map: &mut GroupedTagMap, options: &crate::InputOptions) {
         if let Some(x) = tag_map.get(&GroupId::Default) {
             self.model = try_block!(String, {
                 (x.get_t(TagId::Metadata) as Option<&serde_json::Value>)?.as_object()?.get("camera_type")?.as_str()?.to_owned()
@@ -183,7 +183,7 @@ impl Insta360 {
                     let dw = crop_info.get("dst_width") ?.as_i64()? as u32;
                     let dh = crop_info.get("dst_height")?.as_i64()? as u32;
 
-                    self.insert_lens_profile(tag_map, (w, h), (sw, sh), (dw, dh), &offset_v3.into_iter().filter_map(|x| x.as_f64()).collect::<Vec<f64>>());
+                    self.insert_lens_profile(tag_map, (w, h), (sw, sh), (dw, dh), &offset_v3.into_iter().filter_map(|x| x.as_f64()).collect::<Vec<f64>>(), options);
                 },
                 _ => { }
             }
@@ -227,7 +227,7 @@ impl Insta360 {
         }
     }
 
-    fn insert_lens_profile(&self, tag_map: &mut GroupedTagMap, size: (u32, u32), _src: (u32, u32), dst: (u32, u32), offset_v3: &[f64]) {
+    fn insert_lens_profile(&self, tag_map: &mut GroupedTagMap, size: (u32, u32), _src: (u32, u32), dst: (u32, u32), offset_v3: &[f64], options: &crate::InputOptions) {
         let model = self.model.clone().unwrap_or_default().replace("Insta360 ", "");
 
         // offset_v3: num_xi_fx_fy_cx_cy_yaw_pitch_roll_tx_ty_tz_k1_k2_k3_p1_p2_width_height_lensType_flag
@@ -279,7 +279,7 @@ impl Insta360 {
             "calibrator_version": "---"
         });
 
-        insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::Data, "Lens profile", Json, |v| serde_json::to_string(v).unwrap(), profile, vec![]));
+        insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::Data, "Lens profile", Json, |v| serde_json::to_string(v).unwrap(), profile, vec![]), options);
 
         if pitch.abs() > 0.0 || roll.abs() > 0.0 || yaw.abs() > 0.0 {
             const DEG2RAD: f64 = std::f64::consts::PI / 180.0;

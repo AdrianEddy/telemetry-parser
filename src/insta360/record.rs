@@ -44,7 +44,7 @@ mod RecordFormat {
 }
 
 impl super::Insta360 {
-    pub fn parse_record(&mut self, id: u8, format: u8, _version: u32, data: &[u8], mut offsets: Option<&mut BTreeMap<u8, (u32, u32)>>) -> Result<GroupedTagMap> {
+    pub fn parse_record(&mut self, id: u8, format: u8, _version: u32, data: &[u8], mut offsets: Option<&mut BTreeMap<u8, (u32, u32)>>, options: &crate::InputOptions) -> Result<GroupedTagMap> {
         let mut map = GroupedTagMap::new();
 
         let mut d = Cursor::new(data);
@@ -89,7 +89,7 @@ impl super::Insta360 {
                         })
                     }
                     Ok(tm)
-                }, data));
+                }, data), options);
             },
             RecordType::Metadata => { // Metadata in protobuf format
                 use prost::Message;
@@ -118,14 +118,14 @@ impl super::Insta360 {
                     }
                 }
                 if let Ok(vv) = v {
-                    insert_tag(&mut map, tag!(parsed Default, TagId::Metadata, "Extra metadata", Json, |v| serde_json::to_string(v).unwrap(), vv, data));
+                    insert_tag(&mut map, tag!(parsed Default, TagId::Metadata, "Extra metadata", Json, |v| serde_json::to_string(v).unwrap(), vv, data), options);
                 }
             },
             RecordType::Thumbnail => { // video frame in h264
-                insert_tag(&mut map, tag!(parsed Default, File("thumbnail.h264".into()), "Thumbnail", Vec_u8, |v| format!("{} bytes", v.len()), data.to_vec(), vec![]));
+                insert_tag(&mut map, tag!(parsed Default, File("thumbnail.h264".into()), "Thumbnail", Vec_u8, |v| format!("{} bytes", v.len()), data.to_vec(), vec![]), options);
             },
             RecordType::ThumbnailExt => { // video frame in h264
-                insert_tag(&mut map, tag!(parsed Default, File("thumbnail-ext.h264".into()), "ThumbnailExt", Vec_u8, |v| format!("{} bytes", v.len()), data.to_vec(), vec![]));
+                insert_tag(&mut map, tag!(parsed Default, File("thumbnail-ext.h264".into()), "ThumbnailExt", Vec_u8, |v| format!("{} bytes", v.len()), data.to_vec(), vec![]), options);
             },
             RecordType::Gyro => {
                 let item_size = if self.is_raw_gyro { 8+6*2 } else { 8+6*8 };
@@ -166,18 +166,18 @@ impl super::Insta360 {
                 if self.is_raw_gyro {
                     let gyro_scale = 32768.0 / self.gyro_range.unwrap_or(2000.0); // 2000 dps
                     let accl_scale = 32768.0 / self.acc_range.unwrap_or(16.0); // ± 16g
-                    insert_tag(&mut map, tag!(parsed Gyroscope,     Scale, "Gyroscope scale",     f64, |v| format!("{:?}", v), gyro_scale, vec![]));
-                    insert_tag(&mut map, tag!(parsed Accelerometer, Scale, "Accelerometer scale", f64, |v| format!("{:?}", v), accl_scale, vec![]));
+                    insert_tag(&mut map, tag!(parsed Gyroscope,     Scale, "Gyroscope scale",     f64, |v| format!("{:?}", v), gyro_scale, vec![]), options);
+                    insert_tag(&mut map, tag!(parsed Accelerometer, Scale, "Accelerometer scale", f64, |v| format!("{:?}", v), accl_scale, vec![]), options);
 
-                    insert_tag(&mut map, tag!(parsed Gyroscope,     Unit, "Gyroscope unit",     String, |v| v.to_string(), "deg/s".into(), Vec::new()));
+                    insert_tag(&mut map, tag!(parsed Gyroscope,     Unit, "Gyroscope unit",     String, |v| v.to_string(), "deg/s".into(), Vec::new()), options);
                 } else {
-                    insert_tag(&mut map, tag!(parsed Gyroscope,     Unit, "Gyroscope unit",     String, |v| v.to_string(), "rad/s".into(), Vec::new()));
+                    insert_tag(&mut map, tag!(parsed Gyroscope,     Unit, "Gyroscope unit",     String, |v| v.to_string(), "rad/s".into(), Vec::new()), options);
                 }
 
-                insert_tag(&mut map, tag!(parsed Accelerometer, Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), acc_vec, vec![]));
-                insert_tag(&mut map, tag!(parsed Gyroscope,     Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro_vec, vec![]));
+                insert_tag(&mut map, tag!(parsed Accelerometer, Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), acc_vec, vec![]), options);
+                insert_tag(&mut map, tag!(parsed Gyroscope,     Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro_vec, vec![]), options);
 
-                insert_tag(&mut map, tag!(parsed Accelerometer, Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(),  Vec::new()));
+                insert_tag(&mut map, tag!(parsed Accelerometer, Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(),  Vec::new()), options);
             },
             RecordType::Exposure | RecordType::ExposureSecondary => {
                 insert_tag(&mut map, tag!(Exposure, Data, "Shutter speed", Vec_TimeScalar_f64, |v| format!("{:?}", v), |d| {
@@ -190,7 +190,7 @@ impl super::Insta360 {
                         })
                     }
                     Ok(exp)
-                }, data));
+                }, data), options);
             },
             RecordType::TimelapseTimestamp => {
                 insert_tag(&mut map, tag!(Default, TagId::Custom("Timestamps".into()), "Timelapse timestamps", Vec_f64, |v| format!("{:?}", v), |d| {
@@ -200,7 +200,7 @@ impl super::Insta360 {
                         ts.push(d.read_u64::<LittleEndian>()? as f64 / 1000.0); // timestamp
                     }
                     Ok(ts)
-                }, data));
+                }, data), options);
             },
             RecordType::Gps => {
                 insert_tag(&mut map, tag!(GPS, Data, "GPS data", Vec_GpsData, |v| format!("{:?}", v), |d| {
@@ -230,7 +230,7 @@ impl super::Insta360 {
                         });
                     }
                     Ok(gps)
-                }, data));
+                }, data), options);
             },
             RecordType::AAAData => { // item size: 48 bytes
                 insert_tag(&mut map, tag!(Default, TagId::Custom("AAAData".into()), "AAA data", Vec_TimeScalar_Json, |v| format!("{:?}", v), |d| {
@@ -265,7 +265,7 @@ impl super::Insta360 {
                         });
                     }
                     Ok(aaa)
-                }, data));
+                }, data), options);
             },
             RecordType::Anchors => {
                 insert_tag(&mut map, tag!(Default, TagId::Custom("Anchors".into()), "Anchors (highlight) data", Vec_Json, |v| format!("{:?}", v), |d| {
@@ -291,7 +291,7 @@ impl super::Insta360 {
                         }
                     }
                     Ok(anchors)
-                }, data));
+                }, data), options);
             },
 
             RecordType::StarNum | // Unknown format, item size: 11

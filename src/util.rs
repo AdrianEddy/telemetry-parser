@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright © 2021 Adrian <adrian.eddy at gmail>
 
-use std::sync::{ RwLock, LazyLock };
-use std::{ io::*, collections::{ BTreeSet, BTreeMap, HashSet } };
+use std::{ io::*, collections::{ BTreeSet, BTreeMap } };
 use std::sync::{ Arc, atomic::AtomicBool };
 use byteorder::{ ReadBytesExt, BigEndian };
 use mp4parse::{ MediaContext, TrackType };
@@ -625,10 +624,19 @@ pub fn find_from_to(buffer: &[u8], from: &[u8], to: &[u8]) -> Option<String> {
     Some(String::from_utf8_lossy(&buffer[pos..pos+from.len()+end+to.len()]).into())
 }
 
-pub fn insert_tag(map: &mut GroupedTagMap, tag: TagDescription) {
-    let whitelist_item = WhitelistItem((tag.group.clone(), tag.id.clone()));
-    let whitelist = TAG_WHITELIST.read().unwrap();
-    if !whitelist.is_empty() && !whitelist.contains(&whitelist_item) {
+pub fn insert_tag(map: &mut GroupedTagMap, tag: TagDescription, options: &crate::InputOptions) {
+    use crate::TagFilter;
+    let match_tag = |x: &TagFilter| -> bool {
+        match x {
+            TagFilter::EntireGroup(g)    => g == &tag.group,
+            TagFilter::EntireTag  (t)    => t == &tag.id,
+            TagFilter::SpecificTag(g, t) => g == &tag.group && t == &tag.id,
+        }
+    };
+    if !options.tag_whitelist.is_empty() && !options.tag_whitelist.iter().any(match_tag) {
+        return;
+    }
+    if !options.tag_blacklist.is_empty() && options.tag_blacklist.iter().any(match_tag) {
         return;
     }
 
@@ -713,7 +721,7 @@ pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Re
 
     if header == [0x06, 0x0E, 0x2B, 0x34] { // MXF header
         let mut md = VideoMetadata::default();
-        crate::sony::mxf::parse(stream, filesize, |_|(), Arc::new(AtomicBool::new(false)), Some(&mut md))?;
+        crate::sony::mxf::parse(stream, filesize, |_|(), Arc::new(AtomicBool::new(false)), Some(&mut md), &crate::InputOptions::default())?;
         return Ok(md);
     }
 
@@ -756,23 +764,6 @@ pub fn read_box<R: Read + Seek>(reader: &mut R) -> Result<(u32, u64, u64, i64)> 
     } else {
         Ok((typ, pos, size as u64, 8))
     }
-}
-
-static mut LOAD_GYRO_ONLY: bool = false;
-pub fn set_load_gyro_only(v: bool) {
-    unsafe { LOAD_GYRO_ONLY = v; }
-}
-pub fn get_load_gyro_only() -> bool{
-    unsafe { LOAD_GYRO_ONLY }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct WhitelistItem(pub (GroupId, TagId));
-
-static TAG_WHITELIST: LazyLock<RwLock<HashSet<WhitelistItem>>> = LazyLock::new(|| RwLock::new(HashSet::new()));
-
-pub fn set_tag_whitelist(whitelist: HashSet<WhitelistItem>) {
-    *TAG_WHITELIST.write().unwrap() = whitelist;
 }
 
 #[macro_export]

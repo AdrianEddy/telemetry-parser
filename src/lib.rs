@@ -27,7 +27,27 @@ pub mod filesystem;
 
 use std::io::*;
 use std::sync::{ Arc, atomic::AtomicBool };
+use std::collections::HashSet;
 use util::*;
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum TagFilter {
+    EntireGroup(tags_impl::GroupId),
+    EntireTag(tags_impl::TagId),
+    SpecificTag(tags_impl::GroupId, tags_impl::TagId),
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct InputOptions {
+    /// When parsing Betaflight Blackbox, ignore all tags which are not gyro or accelerometer
+    pub blackbox_gyro_only: bool,
+    /// Parse only until the first metadata frame and first gyro sample, to determine if the file has useful data
+    pub probe_only: bool,
+    /// Only parse tags on this list
+    pub tag_whitelist: HashSet<TagFilter>,
+    /// Skip tags on this list
+    pub tag_blacklist: HashSet<TagFilter>,
+}
 
 macro_rules! impl_formats {
     ($($name:ident => $class:ty,)*) => {
@@ -40,6 +60,9 @@ macro_rules! impl_formats {
         }
         impl Input {
             pub fn from_stream<T: Read + Seek, P: AsRef<std::path::Path>, F: Fn(f64)>(stream: &mut T, size: usize, filepath: P, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Input> {
+                Self::from_stream_with_options(stream, size, filepath, progress_cb, cancel_flag, InputOptions::default())
+            }
+            pub fn from_stream_with_options<T: Read + Seek, P: AsRef<std::path::Path>, F: Fn(f64)>(stream: &mut T, size: usize, filepath: P, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: InputOptions) -> Result<Input> {
                 let read_mb = if size as u64 > 100u64*1024*1024*1024 { // If file is greater than 100 GB, read 500 MB header/footer
                     500
                 } else if size as u64 > 60u64*1024*1024*1024 { // If file is greater than 60 GB, read 100 MB header/footer
@@ -67,7 +90,7 @@ macro_rules! impl_formats {
                     if check {
                         if let Some(mut x) = <$class>::detect(&buf, &filepath) {
                             return Ok(Input {
-                                samples: x.parse(stream, size, progress_cb, cancel_flag).ok(),
+                                samples: x.parse(stream, size, progress_cb, cancel_flag, options).ok(),
                                 inner: SupportedFormats::$name(x)
                             });
                         }

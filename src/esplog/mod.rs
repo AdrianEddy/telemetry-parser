@@ -52,6 +52,7 @@ impl EspLog {
         size: usize,
         progress_cb: F,
         cancel_flag: Arc<AtomicBool>,
+        options: crate::InputOptions
     ) -> Result<Vec<SampleInfo>> {
         let mut buf = vec![0u8; 8000];
 
@@ -184,28 +185,34 @@ impl EspLog {
         util::insert_tag(
             &mut map,
             tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), accel, vec![]),
+            &options
         );
         util::insert_tag(
             &mut map,
             tag!(parsed GroupId::Gyroscope,     TagId::Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]),
+            &options
         );
 
         util::insert_tag(
             &mut map,
             tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(), Vec::new()),
+            &options
         );
         util::insert_tag(
             &mut map,
             tag!(parsed GroupId::Gyroscope,     TagId::Unit, "Gyroscope unit",     String, |v| v.to_string(), "deg/s".into(), Vec::new()),
+            &options
         );
 
         util::insert_tag(
             &mut map,
             tag!(parsed GroupId::Gyroscope,     TagId::Orientation, "IMU orientation", String, |v| v.to_string(), orientation.clone(), Vec::new()),
+            &options
         );
         util::insert_tag(
             &mut map,
             tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation", String, |v| v.to_string(), orientation.clone(), Vec::new()),
+            &options
         );
 
         Ok(vec![SampleInfo {

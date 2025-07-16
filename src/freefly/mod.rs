@@ -40,7 +40,7 @@ impl Freefly {
         }
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         let mut samples = Vec::new();
 
         let mut acc_cal  = (0.00024414808, 0.00024414808, 0.00024414808);
@@ -51,6 +51,7 @@ impl Freefly {
 
         let mut real_fps = None;
 
+        let cancel_flag2 = cancel_flag.clone();
         util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64, video_md: Option<&VideoMetadata>| {
             if size > 0 {
                 progress_cb(file_position as f64 / size as f64);
@@ -60,7 +61,7 @@ impl Freefly {
 
             let offset = memmem::find(data, b"TYPE").unwrap_or(8);
 
-            if let Ok(mut map) = GoPro::parse_metadata(&data[offset..], GroupId::Default, true) {
+            if let Ok(mut map) = GoPro::parse_metadata(&data[offset..], GroupId::Default, true, &options) {
                 let mut gyro = Vec::new();
                 let mut accl = Vec::new();
 
@@ -133,24 +134,28 @@ impl Freefly {
 
                 let imu_orientation = "xYz";
                 if !gyro.is_empty() {
-                    util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Data,        "Gyroscope data",  Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]));
-                    util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Unit,        "Gyroscope unit",  String,              |v| v.to_string(), "rad/s".into(), Vec::new()));
-                    util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Orientation, "IMU orientation", String,              |v| v.to_string(), imu_orientation.into(), Vec::new()));
+                    util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Data,        "Gyroscope data",  Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]), &options);
+                    util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Unit,        "Gyroscope unit",  String,              |v| v.to_string(), "rad/s".into(), Vec::new()), &options);
+                    util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Orientation, "IMU orientation", String,              |v| v.to_string(), imu_orientation.into(), Vec::new()), &options);
                 }
                 if !accl.is_empty() {
-                    util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data,        "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), accl, vec![]));
-                    util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit,        "Accelerometer unit", String,              |v| v.to_string(), "m/s²".into(),  Vec::new()));
-                    util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation",    String,              |v| v.to_string(), imu_orientation.into(), Vec::new()));
+                    util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data,        "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), accl, vec![]), &options);
+                    util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit,        "Accelerometer unit", String,              |v| v.to_string(), "m/s²".into(),  Vec::new()), &options);
+                    util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation",    String,              |v| v.to_string(), imu_orientation.into(), Vec::new()), &options);
                 }
 
                 info.tag_map = Some(map);
                 samples.push(info);
+
+                if options.probe_only {
+                    cancel_flag2.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
             }
         }, cancel_flag)?;
 
         if let Some(real_fps) = real_fps {
             let mut map = GroupedTagMap::new();
-            util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::FrameRate, "Frame rate", f64, |v| format!("{:?}", v), real_fps.round(), vec![]));
+            util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::FrameRate, "Frame rate", f64, |v| format!("{:?}", v), real_fps.round(), vec![]), &options);
             samples.insert(0, SampleInfo { tag_map: Some(map), ..Default::default() });
         }
 

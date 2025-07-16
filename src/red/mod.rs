@@ -94,7 +94,7 @@ impl RedR3d {
         ret.sort_by(|a, b| human_sort::compare(a, b));
         Ok(ret)
     }
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, _stream: &mut T, _size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, _stream: &mut T, _size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         let fs = filesystem::get_base();
         let mut gyro = Vec::new();
         let mut accl = Vec::new();
@@ -110,7 +110,7 @@ impl RedR3d {
 
         let total_count = all_parts.len() as f64;
 
-        for (i, path) in all_parts.into_iter().enumerate() {
+        'files: for (i, path) in all_parts.into_iter().enumerate() {
             let ext = filesystem::get_extension(path.as_str());
             if ext == "rmd" {
                 rmd.extend(Self::parse_rmd(&path));
@@ -158,6 +158,9 @@ impl RedR3d {
                             }
                         });
                     }
+                    if options.probe_only {
+                        break 'files;
+                    }
                 } else if &name == b"RED2" {
                     let mut data = Vec::with_capacity(aligned_size);
                     data.resize(aligned_size, 0);
@@ -165,11 +168,14 @@ impl RedR3d {
                     stream.read_exact(&mut data)?;
                     if data.len() > 126 {
                         if let Some(offs) = memchr::memmem::find(&data, b"rdx\x02\x00\x00\x00\x00\x00\x00\x00\x01RED ")
-                                     .or_else(|| memchr::memmem::find(&data, b"rdx\x01\x00\x00\x00\x00\x00\x00\x00\x05REDT")) {
+                                .or_else(|| memchr::memmem::find(&data, b"rdx\x01\x00\x00\x00\x00\x00\x00\x00\x05REDT")) {
                             if let Ok(size) = (&data[offs + 16..]).read_u16::<BigEndian>() {
-                                let _ = self.parse_meta(&data[offs + 16 + 2..offs + 16 + 2 + size as usize], &mut map);
+                                let _ = self.parse_meta(&data[offs + 16 + 2..offs + 16 + 2 + size as usize], &mut map, &options);
                             }
                         }
+                    }
+                    if options.probe_only {
+                        break 'files;
                     }
                 } else if &name == b"RDI\x01" {
                     if aligned_size >= 4096 {
@@ -177,11 +183,14 @@ impl RedR3d {
                         stream.seek(SeekFrom::Current(aligned_size as i64 - 8 - 4096))?;
                         if let Ok(size) = (&data4096[86..]).read_u16::<BigEndian>() {
                             let mut per_frame_map = GroupedTagMap::new();
-                            let _ = self.parse_meta(&data4096[88..88 + size as usize], &mut per_frame_map);
+                            let _ = self.parse_meta(&data4096[88..88 + size as usize], &mut per_frame_map, &options);
                             samples.push(SampleInfo { tag_map: Some(per_frame_map), ..Default::default() });
                         }
                     } else {
                         stream.seek(SeekFrom::Current(aligned_size as i64 - 8))?;
+                    }
+                    if options.probe_only {
+                        break 'files;
                     }
                 } else {
                     stream.seek(SeekFrom::Current(aligned_size as i64 - 8))?;
@@ -194,14 +203,14 @@ impl RedR3d {
             }
         }
         if !csv.is_empty() {
-            util::insert_tag(&mut map, tag!(parsed GroupId::Default,   TagId::Custom("CSV".into()), "Custom CSV data", String, |v| v.clone(), csv, vec![]));
+            util::insert_tag(&mut map, tag!(parsed GroupId::Default,   TagId::Custom("CSV".into()), "Custom CSV data", String, |v| v.clone(), csv, vec![]), &options);
         }
         if !rmd.is_empty() {
             /*if let Some(Ok(fps)) = rmd.get("frame_rate_override").map(|x| x.parse::<f64>()) {
                 self.record_framerate = Some(fps);
             }*/
             if let Some(v) = rmd.get("lens") {
-                util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::Name, "Lens name", String, |v| v.clone(), v.into(), vec![]));
+                util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::Name, "Lens name", String, |v| v.clone(), v.into(), vec![]), &options);
             }
             crate::try_block!({
                 if let TagValue::Json(ref mut md) = map.get_mut(&GroupId::Default)?.get_mut(&TagId::Metadata)?.value {
@@ -258,26 +267,26 @@ impl RedR3d {
             }
         }
 
-        util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), accl, vec![]));
-        util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]));
+        util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), accl, vec![]), &options);
+        util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]), &options);
 
-        util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "m/s²".into(),  Vec::new()));
-        util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Unit, "Gyroscope unit",     String, |v| v.to_string(), "deg/s".into(), Vec::new()));
+        util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "m/s²".into(),  Vec::new()), &options);
+        util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Unit, "Gyroscope unit",     String, |v| v.to_string(), "deg/s".into(), Vec::new()), &options);
 
         if let Some(fr) = self.record_framerate {
-            util::insert_tag(&mut map, tag!(parsed GroupId::Default,   TagId::FrameRate, "Frame rate", f64, |v| format!("{:?}", v), fr, vec![]));
+            util::insert_tag(&mut map, tag!(parsed GroupId::Default,   TagId::FrameRate, "Frame rate", f64, |v| format!("{:?}", v), fr, vec![]), &options);
         }
 
         let imu_orientation = "zyx";
-        util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
-        util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()));
+        util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()), &options);
+        util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.into(), Vec::new()), &options);
 
         samples.insert(0, SampleInfo { tag_map: Some(map), ..Default::default() });
 
         Ok(samples)
     }
 
-    fn parse_meta(&mut self, mut data: &[u8], map: &mut GroupedTagMap) -> Result<()> {
+    fn parse_meta(&mut self, mut data: &[u8], map: &mut GroupedTagMap, options: &crate::InputOptions) -> Result<()> {
         let mut md = serde_json::Map::<String, serde_json::Value>::new();
         while let Ok(size) = data.read_u16::<BigEndian>() {
             if size > 2 {
@@ -383,10 +392,10 @@ impl RedR3d {
         }
         if !md.is_empty() {
             if let Some(v) = md.get("focal_length").and_then(|v| v.as_f64()) {
-                util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::FocalLength, "Focal length", f32, |v| format!("{v:.3}"), v as f32, vec![]));
+                util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::FocalLength, "Focal length", f32, |v| format!("{v:.3}"), v as f32, vec![]), &options);
             }
             if let Some(v) = md.get("lens_name").and_then(|v| v.as_str()) {
-                util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::Name, "Lens name", String, |v| v.clone(), v.into(), vec![]));
+                util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::Name, "Lens name", String, |v| v.clone(), v.into(), vec![]), &options);
             }
 
             let pixel_pitch = match self.model.as_deref() {
@@ -398,10 +407,10 @@ impl RedR3d {
                 _ => None
             };
             if let Some(pp) = pixel_pitch {
-                util::insert_tag(map, tag!(parsed GroupId::Imager, TagId::PixelPitch, "Pixel pitch", u32x2, |v| format!("{v:?}"), pp, vec![]));
+                util::insert_tag(map, tag!(parsed GroupId::Imager, TagId::PixelPitch, "Pixel pitch", u32x2, |v| format!("{v:?}"), pp, vec![]), &options);
             }
 
-            util::insert_tag(map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), serde_json::Value::Object(md), vec![]));
+            util::insert_tag(map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), serde_json::Value::Object(md), vec![]), &options);
         }
         Ok(())
     }

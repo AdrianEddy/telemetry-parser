@@ -52,15 +52,15 @@ impl PhoneApps {
         None
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         match self.model.as_deref() {
-            Some("Sensor Logger")           => sensor_logger        ::parse(stream, size),
-            Some("GF Recorder")             => gf_recorder          ::parse(stream, size),
-            Some("Gyro")                    => gyro                 ::parse(stream, size),
-            Some("Sensor Logger Android")   => sensor_logger_android::parse(stream, size, &self.path),
-            Some("Sensor Record")           => sensor_record        ::parse(stream, size),
-            Some("OpenCamera Sensors")      => opencamera_sensors   ::parse(stream, size, &self.path),
-            Some("Film it")                 => filmit               ::parse(stream, size, progress_cb, cancel_flag),
+            Some("Sensor Logger")           => sensor_logger        ::parse(stream, size, options),
+            Some("GF Recorder")             => gf_recorder          ::parse(stream, size, options),
+            Some("Gyro")                    => gyro                 ::parse(stream, size, options),
+            Some("Sensor Logger Android")   => sensor_logger_android::parse(stream, size, &self.path, options),
+            Some("Sensor Record")           => sensor_record        ::parse(stream, size, options),
+            Some("OpenCamera Sensors")      => opencamera_sensors   ::parse(stream, size, &self.path, options),
+            Some("Film it")                 => filmit               ::parse(stream, size, progress_cb, cancel_flag, options),
             _ => {
                 Err(ErrorKind::InvalidInput.into())
             }

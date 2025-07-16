@@ -57,42 +57,53 @@ impl Sony {
                 frame_readout_time: None
             });
         }
+        /*if buffer.len() > 4 && buffer[..4] == [0x06, 0x0E, 0x2B, 0x34] { // MXF header
+            return Some(Self {
+                model: None,
+                lens: None,
+                frame_readout_time: None
+            });
+        }*/
         None
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         let mut header = [0u8; 4];
         stream.read_exact(&mut header)?;
         stream.seek(SeekFrom::Start(0))?;
 
         let mut samples = if header == [0x06, 0x0E, 0x2B, 0x34] { // MXF header
-            mxf::parse(stream, size, progress_cb, cancel_flag, None)?
+            mxf::parse(stream, size, progress_cb, cancel_flag, None, &options)?
         } else {
             let mut samples = Vec::new();
+            let cancel_flag2 = cancel_flag.clone();
             util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64, _video_md: Option<&VideoMetadata>| {
                 if size > 0 {
                     progress_cb(file_position as f64 / size as f64);
                 }
                 if Self::detect_metadata(data) {
-                    if let Ok(map) = Self::parse_metadata(&data[0x1C..]) {
+                    if let Ok(map) = Self::parse_metadata(&data[0x1C..], &options) {
                         info.tag_map = Some(map);
                         samples.push(info);
+                        if options.probe_only {
+                            cancel_flag2.store(true, std::sync::atomic::Ordering::Relaxed);
+                        }
                     }
                 }
             }, cancel_flag)?;
             samples
         };
 
-        self.process_map(&mut samples);
+        self.process_map(&mut samples, &options);
 
         Ok(samples)
     }
 
-    fn process_map(&mut self, samples: &mut Vec<SampleInfo>) {
+    fn process_map(&mut self, samples: &mut Vec<SampleInfo>, options: &crate::InputOptions) {
         for sample in samples.iter_mut() {
             if let Some(ref mut map) = sample.tag_map {
                 if map.contains_key(&GroupId::Accelerometer) {
-                    util::insert_tag(map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(), Vec::new()));
+                    util::insert_tag(map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(), Vec::new()), options);
                 }
 
                 if let Some(imager) = map.get_mut(&GroupId::Imager) {
@@ -138,7 +149,7 @@ impl Sony {
         if let Some(lens_name) = self.lens.as_ref() {
             if let Some(first_sample) = samples.first_mut() {
                 if let Some(ref mut map) = first_sample.tag_map {
-                    util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::DisplayName, "Lens name", String, |v| v.to_string(), lens_name.clone(), Vec::new()));
+                    util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::DisplayName, "Lens name", String, |v| v.to_string(), lens_name.clone(), Vec::new()), options);
                 }
             }
         }
@@ -148,7 +159,7 @@ impl Sony {
         data.len() > 0x1C && data[0..2] == [0x00, 0x1C]
     }
 
-    fn parse_metadata(data: &[u8]) -> Result<GroupedTagMap> {
+    fn parse_metadata(data: &[u8], options: &crate::InputOptions) -> Result<GroupedTagMap> {
         let mut slice = Cursor::new(data);
         let datalen = data.len() as usize;
         let mut map = GroupedTagMap::new();
@@ -179,7 +190,7 @@ impl Sony {
             if tag == 0x8300 { // Container
                 // Since there's a lot of containers, this code cen be made more efficient by taking the TagMap by parameter, instead of creating new one for each container
                 // Benchmarking will be a good idea
-                for (g, v) in Self::parse_metadata(tag_data)? {
+                for (g, v) in Self::parse_metadata(tag_data, options)? {
                     let group_map = map.entry(g).or_insert_with(TagMap::new);
                     group_map.extend(v);
                 }
@@ -188,7 +199,7 @@ impl Sony {
             let mut tag_info = get_tag(tag, tag_data);
             tag_info.native_id = Some(tag as u32);
 
-            util::insert_tag(&mut map, tag_info);
+            util::insert_tag(&mut map, tag_info, options);
         }
         Ok(map)
     }

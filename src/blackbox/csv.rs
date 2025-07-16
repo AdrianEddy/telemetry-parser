@@ -9,8 +9,8 @@ use std::sync::{ Arc, atomic::AtomicBool, atomic::Ordering::Relaxed };
 use crate::tags_impl::*;
 use crate::*;
 
-pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
-    let gyro_only = util::get_load_gyro_only();
+pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+    let gyro_only = options.blackbox_gyro_only;
 
     let mut metadata = BTreeMap::new();
 
@@ -45,6 +45,9 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress
                     // eprintln!("Invalid float {}", value);
                 }
             }
+            if options.probe_only {
+                break;
+            }
         }
     }
 
@@ -55,13 +58,13 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress
     let gyro_scale = metadata.remove("gyro_scale").unwrap_or("1.0".to_owned()).parse::<f64>().unwrap();
 
     util::insert_tag(&mut map,
-        tag!(parsed GroupId::Default, TagId::Metadata, "Extra metadata", Json, |v| format!("{:?}", v), serde_json::to_value(metadata).map_err(|_| Error::new(ErrorKind::Other, "Serialize error"))?, vec![])
-    );
+        tag!(parsed GroupId::Default, TagId::Metadata, "Extra metadata", Json, |v| format!("{:?}", v), serde_json::to_value(metadata).map_err(|_| Error::new(ErrorKind::Other, "Serialize error"))?, vec![]),
+    &options);
 
-    util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Scale, "Gyroscope scale",     f64, |v| format!("{:?}", v), gyro_scale, vec![]));
-    util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Scale, "Accelerometer scale", f64, |v| format!("{:?}", v), accl_scale, vec![]));
+    util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Scale, "Gyroscope scale",     f64, |v| format!("{:?}", v), gyro_scale, vec![]), &options);
+    util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Scale, "Accelerometer scale", f64, |v| format!("{:?}", v), accl_scale, vec![]), &options);
 
-    util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit,  "Accelerometer unit", String, |v| v.to_string(), "g".into(),  Vec::new()));
+    util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit,  "Accelerometer unit", String, |v| v.to_string(), "g".into(),  Vec::new()), &options);
 
     if let Some(mut column_struct) = headers {
         drop(column_struct.columns); // Release all weak pointers
@@ -69,7 +72,7 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress
         // Add filled vectors to the tag map
         for desc in column_struct.descriptions.drain(..) {
             if let Ok(desc) = Rc::try_unwrap(desc) {
-                util::insert_tag(&mut map, desc.into_inner());
+                util::insert_tag(&mut map, desc.into_inner(), &options);
             }
         }
 

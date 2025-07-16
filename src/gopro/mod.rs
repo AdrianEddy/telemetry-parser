@@ -42,7 +42,7 @@ impl GoPro {
         let mut ret = None;
 
         if buffer.len() > 8 && &buffer[0..4] == b"DEVC" {
-            if let Ok(map) = Self::parse_metadata(buffer, GroupId::Default, true) {
+            if let Ok(map) = Self::parse_metadata(buffer, GroupId::Default, true, &crate::InputOptions::default()) {
                 let mut obj = Self::default();
                 for v in map.values() {
                     if let Some(v) = v.get_t(TagId::Unknown(0x4D494E46/*MINF*/)) as Option<&String> {
@@ -65,7 +65,7 @@ impl GoPro {
             let len = buf.read_u32::<BigEndian>().unwrap() as usize;
             let gpmf_box = &buf[..len];
 
-            if let Ok(map) = Self::parse_metadata(&gpmf_box[8+8..], GroupId::Default, true) {
+            if let Ok(map) = Self::parse_metadata(&gpmf_box[8+8..], GroupId::Default, true, &crate::InputOptions::default()) {
                 for v in map.values() {
                     if let Some(v) = v.get_t(TagId::Unknown(0x4D494E46/*MINF*/)) as Option<&String> {
                         obj.model = Some(v.clone());
@@ -97,7 +97,7 @@ impl GoPro {
         ret
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         let mut samples = Vec::new();
         if let Some(extra) = &self.extra_gpmf {
             samples.push(SampleInfo { tag_map: Some(extra.clone()), ..Default::default() });
@@ -112,31 +112,38 @@ impl GoPro {
                 let chunk = &data[pos..];
                 if Self::detect_metadata(chunk) {
                     let next = memmem::find(&chunk[8..], b"DEVC").unwrap_or(chunk.len() - 8) + 8;
-                    let res = GoPro::parse_metadata(&chunk[8..next], GroupId::Default, false);
+                    let res = GoPro::parse_metadata(&chunk[8..next], GroupId::Default, false, &options);
                     if let Ok(mut map) = res {
                         self.process_map(&mut map);
                         samples.push(SampleInfo { tag_map: Some(map), ..Default::default() });
+                        if options.probe_only {
+                            break;
+                        }
                     }
                 }
             }
         } else {
+            let cancel_flag2 = cancel_flag.clone();
             let ctx = util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64, _video_md: Option<&VideoMetadata>| {
                 if size > 0 {
                     progress_cb(file_position as f64 / size as f64);
                 }
                 if Self::detect_metadata(data) {
-                    if let Ok(mut map) = GoPro::parse_metadata(&data[8..], GroupId::Default, false) {
+                    if let Ok(mut map) = GoPro::parse_metadata(&data[8..], GroupId::Default, false, &options) {
                         self.process_map(&mut map);
                         info.tag_map = Some(map);
                         samples.push(info);
                     }
+                }
+                if options.probe_only {
+                    cancel_flag2.store(true, std::sync::atomic::Ordering::Relaxed);
                 }
             }, cancel_flag)?;
             if !ctx.tracks.is_empty() {
                 fps = util::get_fps_from_track(&ctx.tracks[0]);
             }
         }
-        self.process_samples(&mut samples, fps);
+        self.process_samples(&mut samples, fps, &options);
 
         if self.model.as_ref().map(|x| x.contains("HERO5")).unwrap_or_default() {
             if samples.is_empty() {
@@ -156,18 +163,18 @@ impl GoPro {
                                 stream.read_exact(&mut buf)?;
                                 if buf.len() > 8 {
                                     match buf[5] {
-                                        0x00 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x45495341), "EISA", String, |v| v.clone(), "N".into(), vec![])),
-                                        0x02 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x45495341), "EISA", String, |v| v.clone(), "N".into(), vec![])),
-                                        0x10 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x45495341), "EISA", String, |v| v.clone(), "Y".into(), vec![])),
+                                        0x00 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x45495341), "EISA", String, |v| v.clone(), "N".into(), vec![]), &options),
+                                        0x02 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x45495341), "EISA", String, |v| v.clone(), "N".into(), vec![]), &options),
+                                        0x10 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x45495341), "EISA", String, |v| v.clone(), "Y".into(), vec![]), &options),
                                         _ => log::debug!("Unknown stab byte {}", util::to_hex(&buf)),
                                     }
                                     match buf[7] {
-                                        0x00 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "W".into(), vec![])),
-                                        0x40 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "W".into(), vec![])),
-                                        0x41 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "M".into(), vec![])),
-                                        0x42 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "N".into(), vec![])),
-                                        0x44 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "L".into(), vec![])),
-                                        0x63 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "S".into(), vec![])),
+                                        0x00 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "W".into(), vec![]), &options),
+                                        0x40 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "W".into(), vec![]), &options),
+                                        0x41 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "M".into(), vec![]), &options),
+                                        0x42 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "N".into(), vec![]), &options),
+                                        0x44 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "L".into(), vec![]), &options),
+                                        0x63 => util::insert_tag(first_map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), "S".into(), vec![]), &options),
                                         _ => log::debug!("Unknown lens byte {}", util::to_hex(&buf)),
                                     }
                                 }
@@ -186,7 +193,7 @@ impl GoPro {
         data.len() > 8 && &data[0..4] == b"DEVC"
     }
 
-    pub fn parse_metadata(data: &[u8], group_id: GroupId, force_group: bool) -> Result<GroupedTagMap> {
+    pub fn parse_metadata(data: &[u8], group_id: GroupId, force_group: bool, options: &crate::InputOptions) -> Result<GroupedTagMap> {
         let mut slice = Cursor::new(data);
         let datalen = data.len() as u64;
         let mut map = GroupedTagMap::new();
@@ -209,7 +216,7 @@ impl GoPro {
 
                 if klv.data_type == 0 { // Container
                     let container_group = if force_group { group_id.clone() } else { KLV::group_from_key(GoPro::get_last_klv(tag_data)?) };
-                    for (g, v) in GoPro::parse_metadata(tag_data, container_group, force_group)? {
+                    for (g, v) in GoPro::parse_metadata(tag_data, container_group, force_group, options)? {
                         let group_map = map.entry(g).or_insert_with(TagMap::new);
                         group_map.extend(v);
                     }
@@ -232,7 +239,7 @@ impl GoPro {
                     description: klv.key_as_string(),
                     value:       klv.parse_data(full_tag_data),
                     native_id:   Some((&klv.key[..]).read_u32::<BigEndian>()?)
-                });
+                }, options);
             } else {
                 break;
             }
@@ -290,7 +297,7 @@ impl GoPro {
         None
     }
 
-    fn process_samples(&mut self, samples: &mut Vec<SampleInfo>, fps: Option<f64>) {
+    fn process_samples(&mut self, samples: &mut Vec<SampleInfo>, fps: Option<f64>, options: &crate::InputOptions) {
         // Normalize quaternions
         let mut prev_increment = 0;
         let mut start_timestamp_us = None;
@@ -354,7 +361,7 @@ impl GoPro {
                 }).collect();
 
                 let grouped_tag_map = samples[i].tag_map.as_mut().unwrap();
-                util::insert_tag(grouped_tag_map, tag!(parsed GroupId::Quaternion, TagId::Data, "Quaternion data",  Vec_TimeQuaternion_f64, |v| format!("{:?}", v), quat, vec![]));
+                util::insert_tag(grouped_tag_map, tag!(parsed GroupId::Quaternion, TagId::Data, "Quaternion data",  Vec_TimeQuaternion_f64, |v| format!("{:?}", v), quat, vec![]), options);
             }
         }
     }
