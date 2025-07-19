@@ -37,11 +37,11 @@ impl RedR3d {
         v
     }
 
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P, _options: &crate::InputOptions) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P, options: &crate::InputOptions) -> Option<Self> {
         let path = filepath.as_ref().to_str().unwrap_or_default().to_owned();
 
         let ext = filesystem::get_extension(&path);
-        if ext != "r3d" {
+        if ext != "r3d" && !options.dont_look_for_sidecar_files {
             if let Some(p) = filesystem::file_with_extension(&path, "R3D") {
                 return Some(Self {
                     model: None,
