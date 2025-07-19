@@ -59,7 +59,10 @@ fn get_possible_paths(path: &str) -> Vec<String> {
     ret
 }
 
-pub fn detect(_buffer: &[u8], filepath: &str) -> bool {
+pub fn detect(_buffer: &[u8], filepath: &str, options: &crate::InputOptions) -> bool {
+    if options.dont_look_for_sidecar_files {
+        return false;
+    }
     !get_possible_paths(filepath).is_empty()
 }
 

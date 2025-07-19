@@ -37,7 +37,7 @@ impl PhoneApps {
         v
     }
 
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P, _options: &crate::InputOptions) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P, options: &crate::InputOptions) -> Option<Self> {
         let path = filepath.as_ref().to_str().unwrap_or_default().to_owned();
         // let filename = filesystem::get_filename(&filepath);
 
@@ -46,7 +46,7 @@ impl PhoneApps {
         if gyro                 ::detect(&buffer)        { return Some(Self { model: Some("Gyro"                 .to_owned()), path }); }
         if sensor_logger_android::detect(&buffer)        { return Some(Self { model: Some("Sensor Logger Android".to_owned()), path }); }
         if sensor_record        ::detect(&buffer)        { return Some(Self { model: Some("Sensor Record"        .to_owned()), path }); }
-        if opencamera_sensors   ::detect(&buffer, &path) { return Some(Self { model: Some("OpenCamera Sensors"   .to_owned()), path }); }
+        if opencamera_sensors   ::detect(&buffer, &path, options) { return Some(Self { model: Some("OpenCamera Sensors"   .to_owned()), path }); }
         if filmit               ::detect(&buffer)        { return Some(Self { model: Some("Film it"              .to_owned()), path }); }
 
         None
