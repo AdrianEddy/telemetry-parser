@@ -100,12 +100,12 @@ macro_rules! impl_formats {
                 )*}
                 // If nothing was detected, check if there's a file with the same name but different extension
                 if !options.dont_look_for_sidecar_files {
-                if ext.as_deref() == Some("mp4") || ext.as_deref() == Some("mov") {
-                    let fs = filesystem::get_base();
-                    for try_ext in ["gcsv", "bbl", "bfl", "csv", "GCSV", "BBL", "BFL", "CSV"] {
-                        if let Some(gyro_path) = filepath.as_ref().to_str().and_then(|x| filesystem::file_with_extension(x, try_ext)) {
-                            if let Ok(mut f) = filesystem::open_file(&fs, &gyro_path) {
-                                return Self::from_stream(&mut f.file, f.size, &gyro_path, progress_cb, cancel_flag);
+                    if ext.as_deref() == Some("mp4") || ext.as_deref() == Some("mov") || ext.as_deref() == Some("mkv") {
+                        let fs = filesystem::get_base();
+                        for try_ext in ["gcsv", "bbl", "bfl", "csv", "GCSV", "BBL", "BFL", "CSV"] {
+                            if let Some(gyro_path) = filepath.as_ref().to_str().and_then(|x| filesystem::file_with_extension(x, try_ext)) {
+                                if let Ok(mut f) = filesystem::open_file(&fs, &gyro_path) {
+                                    return Self::from_stream(&mut f.file, f.size, &gyro_path, progress_cb, cancel_flag);
                                 }
                             }
                         }
