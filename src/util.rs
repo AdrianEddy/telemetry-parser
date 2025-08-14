@@ -120,12 +120,12 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
         // This is hacky, but it's worth a try and if we fail we fallback to full parsing anyway.
         let mut read_mb = if size as u64 > 100u64*1024*1024*1024 { // If file is greater than 100 GB, read 500 MB header/footer
             500
-        } else if size as u64 > 60u64*1024*1024*1024 { // If file is greater than 60 GB, read 100 MB header/footer
-            100
-        } else if size as u64 > 30u64*1024*1024*1024 { // If file is greater than 30 GB, read 50 MB header/footer
-            50
-        } else if size as u64 > 5u64*1024*1024*1024 { // If file is greater than 5 GB, read 25 MB header/footer
-            25
+        } else if size as u64 > 60u64*1024*1024*1024 { // If file is greater than 60 GB, read 220 MB header/footer
+            220
+        } else if size as u64 > 30u64*1024*1024*1024 { // If file is greater than 30 GB, read 180 MB header/footer
+            180
+        } else if size as u64 > 5u64*1024*1024*1024 { // If file is greater than 5 GB, read 40 MB header/footer
+            40
         } else {
             15
         };
@@ -146,7 +146,8 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
         if let Some(pos) = memchr::memmem::find(&all, b"mdat") {
             let how_much_less = (size - all.len()) as u64;
             let mut len = (&all[pos-4..]).read_u32::<BigEndian>()? as u64;
-            if len == 1 {
+            let is_large_box = len == 1;
+            if is_large_box {
                 len = (&all[pos+4..]).read_u64::<BigEndian>()?;
             }
             if how_much_less > len {
@@ -158,11 +159,10 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
                 }
                 return mp4parse::read_mp4(stream);
             } else {
-                if len == 1 { // Large box
-                    len = (&all[pos+4..]).read_u64::<BigEndian>()? - how_much_less;
+                len -= how_much_less;
+                if is_large_box { // Large box
                     all[pos+4..pos+12].copy_from_slice(&len.to_be_bytes());
                 } else {
-                    len -= how_much_less;
                     all[pos-4..pos].copy_from_slice(&(len as u32).to_be_bytes());
                 }
             }

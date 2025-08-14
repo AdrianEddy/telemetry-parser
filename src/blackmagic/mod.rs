@@ -289,7 +289,7 @@ impl BlackmagicBraw {
 
     fn iter_boxes<F: FnMut(&str, &[u8], usize) -> Result<()>>(data: &[u8], is_array: bool, mut cb: F) -> Result<()> {
         let mut offs = 0;
-        while data.len() - offs > 8 {
+        while data.len().saturating_sub(offs) > 8 {
             if let Some(mut size_slice) = data.get(offs..offs+4) {
                 let size = size_slice.read_u32::<BigEndian>()? as usize;
                 if let Some(d) = &data.get(offs+8..offs+size) {
