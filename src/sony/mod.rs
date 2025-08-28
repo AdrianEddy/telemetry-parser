@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright © 2021-2023 Adrian <adrian.eddy at gmail>
 
-mod rtmd_tags;
+pub mod rtmd_tags;
 pub mod mxf;
 
 #[cfg(feature="sony-xml")]
@@ -73,7 +73,7 @@ impl Sony {
         stream.seek(SeekFrom::Start(0))?;
 
         let mut samples = if header == [0x06, 0x0E, 0x2B, 0x34] { // MXF header
-            mxf::parse(stream, size, progress_cb, cancel_flag, None, &options)?
+            mxf::parse(stream, size, progress_cb, cancel_flag, None, &options, Self::parse_metadata)?
         } else {
             let mut samples = Vec::new();
             let cancel_flag2 = cancel_flag.clone();
@@ -82,7 +82,8 @@ impl Sony {
                     progress_cb(file_position as f64 / size as f64);
                 }
                 if Self::detect_metadata(data) {
-                    if let Ok(map) = Self::parse_metadata(&data[0x1C..], &options) {
+                    let mut map = GroupedTagMap::new();
+                    if Self::parse_metadata(&data[0x1C..], &options, &mut map).is_ok() {
                         info.tag_map = Some(map);
                         samples.push(info);
                         if options.probe_only {
@@ -159,10 +160,9 @@ impl Sony {
         data.len() > 0x1C && data[0..2] == [0x00, 0x1C]
     }
 
-    fn parse_metadata(data: &[u8], options: &crate::InputOptions) -> Result<GroupedTagMap> {
+    pub fn parse_metadata(data: &[u8], options: &crate::InputOptions, map: &mut GroupedTagMap) -> Result<()> {
         let mut slice = Cursor::new(data);
         let datalen = data.len() as usize;
-        let mut map = GroupedTagMap::new();
 
         while slice.position() < datalen as u64 {
             let tag = slice.read_u16::<BigEndian>()?;
@@ -188,19 +188,14 @@ impl Sony {
             let tag_data = &data[pos..(pos + len)];
             slice.seek(SeekFrom::Current(len as i64))?;
             if tag == 0x8300 { // Container
-                // Since there's a lot of containers, this code cen be made more efficient by taking the TagMap by parameter, instead of creating new one for each container
-                // Benchmarking will be a good idea
-                for (g, v) in Self::parse_metadata(tag_data, options)? {
-                    let group_map = map.entry(g).or_insert_with(TagMap::new);
-                    group_map.extend(v);
-                }
+                Self::parse_metadata(tag_data, options, map)?;
                 continue;
             }
             let mut tag_info = get_tag(tag, tag_data);
             tag_info.native_id = Some(tag as u32);
 
-            util::insert_tag(&mut map, tag_info, options);
+            util::insert_tag(map, tag_info, options);
         }
-        Ok(map)
+        Ok(())
     }
 }

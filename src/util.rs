@@ -155,9 +155,9 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
                 log::warn!("Reading full mp4 {how_much_less} {len} {size} {}", all.len());
                 if let Ok(good_size) = get_mp4_good_size(stream, size as u64) {
                     let mut limited_stream = BufReader::with_capacity(512 * 1024, PatchingLimitingStream { inner: stream, stream_size: size, total: 0, limit: good_size });
-                    return mp4parse::read_mp4(&mut limited_stream);
+                    return mp4parse::read_mp4(&mut limited_stream, mp4parse::ParseStrictness::Permissive);
                 }
-                return mp4parse::read_mp4(stream);
+                return mp4parse::read_mp4(stream, mp4parse::ParseStrictness::Permissive);
             } else {
                 len -= how_much_less;
                 if is_large_box { // Large box
@@ -175,17 +175,17 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
             }
             patch_mdhd_timescale(&mut all);
 
-            return mp4parse::read_mp4(&mut std::io::Cursor::new(&all));
+            return mp4parse::read_mp4(&mut std::io::Cursor::new(&all), mp4parse::ParseStrictness::Permissive);
         }
     }
-    mp4parse::read_mp4(stream)
+    mp4parse::read_mp4(stream, mp4parse::ParseStrictness::Permissive)
 }
 
 pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4parse::TrackType, single: bool, max_sample_size: Option<usize>, mut callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
     where F: FnMut(SampleInfo, &[u8], u64, Option<&VideoMetadata>)
 {
 
-    let ctx = parse_mp4(stream, size).or_else(|_| mp4parse::read_mp4(stream))?;
+    let ctx = parse_mp4(stream, size).or_else(|_| mp4parse::read_mp4(stream, mp4parse::ParseStrictness::Permissive))?;
 
     let mut track_index = 0;
     // let mut sample_delta = 0u32;
@@ -440,6 +440,14 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
                                 _ => {}
                             }
                         }
+                        if let TagValue::Vec_Vector3_f32(arr) = &taginfo.value {
+                            match group {
+                                GroupId::Gyroscope     => total_len.0 += arr.get().len(),
+                                GroupId::Accelerometer => total_len.1 += arr.get().len(),
+                                GroupId::Magnetometer  => total_len.2 += arr.get().len(),
+                                _ => {}
+                            }
+                        }
                     }
                 }
             }
@@ -508,6 +516,16 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
                         match &taginfo.value {
                             // Sony and GoPro
                             TagValue::Vec_Vector3_i16(arr) => {
+                                let arr = arr.get();
+
+                                for v in arr {
+                                    let itm = v.clone().into_scaled(&raw2unit, &unit2deg).orient(io);
+                                         if group == &GroupId::Gyroscope     { let ts = (timestamp.0 * 1000.0f64).round() as i64; gyro_map.insert(ts, itm); timestamp.0 += reading_duration.0.unwrap(); gyro_timestamps.insert(ts); }
+                                    else if group == &GroupId::Accelerometer { let ts = (timestamp.1 * 1000.0f64).round() as i64; accl_map.insert(ts, itm); timestamp.1 += reading_duration.1.unwrap(); }
+                                    else if group == &GroupId::Magnetometer  { let ts = (timestamp.2 * 1000.0f64).round() as i64; magn_map.insert(ts, itm); timestamp.2 += reading_duration.2.unwrap(); }
+                                }
+                            },
+                            TagValue::Vec_Vector3_f32(arr) => {
                                 let arr = arr.get();
 
                                 for v in arr {
@@ -721,7 +739,7 @@ pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Re
 
     if header == [0x06, 0x0E, 0x2B, 0x34] { // MXF header
         let mut md = VideoMetadata::default();
-        crate::sony::mxf::parse(stream, filesize, |_|(), Arc::new(AtomicBool::new(false)), Some(&mut md), &crate::InputOptions::default())?;
+        crate::sony::mxf::parse(stream, filesize, |_|(), Arc::new(AtomicBool::new(false)), Some(&mut md), &crate::InputOptions::default(), crate::sony::Sony::parse_metadata)?;
         return Ok(md);
     }
 
