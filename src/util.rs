@@ -181,7 +181,7 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
     mp4parse::read_mp4(stream, mp4parse::ParseStrictness::Permissive)
 }
 
-pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4parse::TrackType, single: bool, max_sample_size: Option<usize>, mut callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
+pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, mut typ: mp4parse::TrackType, single: bool, max_sample_size: Option<usize>, mut callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
     where F: FnMut(SampleInfo, &[u8], u64, Option<&VideoMetadata>)
 {
 
@@ -193,6 +193,11 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp
 
     let mut video_md = None;
     let mut video_rotation = None;
+
+    if typ == mp4parse::TrackType::Metadata && !ctx.tracks.iter().any(|x| x.track_type == mp4parse::TrackType::Metadata) && ctx.tracks.iter().any(|x| x.track_type == mp4parse::TrackType::Unknown) {
+        // If we want a metadata track, but there's none, try to get unknown track instead
+        typ = mp4parse::TrackType::Unknown;
+    }
 
     for x in &ctx.tracks {
         if x.track_type == mp4parse::TrackType::Video && video_md.is_none() {

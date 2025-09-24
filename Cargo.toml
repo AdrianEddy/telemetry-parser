@@ -2,7 +2,7 @@
 name = "telemetry-parser"
 version = "0.3.0"
 authors = ["Adrian <adrian.eddy@gmail.com>"]
-edition = "2021"
+edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/AdrianEddy/telemetry-parser"
 description = "Library to parse real-time metadata embedded in video files or telemetry from other sources."

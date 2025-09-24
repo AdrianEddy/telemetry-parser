@@ -325,7 +325,7 @@ impl GoPro {
                     if let Some(arr) = map.get_t(TagId::Data) as Option<&Vec<Quaternion<i16>>> {
                         self.has_cori = true;
                         let sample_count = arr.len() as i64;
-                        let increment = next_timestamp_us.map(|x| ((x - timestamp_us) / sample_count)).unwrap_or(prev_increment);
+                        let increment = next_timestamp_us.map(|x| (x - timestamp_us) / sample_count).unwrap_or(prev_increment);
                         prev_increment = increment;
                         for v in arr.iter() {
                             let mut ts = timestamp_us - start_timestamp_us.unwrap();
