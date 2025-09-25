@@ -29,7 +29,7 @@ impl GoPro {
         self.has_cori
     }
     pub fn possible_extensions() -> Vec<&'static str> {
-        vec!["mp4", "mov", "360", "gpmf"]
+        vec!["mp4", "mov", "360", "gpmf", "LRV"]
     }
     pub fn frame_readout_time(&self) -> Option<f64> {
         self.frame_readout_time
