@@ -1,6 +1,6 @@
 /** DJI Video Metadata Library */
 
-// version = 02.00.01
+// version = 02.01.17
 
 syntax = "proto3";
 
@@ -165,6 +165,7 @@ message VideoStreamMeta {
     uint32 resolution_width = 1;                        /** The width of the resolution. Unit: pixel. */
     uint32 resolution_height = 2;                       /** The height of the resolution. Unit: pixel. */
     float framerate = 3;                                /** The rate of video data sampling. Unit: frame/second. */
+    bool is_bit_depth_valid = 4;
     uint32 bit_depth = 5;                               /** The number of bits used for each color component. */
     enum BitFormatType {
         BIT_FORMAT_TYPE_UNKNOWN = 0;                    /** The bit format is unknown. */
@@ -186,6 +187,7 @@ message VideoStreamMeta {
         VIDEO_STREAM_TYPE_HYPERLAPSE = 6;               /** The video stream type is hyperlapse. */
         VIDEO_STREAM_TYPE_HDR = 7;                      /** The video stream type is HDR. */
         VIDEO_STREAM_TYPE_LOOP_RECORD = 8;              /** The video stream type is loop record. */
+        VIDEO_STREAM_TYPE_LOW_LIGHT = 9;                /** The video stream type is low light. */
     }
     VideoStreamType video_stream_type = 7;              /** The user-specified type of this video stream such as slow
                                                             motion and quick movie. */
@@ -234,6 +236,11 @@ message ClipStreamsMeta {
 
 message DeviceSN {
     string device_sn = 1;                               /** The serial number of this device. The max string length of
+                                                            it is 32 bytes (including ending symbol). */
+}
+
+message ENdSerialNumber {
+    string eND_sn = 1;                                  /** The serial number of eND mounted. The max string length of
                                                             it is 32 bytes (including ending symbol). */
 }
 
@@ -322,6 +329,7 @@ message FOVType {
         FOV_TYPE_NARROW = 2;                            /** The user-specified FOV is narrow. */
         FOV_TYPE_WIDE = 3;                              /** The user-specified FOV is wide. */
         FOV_TYPE_SNARROW = 4;                           /** The user-specified FOV is snarrow. */
+        FOV_TYPE_NATURAL_WIDE = 5;                      /** The user-specified FOV is natural wide. */
     }
     FOVType fov_type = 1;                               /** The user-specified FOV (Field of View), which is the maximum
                                                             area of a sample that the camera can image. */
@@ -581,6 +589,17 @@ message FocalLength {
                                                             [35000, 1000]. Unit: milli-meter. */
 }
 
+message SensorZoomRatio {
+    float sensor_zoom_ratio = 1;                        /** The sensor zoom ratio of current frame. The sensor zoom ratio is
+                                                            related to sensor mode's crop params, so for example, IMX586's
+                                                            full size is 8000*6000 pixels, if the sensor mode crops the middle
+                                                            4000*3000 pixels as output, the sensor zoom ratio will be 2.  */
+}
+
+message OpticalZoomRatio {
+    float optical_zoom_ratio = 1;                       /** The optical zoom ratio of current frame. */
+}
+
 message DigitalZoomRatio {
     float digital_zoom_ratio = 1;                       /** The digital zoom ratio of current frame. */
 }
@@ -623,11 +642,11 @@ message WhiteLevel {
 
 message TimeCode {
     enum TimecodeRunMode {
-        TIMECODE_RUN_MODE_FREE = 0;                     /** The timecode run mode is free run. */
+        TIMECODE_RUN_MODE_FREE = 0;                     /** The timecode run mode is cam_free run. */
         TIMECODE_RUN_MODE_RECORD = 1;                   /** The timecode run mode is record run. */
     }
     TimecodeRunMode timecode_run_mode = 1;              /** The user-specified run mode of the timecode which includes
-                                                            free run mode and record run mode. */
+                                                            cam_free run mode and record run mode. */
 
     string timecode = 2;                                /** A sequence of numeric codes generated at regular intervals
                                                             by a timing synchronization system. The max string length of
@@ -641,11 +660,15 @@ message Orientation {
     enum OrientationType {
         ORIENTATION_NO_REVERSE = 0;                     /** No flipping or flopping is desired. */
         ORIENTATION_H_REVERSE = 1;                      /** Any displayed image are flopped (horizontally reversed
-                                                            relative to original scene). */
+                                                            relative to original scene), i.e.  horizontally 180°. */
         ORIENTATION_V_REVERSE = 2;                      /** Any displayed image are flipped (vertically reversed
-                                                            relative to original scene). */
+                                                            relative to original scene), vertically 180°. */
         ORIENTATION_HV_REVERSE = 3;                     /** Any displayed image are rotated 180° (that is, vertically
                                                             and horizontally reversed relative to original scene). */
+        ORIENTATION_H_90 = 4;                           /** Image are rotated 90° horizontally,
+                                                            i.e. rotate clockwise 90°, with right side at the bottom. */
+        ORIENTATION_H_270 = 5;                          /** Image are rotated 270° horizontally,
+                                                            i.e. rotate clockwise 270°, with left side at the bottom. */
     }
     OrientationType orientation = 1;                    /** Any top-to-bottom reversals (flips) or left-to-right
                                                             reversals (flops) that are performed on image data for
@@ -674,6 +697,9 @@ message ColorMode {
         COLOR_MODE_ADOBERGB = 16;                       /** The color mode is adobe RGB. */
         COLOR_MODE_IR_CUT = 17;                         /** The color mode is IR cut. */
         COLOR_MODE_RACING = 18;                         /** The color mode is racing. */
+        COLOR_MODE_DLOG_M = 19;                        /** The color mode is DLog-M. */
+        COLOR_MODE_LASER_FILL_LIGHT = 20;               /** The color mode is Laser Fill Light. */
+        COLOR_MODE_SPOT_LIGHT = 21;                     /** The color mode is Spot Light. */
     }
     ColorModeType color_mode = 1;                       /** The user-specified color profile for video recording. */
 }
@@ -736,12 +762,12 @@ message Position {
 }
 
 message AbsoluteAltitude {
-    float absolute_altitude = 1;                        /** The absolute altitude of this device. It may come from the
+    float absolute_altitude_m = 1;                      /** The absolute altitude of this device. It may come from the
                                                             visual odometer. Unit: meter. */
 }
 
 message RelativeAltitude {
-    float relative_altitude = 1;                        /** The relative altitude of this device. It may come from the
+    float relative_altitude_mm = 1;                     /** The relative altitude of this device. It may come from the
                                                             visual odometer. Unit: millimeter. */
     bool is_relative_altitude_valid = 2;                /** The flag to indicate whether the relative altitude value is
                                                             valid. */
@@ -766,7 +792,7 @@ message GimbalInstallPosition {
 message GimbalMode {
     enum GimbalModeType {
         GIMBAL_MODE_OFF = 0;                            /** The gimbal mode is off. */
-        GIMBAL_MODE_LOCK = 1;                           /** The gimbal mode is lock (or called free). */
+        GIMBAL_MODE_LOCK = 1;                           /** The gimbal mode is lock (or called cam_free). */
         GIMBAL_MODE_FOLLOW = 2;                         /** The gimbal mode is follow. If the product supports to set
                                                             pan/tilt/roll follow mode separately, refer to the message
                                                             GimbalModeFollowSubStatus for more details. */
@@ -805,6 +831,13 @@ message PositionCoord {
 }
 
 /**
+ * Represents the time of GPS.
+ */
+message GpsTime {
+    string time = 1;                                   /** The GPS time,format: YYYY-MM-DD HH-MM-SS. */
+}
+
+/**
  * Represents the basic information for GPS.
  */
 message GpsBasic {
@@ -826,16 +859,18 @@ message GpsBasic {
                                                             RTK. */
     }
     GpsAltType gps_altitude_type = 4;                   /** The GPS altitude type. */
+
+    bool has_gps_time = 5;                              /** The GPS time valid flag. */
+    GpsTime gps_time = 6;                               /** The GPS time */
 }
 
 /**
  * Represents the accelerometer of IMU.
  */
 message Accelerometer {
-    uint64 msg_timestamp = 1;                           /** The timestamp of each frame, unit: nano-seconds. */
-    float accelerometer_x = 2;                          /** The accelerometer in X direction, unit: 0.1 degree. */
-    float accelerometer_y = 3;                          /** The accelerometer in Y direction, unit: 0.1 degree. */
-    float accelerometer_z = 4;                          /** The accelerometer in Z direction, unit: 0.1 degree. */
+    float accelerometer_x = 2;                          /** The accelerometer in X direction, unit: degree. */
+    float accelerometer_y = 3;                          /** The accelerometer in Y direction, unit: degree. */
+    float accelerometer_z = 4;                          /** The accelerometer in Z direction, unit: degree. */
 }
 
 /**
@@ -857,6 +892,7 @@ message LaserStatus {
         LASER_TOO_CLOSE = 1;                            /** The target distance is less than minimum range of finder. */
         LASER_TOO_FAR = 2;                              /** The target distance is larger than maximum range of finder. */
         LASER_CLOSED = 3;                               /** The laser module is closed. */
+        LASER_OUT_OF_RANGE = 4;                         /** The target distance is out of range, maybe too close or too far. */
     }
     LaserStatusType laser_status = 1;
 }
@@ -946,16 +982,135 @@ message InfraredIsotherm {
     InfraredGainModeType infrared_gain_mode = 1;        /** The user-specified gain mode of infrared camera. */
 }
 
+/**
+ * Represents the bias of exposure value.
+ */
+message ExposureValue {
+  float exposure_value = 1;
+}
+
+message ColorTempAtmosphere {
+    uint32 color_temp_atmosphere = 1;
+}
+
+message SensorTemperature {
+    float sensor_temperature = 1;                       /** uint: celsius degree. */
+}
+
+message SensorActiveSize {
+    uint32 sensor_active_physical_width_um = 1;         /** The physical width for current sensor mode. uint: um */
+    uint32 sensor_active_physical_height_um = 2;        /** The physical height for current sensor mode. uint: um */
+}
+
 /* Attitude of a specific device */
 message DeviceAttitude {
     uint32   timestamp = 1;     /* timestamp of the first sample in the attidue array. */
     uint32   vsync = 2;         /* sensor vsync signal timestamp of first sample. */
     repeated Quaternion attitude = 3;  /* array containing all fusioned quaternions belong to certain vsync cnt, like 200/fps */
-    float    offset = 4;        /* time offset between first row of sensor exposure and first sample of device*/
+    float    offset = 4;         /* time offset between first row of sensor exposure and first sample of device*/
+}
+
+/* Multi of the attitude set for a specific device*/
+message DeviceMultiAttitude {
+    DeviceAttitude current_frame  = 1;
+    DeviceAttitude prev_frame     = 2;
+    DeviceAttitude next_frame     = 3;
+}
+
+message SensorShiftParam {
+  repeated uint32    sensor_shift_arr = 1;
+  repeated uint32    sensor_shift_arr_with_roll = 2;
+  repeated uint32    sensor_shift_arr_without_roll = 3;
+  repeated uint32    sensor_shift_arr_only_yaw = 4;
+  uint32             sensor_shift_ctrl_type = 5;
+}
+
+/**
+ * Represents the heading deviation between ground and navi.
+ * Unit in 0.1 degree.
+ */
+message FaiDegree {
+    int32   fai_g_deg = 1;
+}
+
+/**
+ * One-click fancy flight mode information for LightCut APP.
+ */
+message FancyMode {
+    uint32 timestamp = 1;                         /** Timestamp of fancy flight mode in ms. */
+    enum FancyModeType {
+        FANCY_MODE_NULL = 0;
+        FANCY_MODE_TURN_AROUND_RIGHT = 1;
+        FANCY_MODE_TURN_AROUND_LEFT = 2;
+        FANCY_MODE_TURN_OVER_RIGHT = 3;
+        FANCY_MODE_TURN_OVER_LEFT = 4;
+        FANCY_MODE_TURN_OVER_BACK = 5;
+        FANCY_MODE_TURN_OVER_FRONT = 6;
+    }
+    FancyModeType fancy_mode_type = 2;            /** The type of fancy flight mode triggered by the user. */
+    uint32 fancy_mode_act_cnt = 3;                /** The actual number of times fancy flight is triggered. */
+}
+
+message LiveViewHfov {
+    float   lv_hfov = 1;                                 /** liveview h_fov **/
+    float   lv_hfov_camera = 2;                          /** liveview h_fov_camera **/
+    float   lv_view_site = 3;                            /** view site of liveview **/
+    float   lv_frame_ratio = 4;                          /** the ratio of liveview frame width and height **/
+}
+
+message GimbalAngleDeviation {
+    float x_deviation = 1;
+    float y_deviation = 2;
+    float z_deviation = 3;
+}
+
+message UavToTargetPos {
+    uint64         time_stamp_us = 1;
+    repeated float drone_coord_navi = 2;        /** The aircraft's coordinates in the navigation frame. */
+    Quaternion     q_drone2navi = 3;            /** The aircraft's rotation relative to the navigation, quaternion wxyz. */
+    float          phi_g = 4;                   /** The yaw angle of the navigation frame relative to the ground frame, unit is radian, precision is 1 rad */
+    enum TargetType {
+        TARGET_TYPE_UNKNOWN = 0;
+        TARGET_TYPE_PERSON = 1;
+        TARGET_TYPE_CAR = 2;
+        TARGET_TYPE_VAN = 3;
+        TARGET_TYPE_BIKE = 4;
+        TARGET_TYPE_ANIMAL = 5;
+        TARGET_TYPE_BOAT = 6;
+        TARGET_TYPE_HUMAN_FACE = 7;
+        TARGET_TYPE_HEAD_SHOULDER = 8;
+        TARGET_TYPE_HUMAN_BODY = 9;
+        TARGET_TYPE_HUMAN_HEAD = 10;
+        TARGET_TYPE_ANIMAL_BODY = 11;
+        TARGET_TYPE_ANIMAL_FACE = 12;
+        TARGET_TYPE_BEACON = 13;
+        TARGET_TYPE_BEACON_DISPLAY = 14;
+    }
+    TargetType     target_type = 5;
+    Quaternion     q_target2navi = 6;             /** The target's rotation relative to the navigation, quaternion wxyz. */
+    bool           is_target_coord_valid = 7;     /** Target 3D position validity flag. true or false*/
+    repeated float target_coord_navi = 8;         /** The target's coordinates in the navigation frame. */
 }
 
 message SensorFrameReadOutTime {
     uint64 readout_time = 1;    /* read out time per frame of a certain mode. */
+}
+
+message LROValue {
+    uint32 LRO_value = 1;
+}
+
+message SensorRes {
+    uint32 sensor_width = 1;         /** The sensor width for current sensor mode. */
+    uint32 sensor_height = 2;        /** The sensor height for current sensor mode. */
+}
+
+message ImuVsyncPos {
+    uint32   vsync_pos = 1;       /* Represents imu downsampling phase */
+}
+
+message ITDValue {
+    int32  ITD_value = 1;
 }
 
 /* TODO: comment */
@@ -982,7 +1137,8 @@ message IMUSamplingRate {
 }
 
 message DigitalFocalLength {
-    float focal_length = 1;    /* fx in camera intrinsic matrix, in our model, fx equals to fy. */
+    float focal_length = 1;    /* focal length output(fx) in both pinhole and fisheye in camera intrinsic matrix,
+                                  lightCut app/gyroflow need to know this value to do c2w/w2c, in our model, fx equals to fy. */
 }
 
 message LensDistortionCoefficients {
@@ -994,7 +1150,382 @@ message EisStatus {
         EIS_OFF = 0;
         EIS_ROCK_STEADY = 1;
         EIS_HORIZON_STEADY = 2;
+        EIS_HYPER = 3;
+        EIS_TRADEOFF = 4;
+        EIS_HORIZON_BALANCING = 5;
+        EIS_DEEPSPACE = 6;
+        EIS_OFF_WITH_CROP = 7;
+    }
+    EisStatusType status = 1;
+}
+
+/**
+ * Represents current underwater confidence level
+ */
+message CurrentUnderwaterConfidence {
+    uint32 current_underwater_confidence = 1;                   /** To determine whether the device is currently underwater. */
+}
+
+message WayPointStatus {
+    enum WayPointStatusType {
+        WAYPOINT_OFF = 0;
+        WAYPOINT_ON = 1;
+    }
+    WayPointStatusType status = 1;
+}
+
+enum FCMLevel {
+    SEMI_AUTO_FCM = 0;
+    FULL_AUTO_FCM = 1;
+}
+
+message FCMData {
+    enum Drone_Movement {
+        UNKNOWN_MOVE      = 0;
+        CLOCKWISE         = 1;
+        COUNTER_CLOCKWISE = 2;
+        AUTO_CHOICE       = 3;
     }
 
-    EisStatusType status = 1;
+    /*geometrical orientations relative to a body */
+    enum BodyRelativeDirection {
+        BEHIND              = 0;
+        BEHIND_RIGHT        = 1;
+        RIGHT               = 2;
+        LEAD_RIGHT          = 3;
+        LEAD                = 4;
+        LEAD_LEFT           = 5;
+        LEFT                = 6;
+        BEHIND_LEFT         = 7;
+        BEHIND_OUTER        = 8;
+        BEHIND_RIGHT_OUTER  = 9;
+        RIGHT_OUTER         = 10;
+        LEAD_RIGHT_OUTER    = 11;
+        LEAD_OUTER          = 12;
+        LEAD_LEFT_OUTER     = 13;
+        LEFT_OUTER          = 14;
+        BEHIND_LEFT_OUTER   = 15;
+    }
+
+    enum Movement_Exec_State {
+        MOVE_NO_CMD              = 0;
+        MOVE_RECEIVED_START_CMD  = 1;
+        MOVE_EXECUTING           = 2;
+        MOVE_FINISHED            = 3;
+    }
+
+    enum Exit_Reason {
+        DJI_FCM_OK	            = 0;
+        DJI_FCM_OBSTACLE_STUCK	= 1;
+        DJI_FCM_ABORTED	        = 2;
+    }
+
+    fixed64 timestamp = 1;
+
+    float   center_x = 2;
+    float   center_y = 3;
+    float   min_x = 4;
+    float   min_y = 5;
+    float   max_x = 6;
+    float   max_y = 7;
+
+    BodyRelativeDirection   relative_direction  = 8; /* drone orientations relative to tracking body */
+    BodyRelativeDirection   dest_direction      = 9;     /* drone orientations relative to moving destination */
+    Drone_Movement          movement            = 10;
+
+    float   relative_horizontal_distance_m  = 11;
+    float   relative_height_m               = 12;
+    float   target_speed_mps                = 13;
+
+    Movement_Exec_State move_exec_state = 14;
+    Exit_Reason         exit_reason = 15;
+
+    float   score = 16;
+}
+
+message RC_Mode {
+    enum Rc_Mode_Enum {
+        DJI_COMMAND_MODE_MANUAL = 0;
+        DJI_COMMAND_MODE_ATTI_NORMAL = 3;
+        DJI_COMMAND_MODE_GPS_NORMAL = 7;
+        DJI_COMMAND_MODE_GPS_SPORT = 8;
+        DJI_COMMAND_MODE_TRIPOD	= 0xC;
+        DJI_COMMAND_MODE_FPV = 0xF;
+    }
+    Rc_Mode_Enum rc_mode = 1;
+}
+
+message Battery_Info {
+    fixed32 battery_percent = 1;
+}
+
+message Barrier_Distance {
+    enum Tof_State {
+        TOF_STATE_NO_REFLECTION = 0;
+        TOF_STATE_REFLECTED = 1;
+    }
+    Tof_State below_tof_state = 1;
+    sfixed32  below_dist_cm = 2;
+}
+
+message RealFocalLength {
+    repeated int32 real_focal_length = 1;               /** Because of the accuracy error which may comes from the lens
+                                                            craftsmanship, the real focal length may not be the same as
+                                                            the nominal focal length. Thus, this message will represent
+                                                            the real focal length which can reflect the focal length
+                                                            more realistically. In some cases such as visual effect,
+                                                            using this for calculation will get more accurate result.
+                                                            Its value will be described as rational type, so for
+                                                            example, when focal length is 35, its value will be
+                                                            [35000, 1000]. Unit: milli-meter. */
+}
+
+message Barometer {
+    bool  is_in_water = 1;                              /** Is in the water. */
+    int32 altitude_dm = 2;                              /** The altitude from barometer, unit: decimeter. */
+    uint32 atmospheric_hpa = 3;                         /** The pressure vale fro barometer, unit: hPa. */
+}
+
+message CameraControllerScene {
+    enum CameraControllerScene {
+        CAMERA_CONTROLLER_SCENE_STANDARD         = 0;                    /** The view seen using the standard remote controller, use as default. */
+        CAMERA_CONTROLLER_SCENE_GOGGLE           = 1;                    /** The view seen using goggles as the controller. */
+        CAMERA_CONTROLLER_SCENE_HANDHELD         = 2;                    /** The view seen using app as the controller or without controller. */
+    }
+    CameraControllerScene camera_controller_scene = 1;
+}
+
+message EquivalentFocalLength {
+    repeated int32 equivalent_focal_length = 1;             /** The current 35mm equivalent hybrid focal length.
+                                                            	Its value will be described as rational type, so for
+                                                            	example, when focal length is 35, its value will be
+                                                            	[35000, 1000]. Unit: milli-meter. */
+}
+
+message Effective35mmEqFocalLen {
+    repeated int32 equivalent_focal_length = 1;             /** The current 35mm-equivalent focal length after DZoom, EIS, etc.
+                                                            	Its value will be described as rational type, so for
+                                                            	example, when focal length is 35, its value will be
+                                                            	[350, 10]. Unit: milli-meter. */
+}
+
+message DewarpParams {
+    float   fx     = 1;
+    float   fy     = 2;
+    float   cx     = 3;
+    float   cy     = 4;
+    float   k1     = 5;
+    float   k2     = 6;
+    float   k3     = 7;
+    float   k4     = 8;
+    float   xi     = 9;
+    float   width  = 10;
+    float   height = 11;
+    float   yaw    = 12;
+    float   pitch  = 13;
+    float   roll   = 14;
+    float   k5     = 15;
+    float   k6     = 16;
+    float   k7     = 17;
+    float   k8     = 18;
+    float   k9     = 19;
+    repeated float p   = 20;
+    repeated float q   = 21;
+    repeated float occlusion_pt_x    = 22;
+    repeated float occlusion_pt_y    = 23;
+    float lens_model                 = 24;
+    float temperature                = 25;
+    Quaternion cam_imu_extri_q       = 26;              /** Extrinsic quaternion between the camera and the IMU. */
+    repeated float tangent_coeff     = 27;              /** tangential distortion coefficient */
+    Quaternion cam_extri_q           = 28;              /** Extrinsic quaternion between camera modules. */
+    bool cam_imu_cali_enable         = 29;
+    bool temp_compen_enable          = 30;
+    float temp_compen_k              = 31;
+}
+
+message PanoDewarpParams {
+    DewarpParams native_refine_slave            = 1;
+    DewarpParams native_refine_master           = 2;
+    DewarpParams native_refine_far_slave        = 3;
+    DewarpParams native_refine_far_master       = 4;
+    DewarpParams lens_guards_slave              = 5;
+    DewarpParams lens_guards_master             = 6;
+    DewarpParams water_proof_above_water_slave  = 7;
+    DewarpParams water_proof_above_water_master = 8;
+    DewarpParams water_proof_under_water_slave  = 9;
+    DewarpParams water_proof_under_water_master = 10;
+    DewarpParams native_slave                   = 11;
+    DewarpParams native_master                  = 12;
+    DewarpParams native_refine_far_07_slave     = 13;
+    DewarpParams native_refine_far_07_master    = 14;
+    DewarpParams native_refine_far_09_slave     = 15;
+    DewarpParams native_refine_far_09_master    = 16;
+    DewarpParams native_refine_far_11_slave     = 17;
+    DewarpParams native_refine_far_11_master    = 18;
+    DewarpParams native_refine_far_12_5_slave   = 19;
+    DewarpParams native_refine_far_12_5_master  = 20;
+    DewarpParams native_refine_far_14_slave     = 21;
+    DewarpParams native_refine_far_14_master    = 22;
+    DewarpParams native_refine_far_16_slave     = 23;
+    DewarpParams native_refine_far_16_master    = 24;
+}
+
+enum AeMode {
+    AE_MODE_OFF = 0;
+    AE_MODE_ON  = 1;
+}
+
+message AecAe {
+    float lv                    = 1;
+    float lux_idx               = 2;
+    float short_linear_gain     = 3;
+    float middle_linear_gain    = 4;
+    float long_linear_gain      = 5;
+    float adrc_gain             = 6;
+    float dark_boost_gain       = 7;
+    AeMode ae_mode              = 8;
+}
+
+message AtomicGainInfo {
+    uint32    sensor_again      = 1;   // normal or long frame's sensor again
+    uint32    sensor_dgain      = 2;   // normal or long frame's sensor dgain
+    uint32    isp_dgain         = 3;   // normal or long frame's isp dgain
+    uint32    cg_ratio          = 4;   // normal or long frame's cg ratio
+
+    // vhdr short frame's param
+    uint32    sensor_again_s    = 5;
+    uint32    isp_dgain_s       = 6;
+}
+
+message GacGainInfo {
+    bool    gac_enable          = 1;
+    float   isp_dgain           = 2;
+    float   gamma_dgain         = 3;
+    float   ccm_dgain           = 4;
+    float   drc_gtm_dgain       = 5;
+    float   drc_in_dgain        = 6;
+    float   drc_gamma_dgain     = 7;
+    float   gamma_knee_dgain    = 8;
+    float   dsp_dgain           = 9;
+}
+
+message AecEagle {
+    int32 lv                        = 1;
+    AtomicGainInfo atomic_gain_info = 2;
+    GacGainInfo gac_gain_info       = 3;
+}
+
+message Coordinate {
+    float   fx     = 1;
+    float   fy     = 2;
+}
+
+message TrackResultBox {
+    Coordinate vertex_top_left       = 1;
+    Coordinate vertex_top_right      = 2;
+    Coordinate vertex_bottom_left    = 3;
+    Coordinate vertex_bottom_right   = 4;
+}
+
+message AIMOTDataVersion {
+    fixed32 ai_mot_version = 1;                 /** The protocal version of AI Multi-object Tracking.*/
+}
+
+enum AiMotObjState {
+    AI_MOT_OBJ_STATE_INVALID = 0;
+    AI_MOT_OBJ_STATE_TRACKED = 1;
+}
+
+message ObjGroup2DBoxWithDistance {
+    fixed32 obj_id = 1;                         /** Object ID. */
+    string obj_type = 2;                        /** Object type. The max string length of it is 36 bytes (including ending symbol). */
+    AiMotObjState obj_state = 3;                /** Object tracking state. */
+    fixed32 cx = 4;                             /** Object Center x coordinate. Unit: 1/10000*frame_width. */
+    fixed32 cy = 5;                             /** Object Center y coordinate. Unit: 1/10000*frame_height. */
+    fixed32 w = 6;                              /** Object bounding box width. Unit: 1/10000*frame_width. */
+    fixed32 h = 7;                              /** Object bounding box height. Unit: 1/10000*frame_height. */
+    fixed32 distance = 8;                       /** Object distance. Unit:mm */
+}
+
+message AIMOTData {
+    fixed32  third_party_model = 1;                             /** Indicates whether the AI object recognition uses a third-party model. */
+    string   model_name = 2;                                    /** AI multi-object tracking detection model name. The max string length is 97 bytes (including ending symbol). */
+    fixed32  ai_mot_timestamp_ms = 3;                           /** The time stamp of AI multi-object tracking data, unit:ms. */
+    fixed32  ai_mot_total_detected_obj_count = 4;               /** The total number of AI multi-object detection results, which may exceed 128. */
+    fixed32  ai_mot_obj_count = 5;                              /** The AI multi-object stable detected object count, which is less than 128. */
+    repeated ObjGroup2DBoxWithDistance ai_mot_obj_data = 6;     /** The object bounding box data. */
+}
+
+message EbikeGps {
+    GpsBasic gps_basic = 1;
+}
+
+message EbikeAcc {
+    Accelerometer ebike_acc = 1;
+}
+
+message EbikeTiltAngle {
+    float tilt_angle = 1;                               /* float   | tilt (unit：°) */
+}
+
+message EbikeMotorPower {
+    uint32 power = 1;                                   /* motor power(unit：W) */
+}
+
+message EbikePedalingPower {
+    uint32 power = 1;                                   /* pedaling power(unit：W)*/
+}
+
+message EbikeCadence {
+    uint32 cadence = 1;                                 /* cadence(unit：Rpm) */
+}
+
+message EbikeMotorTorque {
+    uint32 torque = 1;                                  /* motor torque(unit：N·m) */
+}
+
+message EbikePedalingTorque {
+    uint32 torque = 1;                                  /* pedaling torque(unit：N·m) */
+}
+
+message EbikeSpeed {
+    float speed = 1;                                    /* speed(unit：km/h) */
+}
+
+message EbikeMileage {
+    float mileage = 1;                                  /* mileage(unit：km) */
+}
+
+message EbikeSlope {
+    float slope = 1;                                    /* slope(unit：°) */
+}
+
+message HeartRate {
+    uint32 heartrate = 1;                               /* heart beat(unit：Bpm) */
+}
+
+message EbikePressure {
+    uint32 pressure = 1;                                /* air pressure(unit：hPa) */
+}
+
+message EbikeCalories {
+    uint32 calories = 1;                                /* calories (unit：kcal) */
+}
+
+message YltmEnable {
+    uint32 enable = 1;                                  /* yltm enable */
+}
+
+message ExtriLensMode {
+    enum ExtriLensModeType {
+        EXTRI_LENS_MODE_NATIVE_REFINE = 0;
+        EXTRI_LENS_MODE_LENS_GUARDS = 1;
+        EXTRI_LENS_MODE_WATER_PROOF_UNDER_WATER = 2;
+    }
+    ExtriLensModeType mode = 1;
+}
+
+message AnyAspectRatioExport {
+    uint32 support = 1;
+    uint32 has_black_corner = 2;
 }

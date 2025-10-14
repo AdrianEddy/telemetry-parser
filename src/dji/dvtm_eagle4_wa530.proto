@@ -1,0 +1,120 @@
+/** DJI Video Metadata For Specific Product */
+
+// version = 02.00.09
+
+syntax = "proto3";
+
+import "dvtm_library.proto";
+
+/**
+ * Represents the proto entry when we do the encoding or decoding.
+ */
+message ProductMeta {
+    ClipMeta   clip_meta = 1;
+    StreamMeta stream_meta = 2;
+    FrameMeta  frame_meta = 3;
+}
+
+/**
+ * Represents the metadata about video clip.
+ */
+message ClipMeta {
+    ClipMetaHeader             clip_meta_header        = 1;
+    ClipStreamsMeta            clip_streams_meta       = 2;
+    LensDistortionCoefficients distortion_coefficients = 3;
+    SensorFrameReadOutTime     sensor_readout_time     = 4;
+    SensorReadDirection        sensor_read_direction   = 5;
+    DigitalFocalLength         digital_focal_length    = 6;
+    EisStatus                  eis_status              = 7;
+    IMUSamplingRate            imu_sampling_rate       = 8;
+    SensorFrameRate            sensor_fps              = 9;
+    ITDValue                   ITD_value               = 10;
+    LROValue                   LRO_value               = 11;
+    SensorRes                  sensor_res              = 12;
+}
+
+/**
+ * Represents the metadata about video stream.
+ */
+message StreamMeta {
+    StreamMetaHeader            stream_meta_header = 1;
+    StreamMetaOfCamera          camera_stream_meta = 2;
+    VideoStreamMeta             video_stream_meta = 3;
+    FOVType                     fov_type = 4;
+    PanoDewarpParams            pano_dewarp_params = 5;
+}
+
+/**
+ * Represents the stream metadata of camera device.
+ */
+message StreamMetaOfCamera {
+    MetaHeaderOfDevice       device_header  = 1;
+    DeviceVersion            device_version = 2;
+    DeviceSN                 device_sn      = 3;
+    ColorMode                color_mode     = 4;
+    Sharpness                sharpness      = 5;
+    NoiseReductionApplied    denoise        = 6;
+}
+
+/**
+ * Represents the metadata about video frame.
+ */
+message FrameMeta {
+    FrameMetaHeader   frame_meta_header = 1;
+    FrameMetaOfCamera camera_frame_meta = 2;
+    FrameMetaOfIMU    imu_frame_meta    = 3;
+    FrameMetaOfDrone  drone_frame_meta  = 4;
+}
+
+/**
+ * Represents the frame metadata of camera device.
+ */
+message FrameMetaOfCamera {
+    MetaHeaderOfDevice         camera_dev_header = 1;
+    ExposureIndex              exposure_index    = 2;
+    ISO                        iso               = 3;
+    ExposureTime               exposure_time     = 4;
+    DigitalZoomRatio           digital_zoom_ratio = 5;
+    WhiteBalanceCCT            white_balance_cct = 6;
+    Orientation                orientation = 7;
+    ExposureValue              exposure_value        = 8;
+    ColorTempAtmosphere        color_temp_atmosphere = 9;
+    FocalLength                focal_length          = 10;
+    AbsoluteAltitude           absolute_altitude     = 11;
+    SensorTemperature          sensor_temperature    = 12;
+    SensorActiveSize           sensor_active_size    = 13;
+    FNumber                    f_number              = 14;
+    DigitalFocalLength         digital_focal_length  = 15;
+    SensorShiftParam           sensor_shift_param    = 16;    /** The target or current quaternon about eis */
+    FancyMode                  fancy_mode            = 17;    /** One-click fancy flight mode information for LightCut APP */
+    LiveViewHfov               liveview_hfov         = 18;
+    AecEagle                   aec_eagle             = 19;
+}
+
+/**
+ * Represents the frame metadata of drone device.
+ */
+message FrameMetaOfDrone {
+    MetaHeaderOfDevice          drone_dev_header = 1;
+    Velocity                    velocity = 2;               /** Represent the drone body velocity in NED coordinate system. unit: meter/second */
+    EulerAngle                  attitude = 3;               /** Represent the drone body attitude in NED coordinate system. unit: 0.1 degree */
+    GpsBasic                    gps = 4;                    /** Represent the drone gps basic information. */
+    RelativeAltitude            relative_altitude = 5;      /** Represent the drone body altitude relative to takeoff point. unit: millimeter */
+    Battery_Info                battery = 6;
+    RC_Mode                     rc_mode = 7;
+    Barrier_Distance            barr_dist = 8;
+    FaiDegree                   fai_degree = 9;
+    FCMData                     fcm_data = 10;
+    GimbalAngleDeviation        gimbal_angle_deviation = 11;
+    UavToTargetPos              filming_target_position = 12;
+}
+
+/**
+ * Represents the frame metadata of IMU device.
+ */
+message FrameMetaOfIMU {
+    MetaHeaderOfDevice      IMU_dev_header = 1;
+    DeviceAttitude          IMU_attitude_after_fusion = 2;              /** cur frame. camera attitude samples within video frame interval. processed after motion estimation */
+    DeviceMultiAttitude     IMU_multi_attitude_after_fusion = 3;        /** cur/last/next frame. camera attitude samples within video frame interval. processed after motion estimation */
+    ImuVsyncPos             IMU_vsync_pos = 4;
+}

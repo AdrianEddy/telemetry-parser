@@ -2,6 +2,7 @@
 // Copyright © 2022 Adrian <adrian.eddy at gmail>
 
 pub mod dvtm_wm169;
+pub mod dvtm_eagle4_wa530;
 
 use std::io::*;
 use std::sync::{ Arc, atomic::AtomicBool };
@@ -18,6 +19,13 @@ mod csv;
 pub struct Dji {
     pub model: Option<String>,
     pub frame_readout_time: Option<f64>
+}
+
+#[derive(PartialEq, Debug, Clone, Copy)]
+enum DeviceProtobuf {
+    Unknown,
+    Wm169,
+    Wa530,
 }
 
 impl Dji {
@@ -74,17 +82,28 @@ impl Dji {
         let mut prev_quat: Option<Quaternion<f64>> = None;
         let mut inv = false;
 
+        let mut which_proto = DeviceProtobuf::Unknown;
+
         let cancel_flag2 = cancel_flag.clone();
         let ctx = util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64, _video_md: Option<&VideoMetadata>| {
             if size > 0 {
                 progress_cb(file_position as f64 / size as f64);
             }
 
-            match dvtm_wm169::ProductMeta::decode(data) {
-                Ok(parsed) => {
+            if which_proto == DeviceProtobuf::Unknown {
+                if data.len() > 64 && (memmem::find(&data[0..64], b"WA530").is_some() || memmem::find(&data[0..64], b"wa530").is_some()) {
+                    which_proto = DeviceProtobuf::Wa530;
+                } else {
+                    which_proto = DeviceProtobuf::Wm169;
+                }
+                log::debug!("Using device protobuf: {which_proto:?}");
+            }
+
+            macro_rules! handle_parsed {
+                ($parsed:expr) => {
                     let mut tag_map = GroupedTagMap::new();
 
-                    if let Some(ref clip) = parsed.clip_meta {
+                    if let Some(ref clip) = $parsed.clip_meta {
                         self.model              = clip.clip_meta_header       .as_ref().map(|h| h.product_name.replace("DJI ", ""));
                         self.frame_readout_time = clip.sensor_readout_time    .as_ref().map(|h| h.readout_time as f64 / 1000_000.0);
                         focal_length            = clip.digital_focal_length   .as_ref().map(|h| h.focal_length as f64);
@@ -102,7 +121,7 @@ impl Dji {
                             log::debug!("Metadata: {:?}", &vv);
                             insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), vv, vec![]), &options);
                         }
-                        if let Some(ref stream) = parsed.stream_meta {
+                        if let Some(ref stream) = $parsed.stream_meta {
                             if let Some(ref meta) = stream.video_stream_meta {
                                 fps = meta.framerate as f64;
                             }
@@ -115,7 +134,7 @@ impl Dji {
                     let fps_ratio = fps / sensor_fps;
 
                     let mut quats = Vec::new();
-                    if let Some(ref frame) = parsed.frame_meta {
+                    if let Some(ref frame) = $parsed.frame_meta {
                         let frame_ts = frame.frame_meta_header.as_ref().unwrap().frame_timestamp as i64;
                         if info.sample_index == 0 { first_timestamp = frame_ts; }
                         let frame_relative_ts = frame_ts - first_timestamp;
@@ -225,10 +244,19 @@ impl Dji {
                     if options.probe_only {
                         cancel_flag2.store(true, std::sync::atomic::Ordering::Relaxed);
                     }
+                };
+            }
+
+            match which_proto {
+                DeviceProtobuf::Unknown => { },
+                DeviceProtobuf::Wm169 => match dvtm_wm169::ProductMeta::decode(data) {
+                    Ok(parsed) => { handle_parsed!(parsed); },
+                    Err(e) => { log::warn!("Failed to parse protobuf: {:?}", e); }
                 },
-                Err(e) => {
-                    log::warn!("Failed to parse protobuf: {:?}", e);
-                }
+                DeviceProtobuf::Wa530 => match dvtm_eagle4_wa530::ProductMeta::decode(data) {
+                    Ok(parsed) => { handle_parsed!(parsed); },
+                    Err(e) => { log::warn!("Failed to parse protobuf: {:?}", e); }
+                },
             }
         }, cancel_flag)?;
 

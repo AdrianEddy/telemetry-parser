@@ -47,7 +47,17 @@ pub struct ClipMetaHeader {
 }
 /// Nested message and enum types in `ClipMetaHeader`.
 pub mod clip_meta_header {
-    #[derive(::serde::Serialize, Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+    #[derive(::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        PartialEq,
+        Eq,
+        Hash,
+        PartialOrd,
+        Ord,
+        ::prost::Enumeration
+    )]
     #[repr(i32)]
     pub enum MetaEncryptionType {
         /// * No encryption on metadata messages.
@@ -71,7 +81,17 @@ pub mod clip_meta_header {
             }
         }
     }
-    #[derive(::serde::Serialize, Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+    #[derive(::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        PartialEq,
+        Eq,
+        Hash,
+        PartialOrd,
+        Ord,
+        ::prost::Enumeration
+    )]
     #[repr(i32)]
     pub enum MetaCompressionType {
         /// * No compression on metadata messages.
@@ -4250,14 +4270,20 @@ pub struct ClipMeta {
     pub sensor_readout_time: ::core::option::Option<SensorFrameReadOutTime>,
     #[prost(message, optional, tag = "5")]
     pub sensor_read_direction: ::core::option::Option<SensorReadDirection>,
-    #[prost(message, optional, tag = "8")]
+    #[prost(message, optional, tag = "6")]
     pub digital_focal_length: ::core::option::Option<DigitalFocalLength>,
-    #[prost(message, optional, tag = "9")]
+    #[prost(message, optional, tag = "7")]
     pub eis_status: ::core::option::Option<EisStatus>,
-    #[prost(message, optional, tag = "10")]
+    #[prost(message, optional, tag = "8")]
     pub imu_sampling_rate: ::core::option::Option<ImuSamplingRate>,
-    #[prost(message, optional, tag = "11")]
+    #[prost(message, optional, tag = "9")]
     pub sensor_fps: ::core::option::Option<SensorFrameRate>,
+    #[prost(message, optional, tag = "10")]
+    pub itd_value: ::core::option::Option<ItdValue>,
+    #[prost(message, optional, tag = "11")]
+    pub lro_value: ::core::option::Option<LroValue>,
+    #[prost(message, optional, tag = "12")]
+    pub sensor_res: ::core::option::Option<SensorRes>,
 }
 /// *
 /// Represents the metadata about video stream.
@@ -4265,8 +4291,31 @@ pub struct ClipMeta {
 pub struct StreamMeta {
     #[prost(message, optional, tag = "1")]
     pub stream_meta_header: ::core::option::Option<StreamMetaHeader>,
+    #[prost(message, optional, tag = "2")]
+    pub camera_stream_meta: ::core::option::Option<StreamMetaOfCamera>,
     #[prost(message, optional, tag = "3")]
     pub video_stream_meta: ::core::option::Option<VideoStreamMeta>,
+    #[prost(message, optional, tag = "4")]
+    pub fov_type: ::core::option::Option<FovType>,
+    #[prost(message, optional, tag = "5")]
+    pub pano_dewarp_params: ::core::option::Option<PanoDewarpParams>,
+}
+/// *
+/// Represents the stream metadata of camera device.
+#[derive(::serde::Serialize, Clone, PartialEq, ::prost::Message)]
+pub struct StreamMetaOfCamera {
+    #[prost(message, optional, tag = "1")]
+    pub device_header: ::core::option::Option<MetaHeaderOfDevice>,
+    #[prost(message, optional, tag = "2")]
+    pub device_version: ::core::option::Option<DeviceVersion>,
+    #[prost(message, optional, tag = "3")]
+    pub device_sn: ::core::option::Option<DeviceSn>,
+    #[prost(message, optional, tag = "4")]
+    pub color_mode: ::core::option::Option<ColorMode>,
+    #[prost(message, optional, tag = "5")]
+    pub sharpness: ::core::option::Option<Sharpness>,
+    #[prost(message, optional, tag = "6")]
+    pub denoise: ::core::option::Option<NoiseReductionApplied>,
 }
 /// *
 /// Represents the metadata about video frame.
@@ -4278,6 +4327,8 @@ pub struct FrameMeta {
     pub camera_frame_meta: ::core::option::Option<FrameMetaOfCamera>,
     #[prost(message, optional, tag = "3")]
     pub imu_frame_meta: ::core::option::Option<FrameMetaOfImu>,
+    #[prost(message, optional, tag = "4")]
+    pub drone_frame_meta: ::core::option::Option<FrameMetaOfDrone>,
 }
 /// *
 /// Represents the frame metadata of camera device.
@@ -4297,6 +4348,65 @@ pub struct FrameMetaOfCamera {
     pub white_balance_cct: ::core::option::Option<WhiteBalanceCct>,
     #[prost(message, optional, tag = "7")]
     pub orientation: ::core::option::Option<Orientation>,
+    #[prost(message, optional, tag = "8")]
+    pub exposure_value: ::core::option::Option<ExposureValue>,
+    #[prost(message, optional, tag = "9")]
+    pub color_temp_atmosphere: ::core::option::Option<ColorTempAtmosphere>,
+    #[prost(message, optional, tag = "10")]
+    pub focal_length: ::core::option::Option<FocalLength>,
+    #[prost(message, optional, tag = "11")]
+    pub absolute_altitude: ::core::option::Option<AbsoluteAltitude>,
+    #[prost(message, optional, tag = "12")]
+    pub sensor_temperature: ::core::option::Option<SensorTemperature>,
+    #[prost(message, optional, tag = "13")]
+    pub sensor_active_size: ::core::option::Option<SensorActiveSize>,
+    #[prost(message, optional, tag = "14")]
+    pub f_number: ::core::option::Option<FNumber>,
+    #[prost(message, optional, tag = "15")]
+    pub digital_focal_length: ::core::option::Option<DigitalFocalLength>,
+    /// * The target or current quaternon about eis
+    #[prost(message, optional, tag = "16")]
+    pub sensor_shift_param: ::core::option::Option<SensorShiftParam>,
+    /// * One-click fancy flight mode information for LightCut APP
+    #[prost(message, optional, tag = "17")]
+    pub fancy_mode: ::core::option::Option<FancyMode>,
+    #[prost(message, optional, tag = "18")]
+    pub liveview_hfov: ::core::option::Option<LiveViewHfov>,
+    #[prost(message, optional, tag = "19")]
+    pub aec_eagle: ::core::option::Option<AecEagle>,
+}
+/// *
+/// Represents the frame metadata of drone device.
+#[derive(::serde::Serialize, Clone, PartialEq, ::prost::Message)]
+pub struct FrameMetaOfDrone {
+    #[prost(message, optional, tag = "1")]
+    pub drone_dev_header: ::core::option::Option<MetaHeaderOfDevice>,
+    /// * Represent the drone body velocity in NED coordinate system. unit: meter/second
+    #[prost(message, optional, tag = "2")]
+    pub velocity: ::core::option::Option<Velocity>,
+    /// * Represent the drone body attitude in NED coordinate system. unit: 0.1 degree
+    #[prost(message, optional, tag = "3")]
+    pub attitude: ::core::option::Option<EulerAngle>,
+    /// * Represent the drone gps basic information.
+    #[prost(message, optional, tag = "4")]
+    pub gps: ::core::option::Option<GpsBasic>,
+    /// * Represent the drone body altitude relative to takeoff point. unit: millimeter
+    #[prost(message, optional, tag = "5")]
+    pub relative_altitude: ::core::option::Option<RelativeAltitude>,
+    #[prost(message, optional, tag = "6")]
+    pub battery: ::core::option::Option<BatteryInfo>,
+    #[prost(message, optional, tag = "7")]
+    pub rc_mode: ::core::option::Option<RcMode>,
+    #[prost(message, optional, tag = "8")]
+    pub barr_dist: ::core::option::Option<BarrierDistance>,
+    #[prost(message, optional, tag = "9")]
+    pub fai_degree: ::core::option::Option<FaiDegree>,
+    #[prost(message, optional, tag = "10")]
+    pub fcm_data: ::core::option::Option<FcmData>,
+    #[prost(message, optional, tag = "11")]
+    pub gimbal_angle_deviation: ::core::option::Option<GimbalAngleDeviation>,
+    #[prost(message, optional, tag = "12")]
+    pub filming_target_position: ::core::option::Option<UavToTargetPos>,
 }
 /// *
 /// Represents the frame metadata of IMU device.
@@ -4304,7 +4414,12 @@ pub struct FrameMetaOfCamera {
 pub struct FrameMetaOfImu {
     #[prost(message, optional, tag = "1")]
     pub imu_dev_header: ::core::option::Option<MetaHeaderOfDevice>,
-    /// camera attitude samples within video frame interval. processed after motion estimation
+    /// * cur frame. camera attitude samples within video frame interval. processed after motion estimation
     #[prost(message, optional, tag = "2")]
     pub imu_attitude_after_fusion: ::core::option::Option<DeviceAttitude>,
+    /// * cur/last/next frame. camera attitude samples within video frame interval. processed after motion estimation
+    #[prost(message, optional, tag = "3")]
+    pub imu_multi_attitude_after_fusion: ::core::option::Option<DeviceMultiAttitude>,
+    #[prost(message, optional, tag = "4")]
+    pub imu_vsync_pos: ::core::option::Option<ImuVsyncPos>,
 }
