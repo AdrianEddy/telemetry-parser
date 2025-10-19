@@ -23,7 +23,7 @@ hex-literal = "1"
 half = "2.7"
 memchr = "2.7"
 fc-blackbox = { git = "https://github.com/ilya-epifanov/fc-blackbox.git", rev = "de08350" }
-csv = "1.3"
+csv = "1.4"
 human-sort = "0.2"
 log = "0.4"
 

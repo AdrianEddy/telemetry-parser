@@ -1,6 +1,6 @@
 /** DJI Video Metadata Library */
 
-// version = 02.01.17
+// version = 02.01.16
 
 syntax = "proto3";
 
@@ -1064,6 +1064,17 @@ message GimbalAngleDeviation {
     float z_deviation = 3;
 }
 
+message TrackingInfo {
+    uint32 tracking_mode = 1; /** smart eye mode for tk mode in video editor. bit 0:  is in tracking mode. bits 1-7: sub tracking mode, See DJI_TRACKING_MODE. */
+    uint32 sub_tracking_mode = 2; /** smart eye mode for tk mode in video editor. bit 0:  is in tracking mode. bits 1-7: sub tracking mode, See DJI_TRACKING_MODE. */
+    uint32 id = 3;
+    uint32 obj_class = 4;
+    float center_x = 5;
+    float center_y = 6;
+    float width = 7;
+    float height = 8;
+}
+
 message UavToTargetPos {
     uint64         time_stamp_us = 1;
     repeated float drone_coord_navi = 2;        /** The aircraft's coordinates in the navigation frame. */
@@ -1088,7 +1099,7 @@ message UavToTargetPos {
     }
     TargetType     target_type = 5;
     Quaternion     q_target2navi = 6;             /** The target's rotation relative to the navigation, quaternion wxyz. */
-    bool           is_target_coord_valid = 7;     /** Target 3D position validity flag. true or false*/
+    bool           is_target_coord_valid = 7;     /** Target 3D position validity flag. true or false*/ 
     repeated float target_coord_navi = 8;         /** The target's coordinates in the navigation frame. */
 }
 
@@ -1302,13 +1313,6 @@ message EquivalentFocalLength {
                                                             	[35000, 1000]. Unit: milli-meter. */
 }
 
-message Effective35mmEqFocalLen {
-    repeated int32 equivalent_focal_length = 1;             /** The current 35mm-equivalent focal length after DZoom, EIS, etc.
-                                                            	Its value will be described as rational type, so for
-                                                            	example, when focal length is 35, its value will be
-                                                            	[350, 10]. Unit: milli-meter. */
-}
-
 message DewarpParams {
     float   fx     = 1;
     float   fy     = 2;
@@ -1341,6 +1345,8 @@ message DewarpParams {
     bool cam_imu_cali_enable         = 29;
     bool temp_compen_enable          = 30;
     float temp_compen_k              = 31;
+    float gimbal_yaw_h1              = 32;
+    float gimbal_yaw_h2              = 33;
 }
 
 message PanoDewarpParams {
@@ -1384,35 +1390,6 @@ message AecAe {
     float adrc_gain             = 6;
     float dark_boost_gain       = 7;
     AeMode ae_mode              = 8;
-}
-
-message AtomicGainInfo {
-    uint32    sensor_again      = 1;   // normal or long frame's sensor again
-    uint32    sensor_dgain      = 2;   // normal or long frame's sensor dgain
-    uint32    isp_dgain         = 3;   // normal or long frame's isp dgain
-    uint32    cg_ratio          = 4;   // normal or long frame's cg ratio
-
-    // vhdr short frame's param
-    uint32    sensor_again_s    = 5;
-    uint32    isp_dgain_s       = 6;
-}
-
-message GacGainInfo {
-    bool    gac_enable          = 1;
-    float   isp_dgain           = 2;
-    float   gamma_dgain         = 3;
-    float   ccm_dgain           = 4;
-    float   drc_gtm_dgain       = 5;
-    float   drc_in_dgain        = 6;
-    float   drc_gamma_dgain     = 7;
-    float   gamma_knee_dgain    = 8;
-    float   dsp_dgain           = 9;
-}
-
-message AecEagle {
-    int32 lv                        = 1;
-    AtomicGainInfo atomic_gain_info = 2;
-    GacGainInfo gac_gain_info       = 3;
 }
 
 message Coordinate {

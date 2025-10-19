@@ -118,7 +118,7 @@ pub struct StreamMetaHeader {
 }
 /// Nested message and enum types in `StreamMetaHeader`.
 pub mod stream_meta_header {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -191,7 +191,7 @@ pub struct FrameMetaHeader {
 }
 /// Nested message and enum types in `FrameMetaHeader`.
 pub mod frame_meta_header {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -264,7 +264,7 @@ pub struct MetaHeaderOfDevice {
 }
 /// Nested message and enum types in `MetaHeaderOfDevice`.
 pub mod meta_header_of_device {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -306,7 +306,7 @@ pub mod meta_header_of_device {
             }
         }
     }
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -398,7 +398,7 @@ pub struct MetaHeaderOfSubDevice {
 }
 /// Nested message and enum types in `MetaHeaderOfSubDevice`.
 pub mod meta_header_of_sub_device {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -440,7 +440,7 @@ pub mod meta_header_of_sub_device {
             }
         }
     }
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -511,7 +511,7 @@ pub struct VideoStreamMeta {
 }
 /// Nested message and enum types in `VideoStreamMeta`.
 pub mod video_stream_meta {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -569,7 +569,7 @@ pub mod video_stream_meta {
             }
         }
     }
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -639,7 +639,7 @@ pub mod video_stream_meta {
             }
         }
     }
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -711,7 +711,7 @@ pub struct ImageProcessingQuality {
 }
 /// Nested message and enum types in `ImageProcessingQuality`.
 pub mod image_processing_quality {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -759,7 +759,7 @@ pub struct ProresCodecQuality {
 }
 /// Nested message and enum types in `ProresCodecQuality`.
 pub mod prores_codec_quality {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -944,7 +944,7 @@ pub struct ImageSizeType {
 }
 /// Nested message and enum types in `ImageSizeType`.
 pub mod image_size_type {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -1004,7 +1004,7 @@ pub struct FovType {
 }
 /// Nested message and enum types in `FOVType`.
 pub mod fov_type {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -1086,7 +1086,7 @@ pub struct CfaPattern {
 }
 /// Nested message and enum types in `CFAPattern`.
 pub mod cfa_pattern {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -1154,7 +1154,7 @@ pub struct ColorSpace {
 }
 /// Nested message and enum types in `ColorSpace`.
 pub mod color_space {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -1317,7 +1317,7 @@ pub struct OpBox {
 }
 /// Nested message and enum types in `OpBox`.
 pub mod op_box {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -1509,7 +1509,7 @@ pub struct FocusDistance {
 }
 /// Nested message and enum types in `FocusDistance`.
 pub mod focus_distance {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -1646,7 +1646,7 @@ pub struct TimeCode {
 }
 /// Nested message and enum types in `TimeCode`.
 pub mod time_code {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -1696,7 +1696,7 @@ pub struct Orientation {
 }
 /// Nested message and enum types in `Orientation`.
 pub mod orientation {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -1764,7 +1764,7 @@ pub struct ColorMode {
 }
 /// Nested message and enum types in `ColorMode`.
 pub mod color_mode {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -1892,7 +1892,7 @@ pub struct ExposureIndexMode {
 }
 /// Nested message and enum types in `ExposureIndexMode`.
 pub mod exposure_index_mode {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -1940,7 +1940,7 @@ pub struct GainMode {
 }
 /// Nested message and enum types in `GainMode`.
 pub mod gain_mode {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -2077,7 +2077,7 @@ pub struct GimbalInstallPosition {
 }
 /// Nested message and enum types in `GimbalInstallPosition`.
 pub mod gimbal_install_position {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -2124,7 +2124,7 @@ pub struct GimbalMode {
 }
 /// Nested message and enum types in `GimbalMode`.
 pub mod gimbal_mode {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -2213,7 +2213,7 @@ pub struct PositionCoord {
 }
 /// Nested message and enum types in `PositionCoord`.
 pub mod position_coord {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -2286,7 +2286,7 @@ pub struct GpsBasic {
 }
 /// Nested message and enum types in `GpsBasic`.
 pub mod gps_basic {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -2328,7 +2328,7 @@ pub mod gps_basic {
             }
         }
     }
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -2414,7 +2414,7 @@ pub struct LaserStatus {
 }
 /// Nested message and enum types in `LaserStatus`.
 pub mod laser_status {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -2485,7 +2485,7 @@ pub struct RangingStatus {
 }
 /// Nested message and enum types in `RangingStatus`.
 pub mod ranging_status {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -2554,7 +2554,7 @@ pub struct InfraredSceneMode {
 }
 /// Nested message and enum types in `InfraredSceneMode`.
 pub mod infrared_scene_mode {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -2607,7 +2607,7 @@ pub struct InfraredPseudoColor {
 }
 /// Nested message and enum types in `InfraredPseudoColor`.
 pub mod infrared_pseudo_color {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -2710,7 +2710,7 @@ pub struct InfraredIsotherm {
 }
 /// Nested message and enum types in `InfraredIsotherm`.
 pub mod infrared_isotherm {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -2759,7 +2759,7 @@ pub struct InfraredGainMode {
 }
 /// Nested message and enum types in `InfraredGainMode`.
 pub mod infrared_gain_mode {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -2888,7 +2888,7 @@ pub struct FancyMode {
 }
 /// Nested message and enum types in `FancyMode`.
 pub mod fancy_mode {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -2964,6 +2964,27 @@ pub struct GimbalAngleDeviation {
     #[prost(float, tag = "3")]
     pub z_deviation: f32,
 }
+#[derive(::serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
+pub struct TrackingInfo {
+    /// * smart eye mode for tk mode in video editor. bit 0:  is in tracking mode. bits 1-7: sub tracking mode, See DJI_TRACKING_MODE.
+    #[prost(uint32, tag = "1")]
+    pub tracking_mode: u32,
+    /// * smart eye mode for tk mode in video editor. bit 0:  is in tracking mode. bits 1-7: sub tracking mode, See DJI_TRACKING_MODE.
+    #[prost(uint32, tag = "2")]
+    pub sub_tracking_mode: u32,
+    #[prost(uint32, tag = "3")]
+    pub id: u32,
+    #[prost(uint32, tag = "4")]
+    pub obj_class: u32,
+    #[prost(float, tag = "5")]
+    pub center_x: f32,
+    #[prost(float, tag = "6")]
+    pub center_y: f32,
+    #[prost(float, tag = "7")]
+    pub width: f32,
+    #[prost(float, tag = "8")]
+    pub height: f32,
+}
 #[derive(::serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct UavToTargetPos {
     #[prost(uint64, tag = "1")]
@@ -2991,7 +3012,7 @@ pub struct UavToTargetPos {
 }
 /// Nested message and enum types in `UavToTargetPos`.
 pub mod uav_to_target_pos {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -3106,7 +3127,7 @@ pub struct SensorReadDirection {
 }
 /// Nested message and enum types in `SensorReadDirection`.
 pub mod sensor_read_direction {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -3191,7 +3212,7 @@ pub struct EisStatus {
 }
 /// Nested message and enum types in `EisStatus`.
 pub mod eis_status {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -3261,7 +3282,7 @@ pub struct WayPointStatus {
 }
 /// Nested message and enum types in `WayPointStatus`.
 pub mod way_point_status {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -3337,7 +3358,7 @@ pub struct FcmData {
 }
 /// Nested message and enum types in `FCMData`.
 pub mod fcm_data {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -3380,7 +3401,7 @@ pub mod fcm_data {
         }
     }
     /// geometrical orientations relative to a body
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -3458,7 +3479,7 @@ pub mod fcm_data {
             }
         }
     }
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -3500,7 +3521,7 @@ pub mod fcm_data {
             }
         }
     }
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -3547,7 +3568,7 @@ pub struct RcMode {
 }
 /// Nested message and enum types in `RC_Mode`.
 pub mod rc_mode {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -3610,7 +3631,7 @@ pub struct BarrierDistance {
 }
 /// Nested message and enum types in `Barrier_Distance`.
 pub mod barrier_distance {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -3680,7 +3701,7 @@ pub struct CameraControllerScene {
 }
 /// Nested message and enum types in `CameraControllerScene`.
 pub mod camera_controller_scene {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
@@ -3729,15 +3750,6 @@ pub struct EquivalentFocalLength {
     /// Its value will be described as rational type, so for
     /// example, when focal length is 35, its value will be
     /// \[35000, 1000\]. Unit: milli-meter.
-    #[prost(int32, repeated, tag = "1")]
-    pub equivalent_focal_length: ::prost::alloc::vec::Vec<i32>,
-}
-#[derive(::serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct Effective35mmEqFocalLen {
-    /// * The current 35mm-equivalent focal length after DZoom, EIS, etc.
-    /// Its value will be described as rational type, so for
-    /// example, when focal length is 35, its value will be
-    /// \[350, 10\]. Unit: milli-meter.
     #[prost(int32, repeated, tag = "1")]
     pub equivalent_focal_length: ::prost::alloc::vec::Vec<i32>,
 }
@@ -3808,6 +3820,10 @@ pub struct DewarpParams {
     pub temp_compen_enable: bool,
     #[prost(float, tag = "31")]
     pub temp_compen_k: f32,
+    #[prost(float, tag = "32")]
+    pub gimbal_yaw_h1: f32,
+    #[prost(float, tag = "33")]
+    pub gimbal_yaw_h2: f32,
 }
 #[derive(::serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct PanoDewarpParams {
@@ -3878,56 +3894,6 @@ pub struct AecAe {
     pub dark_boost_gain: f32,
     #[prost(enumeration = "AeMode", tag = "8")]
     pub ae_mode: i32,
-}
-#[derive(::serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct AtomicGainInfo {
-    /// normal or long frame's sensor again
-    #[prost(uint32, tag = "1")]
-    pub sensor_again: u32,
-    /// normal or long frame's sensor dgain
-    #[prost(uint32, tag = "2")]
-    pub sensor_dgain: u32,
-    /// normal or long frame's isp dgain
-    #[prost(uint32, tag = "3")]
-    pub isp_dgain: u32,
-    /// normal or long frame's cg ratio
-    #[prost(uint32, tag = "4")]
-    pub cg_ratio: u32,
-    /// vhdr short frame's param
-    #[prost(uint32, tag = "5")]
-    pub sensor_again_s: u32,
-    #[prost(uint32, tag = "6")]
-    pub isp_dgain_s: u32,
-}
-#[derive(::serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
-pub struct GacGainInfo {
-    #[prost(bool, tag = "1")]
-    pub gac_enable: bool,
-    #[prost(float, tag = "2")]
-    pub isp_dgain: f32,
-    #[prost(float, tag = "3")]
-    pub gamma_dgain: f32,
-    #[prost(float, tag = "4")]
-    pub ccm_dgain: f32,
-    #[prost(float, tag = "5")]
-    pub drc_gtm_dgain: f32,
-    #[prost(float, tag = "6")]
-    pub drc_in_dgain: f32,
-    #[prost(float, tag = "7")]
-    pub drc_gamma_dgain: f32,
-    #[prost(float, tag = "8")]
-    pub gamma_knee_dgain: f32,
-    #[prost(float, tag = "9")]
-    pub dsp_dgain: f32,
-}
-#[derive(::serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
-pub struct AecEagle {
-    #[prost(int32, tag = "1")]
-    pub lv: i32,
-    #[prost(message, optional, tag = "2")]
-    pub atomic_gain_info: ::core::option::Option<AtomicGainInfo>,
-    #[prost(message, optional, tag = "3")]
-    pub gac_gain_info: ::core::option::Option<GacGainInfo>,
 }
 #[derive(::serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Coordinate {
@@ -4096,7 +4062,7 @@ pub struct ExtriLensMode {
 }
 /// Nested message and enum types in `ExtriLensMode`.
 pub mod extri_lens_mode {
-    #[derive(::serde::Serialize,
+   #[derive(::serde::Serialize,
         Clone,
         Copy,
         Debug,
