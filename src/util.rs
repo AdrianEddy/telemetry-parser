@@ -530,6 +530,7 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
                                     else if group == &GroupId::Magnetometer  { let ts = (timestamp.2 * 1000.0f64).round() as i64; magn_map.insert(ts, itm); timestamp.2 += reading_duration.2.unwrap(); }
                                 }
                             },
+                            // Canon
                             TagValue::Vec_Vector3_f32(arr) => {
                                 let arr = arr.get();
 

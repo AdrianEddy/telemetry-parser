@@ -88,14 +88,14 @@ impl BlackBox {
             "gyroADC" |
             "accSmooth" => TagId::Data,
 
-            _ => TagId::Custom(name.to_owned())
+            _ => TagId::Custom(name.to_owned().into())
         }
     }
     fn group_from_key(name: &str) -> GroupId {
         match name {
             "gyroADC" => GroupId::Gyroscope,
             "accSmooth" => GroupId::Accelerometer,
-            _ => GroupId::Custom(name.to_owned())
+            _ => GroupId::Custom(name.to_owned().into())
         }
     }
 

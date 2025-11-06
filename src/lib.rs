@@ -20,6 +20,7 @@ mod esplog;
 mod cooke;
 mod senseflow;
 mod freefly;
+mod canon;
 
 pub mod tags_impl;
 pub mod util;
@@ -145,6 +146,7 @@ macro_rules! impl_formats {
 impl_formats! {
     GoPro     => gopro::GoPro,
     Sony      => sony::Sony,
+    Canon     => canon::Canon,
     Dji       => dji::Dji,
     Insta360  => insta360::Insta360,
     GyroflowGcsv     => gyroflow::GyroflowGcsv,

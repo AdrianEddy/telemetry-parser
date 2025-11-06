@@ -71,6 +71,13 @@ declare_ids! {
     CaptureAreaSize,
     Shading,
     Distortion,
+    PixelAspectRatio,
+    PixelFocalLength,
+    DistortionPixelCenter,
+    PixelWidth,
+    PixelHeight,
+    RollingShutterCorrection,
+    SerialNumber,
 
     Name,
     DisplayName,

@@ -28,7 +28,7 @@ impl RedR3d {
         false
     }
     pub fn possible_extensions() -> Vec<&'static str> {
-        vec!["r3d", "mp4", "mov", "mxf"]
+        vec!["r3d", "nev", "mp4", "mov", "mxf"]
     }
     pub fn frame_readout_time(&self) -> Option<f64> {
         None
@@ -343,6 +343,8 @@ impl RedR3d {
                     0xBE => "redcode",
                     0xBF => "record_fps", // / 1001
                     0xC1 => "3d_lut2",
+                    0xD0 => "lens_focal_length_micrometers",
+                    0xD2 => "frame_ptp_timestamp",
                     _ => "",
                 }.to_string();
                 if id.is_empty() { id = format!("0x{:x}", d[1]); };

@@ -11,7 +11,7 @@ macro_rules! declare_groups {
         pub enum GroupId {
             $($field,)*
             UnknownGroup(u32),
-            Custom(String),
+            Custom(std::borrow::Cow<'static, str>),
             Any // For filtering, shouldn't be used directly
         }
         impl Serialize for GroupId {
@@ -42,7 +42,7 @@ macro_rules! declare_groups {
                     $(stringify!($field) => GroupId::$field,)*
                     "*" => GroupId::Any,
                     _ if s.starts_with("0x") => GroupId::UnknownGroup(u32::from_str_radix(&s[2..], 16)?),
-                    _ => GroupId::Custom(s.to_string())
+                    _ => GroupId::Custom(s.to_string().into())
                 })
             }
         }
@@ -57,7 +57,7 @@ macro_rules! declare_ids {
             $($field,)*
             Unknown(u32),
             File(String),
-            Custom(String),
+            Custom(std::borrow::Cow<'static, str>),
             Any // For filtering, shouldn't be used directly
         }
         impl Serialize for TagId {
@@ -90,7 +90,7 @@ macro_rules! declare_ids {
                     $(stringify!($field) => TagId::$field,)*
                     "*" => TagId::Any,
                     _ if s.starts_with("0x") => TagId::Unknown(s.parse::<u32>()?),
-                    _ => TagId::Custom(s.to_string())
+                    _ => TagId::Custom(s.to_string().into())
                 })
             }
         }

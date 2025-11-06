@@ -196,7 +196,7 @@ impl KLV {
             b"WRGB" => GroupId::Custom("WhiteBalanceRGBGains".into()),
             b"WBAL" => GroupId::Custom("WhiteBalanceTemperature".into()),
             b"ISOE" => GroupId::Custom("SensorISO".into()),
-            x => GroupId::Custom(x[..].iter().map(|&c| c as char).collect::<String>())
+            x => GroupId::Custom(x[..].iter().map(|&c| c as char).collect::<String>().into())
         }
     }
 
