@@ -25,7 +25,7 @@ impl RedR3d {
         }
     }
     pub fn has_accurate_timestamps(&self) -> bool {
-        false
+        true
     }
     pub fn possible_extensions() -> Vec<&'static str> {
         vec!["r3d", "nev", "mp4", "mov", "mxf"]
@@ -99,6 +99,7 @@ impl RedR3d {
         let mut gyro = Vec::new();
         let mut accl = Vec::new();
         let mut first_timestamp = None;
+        let mut last_frame_timestamp = None;
         let mut map = GroupedTagMap::new();
         let mut samples = Vec::new();
 
@@ -143,7 +144,8 @@ impl RedR3d {
                                     if first_timestamp.is_none() {
                                         first_timestamp = Some(timestamp);
                                     }
-                                    let t = (timestamp - first_timestamp.unwrap()) as f64 / 1000000.0;
+                                    let offset = if let Some(lft) = last_frame_timestamp { first_timestamp.unwrap() as i64 - lft as i64 } else { 0 };
+                                    let t = (timestamp as i64 - first_timestamp.unwrap() as i64 + offset) as f64 / 1000000.0;
                                     accl.push(TimeVector3 { t,
                                         x: -data.read_i16::<BigEndian>().ok()? as f64 / 100.0,
                                         y: -data.read_i16::<BigEndian>().ok()? as f64 / 100.0,
@@ -181,8 +183,13 @@ impl RedR3d {
                     if aligned_size >= 4096 {
                         stream.read_exact(&mut data4096)?;
                         stream.seek(SeekFrom::Current(aligned_size as i64 - 8 - 4096))?;
+                        let frame_timestamp = (&data4096[56..]).read_u64::<BigEndian>()?;
+                        if last_frame_timestamp.is_none() {
+                            last_frame_timestamp = Some(frame_timestamp);
+                        }
                         if let Ok(size) = (&data4096[86..]).read_u16::<BigEndian>() {
                             let mut per_frame_map = GroupedTagMap::new();
+                            util::insert_tag(&mut per_frame_map, tag!(parsed GroupId::Default, TagId::TimestampUs, "Frame timestamp", u64, |v| v.to_string(), frame_timestamp, vec![]), &options);
                             let _ = self.parse_meta(&data4096[88..88 + size as usize], &mut per_frame_map, &options);
                             samples.push(SampleInfo { tag_map: Some(per_frame_map), ..Default::default() });
                         }
@@ -381,6 +388,11 @@ impl RedR3d {
 
                         items.push(v);
                         // log::debug!("{}: {:?}", id, v);
+                    }
+                }
+                if id == "exposure_time" && items.len() == 1 {
+                    if let Some(v) = items[0].as_f64() {
+                        util::insert_tag(map, tag!(parsed GroupId::Default, TagId::ExposureTime, "Exposure time", f32, |v| format!("{v:.6}"), v as f32, vec![]), &options);
                     }
                 }
                 if items.len() == 1 {
