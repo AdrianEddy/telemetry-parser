@@ -121,7 +121,6 @@ impl GyroflowGcsv {
                 Ok(time) => time * time_scale,
                 Err(e) => { log::error!("Failed to parse time: {row:?} - {e:?}"); continue; }
             };
-            println!("csv ts: {time}");
             if row.len() >= 4 {
                 gyro.push(TimeVector3 {
                     t: time,
