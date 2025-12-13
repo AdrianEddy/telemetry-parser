@@ -9,6 +9,7 @@ mod blackbox;
 mod runcam;
 mod witmotion;
 mod dji;
+mod xtra;
 mod phone_apps;
 mod ardupilot;
 mod blackmagic;
@@ -148,6 +149,7 @@ impl_formats! {
     Sony      => sony::Sony,
     Canon     => canon::Canon,
     Dji       => dji::Dji,
+    Xtra      => xtra::Xtra,
     Insta360  => insta360::Insta360,
     GyroflowGcsv     => gyroflow::GyroflowGcsv,
     GyroflowProtobuf => gyroflow::GyroflowProtobuf,

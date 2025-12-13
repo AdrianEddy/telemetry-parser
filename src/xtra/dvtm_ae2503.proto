@@ -1,0 +1,88 @@
+/** Xtra Video Metadata For Specific Product */
+
+// version = 2.0.1
+
+syntax = "proto3";
+
+import "dvtm_library.proto";
+
+/**
+ * Represents the proto entry when we do the encoding or decoding.
+ */
+message ProductMeta {
+    ClipMeta   clip_meta = 1;
+    StreamMeta stream_meta = 2;
+    FrameMeta  frame_meta = 3;
+}
+
+/**
+ * Represents the metadata about video clip.
+ */
+message ClipMeta {
+    ClipMetaHeader             clip_meta_header        = 1;
+    ClipStreamsMeta            clip_streams_meta       = 2;
+    LensDistortionCoefficients distortion_coefficients = 3;
+    SensorFrameReadOutTime     sensor_readout_time     = 4;
+    SensorReadDirection        sensor_read_direction   = 5;
+    DigitalFocalLength         digital_focal_length    = 8;
+    EisStatus                  eis_status              = 9;
+    IMUSamplingRate            imu_sampling_rate       = 10;
+    SensorFrameRate            sensor_fps              = 11;
+    Magnifierstatus            magnifier_status        = 12;
+}
+
+/**
+ * Represents the metadata about video stream.
+ */
+message StreamMeta {
+    StreamMetaHeader            stream_meta_header = 1;
+    VideoStreamMeta             video_stream_meta = 3;
+    ColorMode                   color_mode = 4;
+    FOVType                     fov_type = 5;
+}
+
+/**
+ * Represents the metadata about video frame.
+ */
+message FrameMeta {
+    FrameMetaHeader   frame_meta_header = 1;
+    FrameMetaOfCamera camera_frame_meta = 2;
+    FrameMetaOfIMU    imu_frame_meta    = 3;
+    FrameMetaOfBluetoothRC bluetooth_rc_frame_meta = 4;
+}
+
+/**
+ * Represents the frame metadata of camera device.
+ */
+message FrameMetaOfCamera {
+    MetaHeaderOfDevice          camera_dev_header   = 1;
+    ExposureIndex               exposure_index      = 2;
+    ISO                         iso                 = 3;
+    ExposureTime                exposure_time       = 4;
+    DigitalZoomRatio            digital_zoom_ratio  = 5;
+    WhiteBalanceCCT             white_balance_cct   = 6;
+    Orientation                 orientation         = 7;
+    CurrentUnderwaterConfidence current_underwater_confidence = 8;
+    Quaternion                  camera_attitude = 9;
+    Accelerometer               camera_acc = 10;
+    Sharpness                   sharpness = 11;
+    NoiseReductionApplied       denoising = 12;
+}
+
+/**
+ * Represents the frame metadata of IMU device.
+ */
+message FrameMetaOfIMU {
+    MetaHeaderOfDevice      IMU_dev_header = 1;
+    DeviceAttitude          IMU_attitude_after_fusion = 2;               /* camera attitude samples within video frame interval. processed after motion estimation */
+}
+
+/**
+ * Represents the frame metadata of bluetooth remote control.
+ */
+message FrameMetaOfBluetoothRC {
+    MetaHeaderOfDevice      bluetoothRC_dev_header = 1;
+    GpsBasic                gps_basic = 2;              /** Represent the bluetooth remote control gps basic information. */
+    Velocity                velocity = 3;               /** Represent the bluetooth remote control body velocity in NED coordinate system,
+                                                            x(speed_to_north), y(speed_to_east), z(speed_to_downward), unit: meter/second. */
+}
