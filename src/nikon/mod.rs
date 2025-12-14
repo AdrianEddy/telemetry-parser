@@ -24,7 +24,7 @@ impl Nikon {
         true
     }
     pub fn possible_extensions() -> Vec<&'static str> {
-        vec!["mp4", "mov", "nev"]
+        vec!["mp4", "mov", "nev", "r3d"]
     }
     pub fn frame_readout_time(&self) -> Option<f64> {
         self.frame_readout_time
@@ -481,7 +481,7 @@ impl Nikon {
         // Insert frame metadata as JSON
         if !md.is_empty() {
             let (sensor_size, pixel_pitch) = match self.model.as_deref() {
-                Some("NIKON ZR") => (Some((6048, 4032)), Some((5930, 5930))),
+                Some("NIKON ZR") => (Some((6060, 4032)), Some((5930, 5930))),
                 _ => (None, None)
             };
             if let Some(pp) = pixel_pitch {
@@ -492,7 +492,7 @@ impl Nikon {
                         if let Some(ih) = md.get("image_height").and_then(|v| v.as_u64()).map(|v| v as u32) {
                             util::insert_tag(map, tag!(parsed GroupId::Imager, TagId::CaptureAreaSize, "Capture Area Size", f32x2, |v| format!("{v:?}"), (iw as f32, ih as f32), vec![]), &options);
                             // Set origin to center
-                            util::insert_tag(map, tag!(parsed GroupId::Imager, TagId::CaptureAreaOrigin, "Capture Area Origin", f32x2, |v| format!("{v:?}"), (((ss.0 - iw) as f32) / 2.0, ((ss.1 - ih) as f32) / 2.0), vec![]), &options);
+                            util::insert_tag(map, tag!(parsed GroupId::Imager, TagId::CaptureAreaOrigin, "Capture Area Origin", f32x2, |v| format!("{v:?}"), (((ss.0 as f32 - iw as f32)) / 2.0, ((ss.1 as f32 - ih as f32)) / 2.0), vec![]), &options);
                         }
                     }
                 }
