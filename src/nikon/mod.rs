@@ -124,7 +124,6 @@ impl Nikon {
                 String::from_utf8_lossy(&value_bytes[..end]).to_string()
             };
 
-            // Helper: read rational as f64
             let as_rational = || -> Option<f64> {
                 if value_bytes.len() >= 8 {
                     let mut rdr = Cursor::new(&value_bytes);
@@ -190,23 +189,10 @@ impl Nikon {
 
             // Match tags and insert
             match tag_id {
-                0x0000_0001 => { md.insert("make".into(), as_string().into()); }
                 0x0000_0002 => {
                     let model = as_string();
                     self.model = Some(model.clone());
                     md.insert("camera_model".into(), model.into());
-                }
-                0x0000_0003 => { md.insert("camera_firmware_version".into(), as_string().into()); }
-                0x0000_0011 => { md.insert("local_datetime".into(), as_string().into()); }
-                0x0000_0012 => { md.insert("gmt_datetime".into(), as_string().into()); }
-                0x0000_0013 => { // Unknown - possibly record_mode or similar
-                    if let Some(v) = as_u32() { md.insert("record_mode".into(), v.into()); }
-                }
-                0x0000_0014 => { // flip_horizontal
-                    if let Some(v) = as_u32() { md.insert("flip_horizontal".into(), v.into()); }
-                }
-                0x0000_0015 => { // flip_vertical
-                    if let Some(v) = as_u32() { md.insert("flip_vertical".into(), v.into()); }
                 }
                 0x0000_0016 => { // Framerate
                     if let Some(fps) = as_rational() {
@@ -224,53 +210,30 @@ impl Nikon {
                         md.insert("record_framerate".into(), fps.into());
                     }
                 }
+                0x0000_0001 => { md.insert("make".into(), as_string().into()); }
+                0x0000_0003 => { md.insert("camera_firmware_version".into(), as_string().into()); }
+                0x0000_0011 => { md.insert("local_datetime".into(), as_string().into()); }
+                0x0000_0012 => { md.insert("gmt_datetime".into(), as_string().into()); }
+                0x0000_0013 => { if let Some(v) = as_u32() { md.insert("record_mode".into(), v.into()); } }
+                0x0000_0014 => { if let Some(v) = as_u32() { md.insert("flip_horizontal".into(), v.into()); } }
+                0x0000_0015 => { if let Some(v) = as_u32() { md.insert("flip_vertical".into(), v.into()); } }
                 0x0000_0019 => { md.insert("timezone".into(), as_string().into()); }
-                0x0000_0021 => { // Color space/version
-                    if let Some(v) = as_u32() { md.insert("color_space".into(), v.into()); }
-                }
-                0x0000_0022 => { // Image Width
-                    if let Some(v) = as_u32() { md.insert("image_width".into(), v.into()); }
-                }
-                0x0000_0023 => { // Image Height
-                    if let Some(v) = as_u32() { md.insert("image_height".into(), v.into()); }
-                }
-                0x0000_0024 => { // Possibly bits per component or channel count
-                    if let Some(v) = as_u32() { md.insert("bits_per_component".into(), v.into()); }
-                }
-                0x0000_0025 => { // Bit depth
-                    if let Some(v) = as_u32() { md.insert("bit_depth".into(), v.into()); }
-                }
-                0x0000_0026 => { // Audio channels
-                    if let Some(v) = as_u32() { md.insert("audio_channels".into(), v.into()); }
-                }
-                0x0000_0027 => { // Audio format
-                    if let Some(v) = as_u32() { md.insert("audio_format".into(), v.into()); }
-                }
-                0x0000_0031 => { // Channel mask (SDK: 3)
-                    if let Some(v) = as_u32() { md.insert("channel_mask".into(), v.into()); }
-                }
-                0x0000_0032 => { // Audio related
-                    if let Some(v) = as_u32() { md.insert("audio_codec".into(), v.into()); }
-                }
-                0x0000_0033 => { // Sample size (SDK: 32)
-                    if let Some(v) = as_u32() { md.insert("sample_size".into(), v.into()); }
-                }
-                0x0000_0034 => { // Sample Rate
-                    if let Some(v) = as_u32() { md.insert("samplerate".into(), v.into()); }
-                }
-
-                // White balance related (0x1xxx)
-                0x0000_1017 => { // White balance kelvin
-                    if let Some(v) = as_u32() { md.insert("white_balance_kelvin".into(), v.into()); }
-                }
-                0x0000_101A => { // Possibly color version
-                    if let Some(v) = as_u32() { md.insert("clip_default_color_version".into(), v.into()); }
-                }
+                0x0000_0021 => { if let Some(v) = as_u32() { md.insert("color_space".into(), v.into()); } }
+                0x0000_0022 => { if let Some(v) = as_u32() { md.insert("image_width".into(), v.into()); } }
+                0x0000_0023 => { if let Some(v) = as_u32() { md.insert("image_height".into(), v.into()); } }
+                0x0000_0024 => { if let Some(v) = as_u32() { md.insert("bits_per_component".into(), v.into()); } }
+                0x0000_0025 => { if let Some(v) = as_u32() { md.insert("bit_depth".into(), v.into()); } }
+                0x0000_0026 => { if let Some(v) = as_u32() { md.insert("audio_channels".into(), v.into()); } }
+                0x0000_0027 => { if let Some(v) = as_u32() { md.insert("audio_format".into(), v.into()); } }
+                0x0000_0031 => { if let Some(v) = as_u32() { md.insert("channel_mask".into(), v.into()); } }
+                0x0000_0032 => { if let Some(v) = as_u32() { md.insert("audio_codec".into(), v.into()); } }
+                0x0000_0033 => { if let Some(v) = as_u32() { md.insert("sample_size".into(), v.into()); } }
+                0x0000_0034 => { if let Some(v) = as_u32() { md.insert("samplerate".into(), v.into()); } }
+                0x0000_1017 => { if let Some(v) = as_u32() { md.insert("white_balance_kelvin".into(), v.into()); } }
+                0x0000_101A => { if let Some(v) = as_u32() { md.insert("clip_default_color_version".into(), v.into()); } }
 
                 // Standard EXIF tags (0x01xxxxxx = EXIF IFD prefix)
-                0x0100_0112 => { // Orientation
-                    if let Some(v) = as_u32() { md.insert("orientation".into(), v.into()); }
-                }
+                0x0100_0112 => { if let Some(v) = as_u32() { md.insert("orientation".into(), v.into()); } }
                 0x0110_829A => { // Exposure Time
                     if let Some(val) = as_rational() {
                         util::insert_tag(map, tag!(parsed GroupId::Default, TagId::ExposureTime, "Exposure time", f32, |v| format!("{:.6}", v), val as f32, vec![]), options);
@@ -282,9 +245,6 @@ impl Nikon {
                         util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::IrisFStop, "Aperture", f32, |v| format!("f/{:.1}", v), val as f32, vec![]), options);
                         md.insert("f_number".into(), val.into());
                     }
-                }
-                0x0110_8822 => { // ExposureProgram
-                    if let Some(v) = as_u32() { md.insert("exposure_program".into(), v.into()); }
                 }
                 0x0110_8827 | 0x0110_8832 => { // ISO
                     if let Some(val) = as_u32() {
@@ -298,75 +258,37 @@ impl Nikon {
                         md.insert("exposure_compensation".into(), val.into());
                     }
                 }
-                0x0110_9207 => { // MeteringMode
-                    if let Some(v) = as_u32() { md.insert("metering_mode".into(), v.into()); }
-                }
                 0x0110_920A => { // Focal Length
                     if let Some(val) = as_rational() {
                         util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::FocalLength, "Focal length", f32, |v| format!("{:.1} mm", v), val as f32, vec![]), options);
                         md.insert("lens_focal_length".into(), val.into());
                     }
                 }
-                0x0110_A431 => { // Camera Serial/PIN
-                    md.insert("camera_pin".into(), as_string().into());
-                }
-                0x0110_A432 => { // LensInfo (min/max focal length, min/max aperture)
-                    if let Some(val) = as_rational() {
-                        md.insert("lens_info".into(), val.into());
-                    }
-                }
-                0x0110_A433 => { // LensMake
-                    md.insert("lens_make".into(), as_string().into());
-                }
-                0x0110_A434 => { // Lens Name
+                0x0110_8822 => { if let Some(v) = as_u32() { md.insert("exposure_program".into(), v.into()); } }
+                0x0110_9207 => { if let Some(v) = as_u32() { md.insert("metering_mode".into(), v.into()); } }
+                0x0110_A431 => { md.insert("camera_pin".into(), as_string().into()); }
+                0x0110_A433 => { md.insert("lens_make".into(), as_string().into()); }
+                0x0110_A432 => { if let Some(val) = as_rational() { md.insert("lens_info".into(), val.into()); } }
+                0x0110_A435 => { md.insert("lens_serial_number".into(), as_string().into()); }
+                0x0110_A434 => {
                     let name = as_string();
                     util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::DisplayName, "Lens name", String, |v| v.clone(), name.clone(), vec![]), options);
                     md.insert("lens_name".into(), name.into());
                 }
-                0x0110_A435 => { // LensSerialNumber
-                    md.insert("lens_serial_number".into(), as_string().into());
-                }
 
                 // Nikon MakerNotes (0x0200xxxx prefix)
-                0x0200_0005 => { // White balance setting
-                    md.insert("white_balance_setting".into(), as_string().trim().into());
-                }
-                0x0200_0007 => { // Focus Mode
-                    md.insert("focus_mode".into(), as_string().trim().into());
-                }
-                0x0200_001B => { // Unknown
-                    if let Some(v) = as_u32() { md.insert("nikon_0x1b".into(), v.into()); }
-                }
-                0x0200_002A => { // Possibly VR mode or similar
-                    if let Some(v) = as_u32() { md.insert("nikon_0x2a".into(), v.into()); }
-                }
-                0x0200_003C => { // Unknown
-                    if let Some(v) = as_u32() { md.insert("nikon_0x3c".into(), v.into()); }
-                }
-                0x0200_003F => { // Possibly exposure fine tuning
-                    if let Some(val) = as_rational() { md.insert("exposure_fine_tune".into(), val.into()); }
-                }
-                0x0200_0084 => { // Nikon Lens info
-                    if let Some(val) = as_rational() { md.insert("nikon_lens_info".into(), val.into()); }
-                }
-                0x0200_00A7 => { // Shutter Count
-                    if let Some(v) = as_u32() { md.insert("shutter_count".into(), v.into()); }
-                }
-                0x0200_00AB => { // Variant program string
-                    md.insert("variant_program".into(), as_string().into());
-                }
-                0x0200_00B1 => { // Unknown
-                    if let Some(v) = as_u32() { md.insert("nikon_0xb1".into(), v.into()); }
-                }
-
-                // Audio / channel basics you already *see* as unknown tags:
-                0x0000_0018 => { // audio_format
-                    if let Some(v) = as_u32() { md.insert("audio_format".into(), v.into()); }
-                }
-
-                // --- Red/R3D-style tags (ExifTool "Red Tags") ---
+                0x0200_0005 => { md.insert("white_balance_setting".into(), as_string().trim().into()); }
+                0x0200_0007 => { md.insert("focus_mode".into(), as_string().trim().into()); }
+                0x0200_001B => { if let Some(v) = as_u32() { md.insert("nikon_0x1b".into(), v.into()); } }
+                0x0200_002A => { if let Some(v) = as_u32() { md.insert("nikon_0x2a".into(), v.into()); } }
+                0x0200_003C => { if let Some(v) = as_u32() { md.insert("nikon_0x3c".into(), v.into()); } }
+                0x0200_003F => { if let Some(val) = as_rational() { md.insert("exposure_fine_tune".into(), val.into()); } } // Possibly exposure fine tuning
+                0x0200_0084 => { if let Some(val) = as_rational() { md.insert("nikon_lens_info".into(), val.into()); } }
+                0x0200_00A7 => { if let Some(v) = as_u32() { md.insert("shutter_count".into(), v.into()); } }
+                0x0200_00AB => { md.insert("variant_program".into(), as_string().into()); }
+                0x0200_00B1 => { if let Some(v) = as_u32() { md.insert("nikon_0xb1".into(), v.into()); } }
+                0x0000_0018 => { if let Some(v) = as_u32() { md.insert("audio_format".into(), v.into()); } }
                 0x0000_1000 => { // StartEdgeCode
-                    // prefer ASCII if that's what the file stores, else frames->timecode
                     if type_id == 2 {
                         md.insert("start_edge_timecode".into(), as_string().into());
                     } else if let (Some(fr), Some(fps)) = (as_u32(), self.record_framerate) {
@@ -384,33 +306,6 @@ impl Nikon {
                         md.insert("start_absolute_timecode_frames".into(), fr.into());
                     }
                 }
-                0x0000_1006 => { // SerialNumber
-                    let s = as_string();
-                    if !s.is_empty() { md.insert("camera_pin".into(), s.into()); }
-                }
-                0x0000_1023 => { // DateCreated (YYYYMMDD)
-                    let d = as_string();
-                    if !d.is_empty() { md.insert("local_date".into(), d.into()); }
-                }
-                0x0000_1024 => { // TimeCreated (HHMMSS)
-                    let t = as_string();
-                    if !t.is_empty() { md.insert("local_time".into(), t.into()); }
-                }
-                0x0000_1025 => { // FirmwareVersion
-                    let fw = as_string();
-                    if !fw.is_empty() { md.insert("camera_firmware_version".into(), fw.into()); }
-                }
-                0x0000_1036 => { // AspectRatio
-                    if let Some(v) = as_f64() { md.insert("pixel_aspect_ratio".into(), v.into()); }
-                }
-                0x0000_106e => { // LensMake
-                    let s = as_string();
-                    if !s.is_empty() { md.insert("lens_mount".into(), s.into()); }
-                }
-                0x0000_1070 => { // LensModel
-                    let s = as_string();
-                    if !s.is_empty() { md.insert("lens_name".into(), s.into()); }
-                }
                 0x0000_1071 => { // Model
                     let s = as_string();
                     if !s.is_empty() {
@@ -418,25 +313,19 @@ impl Nikon {
                         md.insert("camera_model".into(), s.into());
                     }
                 }
-                0x0000_10a1 => { // Sensor
-                    let s = as_string();
-                    if !s.is_empty() { md.insert("sensor_name".into(), s.into()); }
-                }
-                0x0000_200d => { // ColorTemperature
-                    if let Some(v) = as_f64() { md.insert("white_balance_kelvin".into(), v.into()); }
-                }
-                0x0000_403b => { // ISO
-                    if let Some(v) = as_u32() { md.insert("iso".into(), v.into()); }
-                }
-                0x0000_406a => { // FNumber
-                    if let Some(v) = as_f64() { md.insert("f_number".into(), v.into()); }
-                }
-                0x0000_406b => { // FocalLength
-                    if let Some(v) = as_f64() { md.insert("lens_focal_length".into(), v.into()); }
-                }
-
+                0x0000_1006 => { let s = as_string(); if !s.is_empty() { md.insert("camera_pin".into(), s.into()); } } // SerialNumber
+                0x0000_1023 => { let d = as_string(); if !d.is_empty() { md.insert("local_date".into(), d.into()); } } // DateCreated (YYYYMMDD)
+                0x0000_1024 => { let t = as_string(); if !t.is_empty() { md.insert("local_time".into(), t.into()); } } // TimeCreated (HHMMSS)
+                0x0000_1025 => { let fw = as_string(); if !fw.is_empty() { md.insert("camera_firmware_version".into(), fw.into()); } }
+                0x0000_1036 => { if let Some(v) = as_f64() { md.insert("pixel_aspect_ratio".into(), v.into()); } }
+                0x0000_106e => { let s = as_string(); if !s.is_empty() { md.insert("lens_mount".into(), s.into()); } }
+                0x0000_1070 => { let s = as_string(); if !s.is_empty() { md.insert("lens_name".into(), s.into()); } }
+                0x0000_10a1 => { let s = as_string(); if !s.is_empty() { md.insert("sensor_name".into(), s.into()); } }
+                0x0000_200d => { if let Some(v) = as_f64() { md.insert("white_balance_kelvin".into(), v.into()); } }
+                0x0000_403b => { if let Some(v) = as_u32() { md.insert("iso".into(), v.into()); } }
+                0x0000_406a => { if let Some(v) = as_f64() { md.insert("f_number".into(), v.into()); } }
+                0x0000_406b => { if let Some(v) = as_f64() { md.insert("lens_focal_length".into(), v.into()); } }
                 _ => {
-                    // Improved unknown-tag storage:
                     let key = format!("tag_0x{:08x}", tag_id);
                     match type_id {
                         2 => { md.insert(key, as_string().into()); }
@@ -458,8 +347,6 @@ impl Nikon {
     }
 
     /// Parse per-frame metadata from NRAW frame data
-    /// Input: Raw bytes of frame (contains NRFH with NRMT atoms inside)
-    /// Returns per-frame tag map
     pub fn parse_nev_frame_metadata(&self, data: &[u8], map: &mut GroupedTagMap, options: &crate::InputOptions) -> Result<()> {
         let mut md = serde_json::Map::<String, serde_json::Value>::new();
         if let Some(map) = map.get(&GroupId::Default) {
@@ -484,7 +371,6 @@ impl Nikon {
 
             let mut magic = [0u8; 4];
             cursor.read_exact(&mut magic)?;
-            // println!("{}{}{}{}", magic[0] as char, magic[1] as char, magic[2] as char, magic[3] as char);
 
             if &magic == b"NRMT" && atom_size >= 13 {
                 // NRMT structure: [size:4]["NRMT":4][tag_id:4][pad:1][value:N]
@@ -498,18 +384,14 @@ impl Nikon {
 
                 match tag_id {
                     0x0110_0100 => { // ImageWidth
-                        // Prefer u32 if possible; fallback to heuristic decode
                         let v = u32::from_be_bytes(value_bytes[0..4].try_into().unwrap());
                         md.insert("image_width".into(), (v as u64).into());
                     }
-                    0x0110_0101 => { // ImageHeight (ImageLength)
+                    0x0110_0101 => { // ImageHeight
                         let v = u32::from_be_bytes(value_bytes[0..4].try_into().unwrap());
                         md.insert("image_height".into(), (v as u64).into());
                     }
-
-                    // ---- NEW: CFAPattern is UNDEFINED bytes; don't parse as float ----
                     0x0110_A302 => { // CFAPattern
-                        // Also store as byte array for convenience
                         let arr: Vec<serde_json::Value> = value_bytes.iter().map(|&b| (b as u64).into()).collect();
                         md.insert("cfa_pattern".into(), serde_json::Value::Array(arr));
                     }
@@ -548,7 +430,6 @@ impl Nikon {
                             md.insert("orientation".into(), val.into());
                         }
                     }
-
                     // Nikon-specific tags (group 0x0190)
                     0x0190_0010 => { // White Balance Kelvin
                         if let Ok(val) = value_cursor.read_u16::<BigEndian>() {
@@ -568,7 +449,6 @@ impl Nikon {
                             }
                         }
                     }
-
                     _ => {
                         // Store unknown with hex ID
                         let key = format!("tag_0x{:08x}", tag_id);
