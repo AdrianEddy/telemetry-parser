@@ -28,7 +28,7 @@ impl RedR3d {
         true
     }
     pub fn possible_extensions() -> Vec<&'static str> {
-        vec!["r3d", "nev", "mp4", "mov", "mxf"]
+        vec!["r3d", "mp4", "mov", "mxf"]
     }
     pub fn frame_readout_time(&self) -> Option<f64> {
         None
@@ -293,7 +293,7 @@ impl RedR3d {
         Ok(samples)
     }
 
-    fn parse_meta(&mut self, mut data: &[u8], map: &mut GroupedTagMap, options: &crate::InputOptions) -> Result<()> {
+    pub fn parse_meta(&mut self, mut data: &[u8], map: &mut GroupedTagMap, options: &crate::InputOptions) -> Result<()> {
         let mut md = serde_json::Map::<String, serde_json::Value>::new();
         while let Ok(size) = data.read_u16::<BigEndian>() {
             if size > 2 {
@@ -368,6 +368,7 @@ impl RedR3d {
                         continue;
                     }
                 }
+                //println!("Type: {}, id: {}", d[0], id);
 
                 let mut items = vec![];
                 for i in 0..num_items {
@@ -378,7 +379,7 @@ impl RedR3d {
                         0x40 => serde_json::to_value((&d[2 + i*2..]).read_i16::<BigEndian>()?),
                         0x60 => serde_json::to_value((&d[2 + i*4..]).read_u32::<BigEndian>()?),
                         _ => {
-                            // log::debug!("Type: {}, id: {}, hex: {}", d[0], id, pretty_hex::pretty_hex(&d));
+                            //println!("Type: {}, id: {}, hex: {}", d[0], id, pretty_hex::pretty_hex(&d));
                             Err(serde_json::Error::io(ErrorKind::InvalidData.into()))
                         }
                     };

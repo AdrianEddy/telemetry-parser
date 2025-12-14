@@ -22,6 +22,7 @@ mod cooke;
 mod senseflow;
 mod freefly;
 mod canon;
+mod nikon;
 
 pub mod tags_impl;
 pub mod util;
@@ -148,6 +149,7 @@ impl_formats! {
     GoPro     => gopro::GoPro,
     Sony      => sony::Sony,
     Canon     => canon::Canon,
+    Nikon     => nikon::Nikon,
     Dji       => dji::Dji,
     Xtra      => xtra::Xtra,
     Insta360  => insta360::Insta360,
