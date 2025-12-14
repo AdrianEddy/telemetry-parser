@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-use std::fmt::{Debug};
+use std::fmt::Debug;
 
 pub const FIX_MULT : i32 = 27;
 
@@ -36,6 +36,7 @@ fn is_saturated(v: [i8; 3], lim: i8) -> bool {
 pub struct DecompressResult {
     pub new_state: State,
     pub bytes_eaten: usize,
+    #[allow(dead_code)]
     pub quats_put: usize,
 }
 
