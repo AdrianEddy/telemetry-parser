@@ -83,7 +83,7 @@ macro_rules! impl_formats {
                 if buf.is_empty() {
                     return Err(Error::new(ErrorKind::Other, "File is empty or there was an error trying to load it."));
                 }
-                let ext = filepath.as_ref().extension().map(|x| x.to_ascii_lowercase().to_string_lossy().to_owned().to_string());
+                let ext = Some(filesystem::get_extension(filepath.as_ref().to_str().unwrap_or_default()).to_ascii_lowercase()).filter(|x| !x.is_empty());
                 {$(
                     let exts = <$class>::possible_extensions();
                     let mut check = true;
