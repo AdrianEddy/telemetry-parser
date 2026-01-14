@@ -87,7 +87,7 @@ impl GyroflowProtobuf {
                     }
 
                     if let Some(ref frame) = parsed.frame {
-                        let ts = frame.start_timestamp_us as f64 * 1e-6;
+                        //let ts = frame.start_timestamp_us as f64 * 1e-6;
                         // if first_timestamp.is_none() {
                         //     first_timestamp = Some(ts);
                         // }
@@ -98,13 +98,13 @@ impl GyroflowProtobuf {
                         let mut mag  = Vec::with_capacity(frame.imu.len());
                         for imu in &frame.imu {
                             gyro.push(TimeVector3 {
-                                t: ts,
+                                t: imu.sample_timestamp_us as f64 * 1e-6,
                                 x: imu.gyroscope_x as f64,
                                 y: imu.gyroscope_y as f64,
                                 z: imu.gyroscope_z as f64
                             });
                             acc.push(TimeVector3 {
-                                t: ts,
+                                t: imu.sample_timestamp_us as f64 * 1e-6,
                                 x: imu.accelerometer_x as f64,
                                 y: imu.accelerometer_y as f64,
                                 z: imu.accelerometer_z as f64
@@ -112,7 +112,7 @@ impl GyroflowProtobuf {
                             match (imu.magnetometer_x, imu.magnetometer_y, imu.magnetometer_z) {
                                 (Some(x), Some(y), Some(z)) => {
                                     mag.push(TimeVector3 {
-                                        t: ts,
+                                        t: imu.sample_timestamp_us as f64 * 1e-6,
                                         x: x as f64,
                                         y: y as f64,
                                         z: z as f64
