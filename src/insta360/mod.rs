@@ -155,6 +155,7 @@ impl Insta360 {
                 Some("Insta360 OneR")  => "Xyz",
                 Some("Insta360 OneRS") => "Xyz",
                 Some("Insta360 X4")    => "yzX",
+                Some("Insta360 X5")    => "yzX",
                 _                      => "Xyz"
             }
         } else {
@@ -239,7 +240,7 @@ impl Insta360 {
             offset_v3[8], offset_v3[9], offset_v3[10], offset_v3[11], offset_v3[12], offset_v3[13], offset_v3[14], offset_v3[15],
             offset_v3[16], offset_v3[17], offset_v3[18], offset_v3[19], offset_v3[20]);
         
-        let cx_fix = if model == "X4" { 2.0 } else { 1.0 };  // X4: cx = 3987.5, w = 1920, lens_width = 16000.0, cy = 3012.7, h = 1920, lens_height = 6000.0
+        let cx_fix = if model == "X4" || model == "X5" { 2.0 } else { 1.0 };  // X4: cx = 3987.5, w = 1920, lens_width = 16000.0, cy = 3012.7, h = 1920, lens_height = 6000.0
         let c_ratio = (
             size.0 as f64 / lens_width * cx_fix,
             size.1 as f64 / lens_height
