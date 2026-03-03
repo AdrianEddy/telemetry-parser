@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 #[cfg(target_os = "android")]
 mod base {
     pub type FilesystemBase = jni::JavaVM;
-    pub fn get_base() -> FilesystemBase { unsafe { jni::JavaVM::from_raw(ndk_context::android_context().vm().cast()) }.unwrap() }
+    pub fn get_base() -> FilesystemBase { unsafe { jni::JavaVM::from_raw(ndk_context::android_context().vm().cast()) } }
 }
 #[cfg(not(target_os = "android"))]
 mod base {
