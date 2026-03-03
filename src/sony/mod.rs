@@ -57,13 +57,16 @@ impl Sony {
                 frame_readout_time: None
             });
         }
-        /*if buffer.len() > 4 && buffer[..4] == [0x06, 0x0E, 0x2B, 0x34] { // MXF header
+        if buffer.len() > 4
+          && buffer[..4] == [0x06, 0x0E, 0x2B, 0x34] // MXF header
+          && memmem::find(buffer, &hex_literal::hex!("060e2b34 01020101 0d010301 17010201")).is_some() // Ancillary, SMPTE ST 436
+          && memmem::find(buffer, b"MPC-3628").is_some() { // VENICE 2 model number
             return Some(Self {
-                model: None,
+                model: Some("VENICE 2".to_string()),
                 lens: None,
                 frame_readout_time: None
             });
-        }*/
+        }
         None
     }
 

@@ -6,7 +6,7 @@ use quick_xml::Reader;
 
 #[allow(dead_code)]
 pub fn parse_from_file(stream: &mut std::fs::File) -> std::io::Result<Metadata> {
-    let ctx = mp4parse::read_mp4(stream)?;
+    let ctx = mp4parse::read_mp4(stream, mp4parse::ParseStrictness::Permissive)?;
 
     if let Some(Ok(md)) = ctx.metadata {
         if let Some(mp4parse::XmlBox::StringXmlBox(x)) = md.xml {
