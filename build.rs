@@ -2,6 +2,8 @@ use std::io::Result;
 fn main() -> Result<()> {
     // prost_build::compile_protos(&["src/dji/dvtm_wm169.proto"], &["src/dji/"])?;
     // prost_build::compile_protos(&["src/dji/dvtm_eagle4_wa530.proto"], &["src/dji/"])?;
+    // prost_build::compile_protos(&["src/dji/dvtm_ac203.proto"], &["src/dji/"])?;
+    // prost_build::compile_protos(&["src/dji/dvtm_ac204.proto"], &["src/dji/"])?;
     // prost_build::compile_protos(&["src/dji/dvtm_ow001.proto"], &["src/dji/"])?;
     // prost_build::compile_protos(&["src/gyroflow/gyroflow.proto"], &["src/gyroflow/"])?;
     Ok(())
