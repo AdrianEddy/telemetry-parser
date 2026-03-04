@@ -1,0 +1,7 @@
+[package]
+name = "proto-gen"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+prost-build = "0.14"
