@@ -3,6 +3,7 @@
 
 pub mod dvtm_wm169;
 pub mod dvtm_eagle4_wa530;
+pub mod dvtm_ow001;
 
 use std::io::*;
 use std::convert::TryInto;
@@ -202,6 +203,7 @@ enum DeviceProtobuf {
     Wm169,
     Wa530,
     Ac20x,
+    Ow001,
 }
 
 impl Dji {
@@ -219,6 +221,293 @@ impl Dji {
     }
     pub fn normalize_imu_orientation(v: String) -> String {
         v
+    }
+
+    fn parse_ac20x_like(&mut self, data: &[u8], info: &SampleInfo, options: &crate::InputOptions) -> Option<GroupedTagMap> {
+        let mut tag_map = GroupedTagMap::new();
+
+        if let Some(serial) = get_string_at_path(data, &[1, 1, 5]) {
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::SerialNumber, "Serial number", String, |v| v.to_string(), serial, vec![]), options);
+        }
+        if let Some(model) = get_string_at_path(data, &[1, 1, 10]) {
+            let model = model.replace("DJI ", "");
+            let model = model.replace('\n', " ").replace('\r', " ");
+            let model = model.split_whitespace().collect::<Vec<_>>().join(" ");
+            if self.model.is_none() {
+                self.model = Some(model.clone());
+            }
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::Custom("Model".into()), "Model", String, |v| v.to_string(), model, vec![]), options);
+        }
+
+        let frame_width = get_u64_at_path(data, &[2, 3, 1]).map(|v| v as u32);
+        let frame_height = get_u64_at_path(data, &[2, 3, 2]).map(|v| v as u32);
+        let frame_rate = get_f64_at_path(data, &[2, 3, 3]);
+        if let Some(w) = frame_width {
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::Custom("FrameWidth".into()), "Frame width", u32, |v| format!("{:?}", v), w, vec![]), options);
+        }
+        if let Some(h) = frame_height {
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::Custom("FrameHeight".into()), "Frame height", u32, |v| format!("{:?}", v), h, vec![]), options);
+        }
+        if let Some(fps) = frame_rate {
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::FrameRate, "Frame rate", f64, |v| format!("{:.3}", v), fps, vec![]), options);
+        }
+        if frame_width.is_some() || frame_height.is_some() || frame_rate.is_some() {
+            let mut obj = serde_json::Map::new();
+            if let Some(w) = frame_width { obj.insert("width".into(), serde_json::Value::from(w)); }
+            if let Some(h) = frame_height { obj.insert("height".into(), serde_json::Value::from(h)); }
+            if let Some(fps) = frame_rate { obj.insert("fps".into(), serde_json::Value::from(fps)); }
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::Custom("FrameInfo".into()), "Frame info", Json, |v| serde_json::to_string(v).unwrap(), serde_json::Value::Object(obj), vec![]), options);
+        }
+
+        if let Some(iso) = get_u64_at_path(data, &[3, 2, 2, 1]) {
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::Exposure, TagId::ISOValue, "ISO", u32, |v| v.to_string(), iso as u32, vec![]), options);
+        }
+        if let Some(shutter) = get_f64_at_path(data, &[3, 2, 4, 1]) {
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::Exposure, TagId::ShutterSpeed, "Shutter speed", f64, |v| format!("{:.6}", v), shutter, vec![]), options);
+        }
+        if let Some(temp) = get_f64_at_path(data, &[3, 2, 6, 1]) {
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::Colors, TagId::Custom("ColorTemperature".into()), "Color temperature", f64, |v| format!("{:.1}", v), temp, vec![]), options);
+        }
+
+        let coord_units = get_f64_at_path(data, &[3, 4, 2, 1, 1]);
+        let mut gps_lat = get_f64_at_path(data, &[3, 4, 2, 1, 2]);
+        let mut gps_lon = get_f64_at_path(data, &[3, 4, 2, 1, 3]);
+        if let (Some(units), Some(lat), Some(lon)) = (coord_units, gps_lat, gps_lon) {
+            if units.abs() > 0.0 && (lat.abs() > 180.0 || lon.abs() > 180.0) {
+                let scaled_lat = if units > 1.0 { lat / units } else { lat * units };
+                let scaled_lon = if units > 1.0 { lon / units } else { lon * units };
+                gps_lat = Some(scaled_lat);
+                gps_lon = Some(scaled_lon);
+            }
+        }
+
+        if let Some(units) = coord_units {
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("CoordinateUnits".into()), "Coordinate units", f64, |v| format!("{:?}", v), units, vec![]), options);
+        }
+        if let Some(lat) = gps_lat {
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("GPSLatitude".into()), "GPS latitude", f64, |v| format!("{:.7}", v), lat, vec![]), options);
+        }
+        if let Some(lon) = gps_lon {
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("GPSLongitude".into()), "GPS longitude", f64, |v| format!("{:.7}", v), lon, vec![]), options);
+        }
+
+        let gps_alt_m = get_altitude_m_at_path(data, &[3, 4, 2, 2]);
+        if let Some(alt) = gps_alt_m {
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("GPSAltitude".into()), "GPS altitude", f64, |v| format!("{:.3}", v), alt, vec![]), options);
+        }
+
+        let gps_status = get_u64_at_path(data, &[3, 4, 2, 3]);
+        if let Some(status) = gps_status {
+            let status_str = match status {
+                0 => "GPS_NORMAL".to_string(),
+                1 => "GPS_INVALID".to_string(),
+                2 => "GPS_RTK".to_string(),
+                _ => format!("GPS_UNKNOWN({})", status),
+            };
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("GPSStatus".into()), "GPS status", String, |v| v.to_string(), status_str, vec![]), options);
+        }
+        let gps_alt_type = get_u64_at_path(data, &[3, 4, 2, 4]);
+        if let Some(alt_type) = gps_alt_type {
+            let alt_type_str = match alt_type {
+                0 => "PRESSURE_ALTITUDE".to_string(),
+                1 => "GPS_FUSION_ALTITUDE".to_string(),
+                2 => "RTK_ALTITUDE".to_string(),
+                _ => format!("ALTITUDE_UNKNOWN({})", alt_type),
+            };
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("GPSAltitudeType".into()), "GPS altitude type", String, |v| v.to_string(), alt_type_str, vec![]), options);
+        }
+        let has_gps_time = get_u64_at_path(data, &[3, 4, 2, 5]).map(|v| v != 0);
+        if let Some(has_time) = has_gps_time {
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("HasGpsTime".into()), "Has GPS time", bool, |v| format!("{:?}", v), has_time, vec![]), options);
+        }
+
+        let gps_dt = get_string_at_path(data, &[3, 4, 2, 6, 1]);
+        if let Some(dt) = gps_dt.clone() {
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("GPSDateTime".into()), "GPS datetime", String, |v| v.to_string(), dt, vec![]), options);
+        }
+
+        if let (Some(lat), Some(lon)) = (gps_lat, gps_lon) {
+            let unix_ts = match (gps_dt.as_ref(), has_gps_time) {
+                (Some(_), Some(false)) => 0.0,
+                (Some(v), _) => parse_gps_datetime(v).unwrap_or(0.0),
+                (None, _) => 0.0,
+            };
+            let is_acquired = match gps_status {
+                Some(0) | Some(2) => true,
+                Some(_) => false,
+                None => false,
+            };
+            let gps = vec![GpsData {
+                is_acquired,
+                unix_timestamp: unix_ts,
+                lat,
+                lon,
+                speed: 0.0,
+                track: 0.0,
+                altitude: gps_alt_m.unwrap_or(0.0),
+            }];
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Data, "GPS data", Vec_GpsData, |v| format!("{:?}", v), gps, vec![]), options);
+        }
+
+        if let Some((ax, ay, az)) = parse_ac20x_accel(data) {
+            let t = info.timestamp_ms / 1000.0;
+            let acc = vec![TimeVector3 { t, x: ax as f64, y: ay as f64, z: az as f64 }];
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), acc, vec![]), options);
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(), Vec::new()), options);
+            util::insert_tag(&mut tag_map, tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation", String, |v| v.to_string(), "XYZ".into(), Vec::new()), options);
+        }
+
+        if tag_map.is_empty() {
+            None
+        } else {
+            Some(tag_map)
+        }
+    }
+
+    fn parse_ow001(&mut self, parsed: &dvtm_ow001::ProductMeta, info: &SampleInfo, options: &crate::InputOptions, fps: &mut f64, sensor_fps: &mut f64, sample_rate: &mut f64) -> Option<GroupedTagMap> {
+        let mut tag_map = GroupedTagMap::new();
+
+        if let Some(ref clip) = parsed.clip_meta {
+            if let Some(ref header) = clip.clip_meta_header {
+                if !header.product_sn.is_empty() {
+                    util::insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::SerialNumber, "Serial number", String, |v| v.to_string(), header.product_sn.clone(), vec![]), options);
+                }
+                if !header.product_name.is_empty() {
+                    let model = header.product_name.replace("DJI ", "").replace('\n', " ").replace('\r', " ");
+                    if self.model.is_none() {
+                        self.model = Some(model.clone());
+                    }
+                    util::insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::Custom("Model".into()), "Model", String, |v| v.to_string(), model, vec![]), options);
+                }
+            }
+
+            if let Some(v) = clip.sensor_fps.as_ref().map(|h| h.sensor_frame_rate as f64) {
+                *sensor_fps = v;
+            }
+            if let Some(v) = clip.imu_sampling_rate.as_ref().map(|h| h.imu_sampling_rate as f64) {
+                *sample_rate = v;
+            }
+        }
+
+        if let Some(ref stream) = parsed.stream_meta {
+            if let Some(ref meta) = stream.video_stream_meta {
+                *fps = meta.framerate as f64;
+
+                let frame_width = meta.resolution_width;
+                let frame_height = meta.resolution_height;
+                let frame_rate = meta.framerate as f64;
+
+                util::insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::Custom("FrameWidth".into()), "Frame width", u32, |v| format!("{:?}", v), frame_width, vec![]), options);
+                util::insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::Custom("FrameHeight".into()), "Frame height", u32, |v| format!("{:?}", v), frame_height, vec![]), options);
+                util::insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::FrameRate, "Frame rate", f64, |v| format!("{:.3}", v), frame_rate, vec![]), options);
+
+                let mut obj = serde_json::Map::new();
+                obj.insert("width".into(), serde_json::Value::from(frame_width));
+                obj.insert("height".into(), serde_json::Value::from(frame_height));
+                obj.insert("fps".into(), serde_json::Value::from(frame_rate));
+                util::insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::Custom("FrameInfo".into()), "Frame info", Json, |v| serde_json::to_string(v).unwrap(), serde_json::Value::Object(obj), vec![]), options);
+            }
+        }
+
+        if let Some(ref frame) = parsed.frame_meta {
+            if let Some(ref camera) = frame.camera_frame_meta {
+                if let Some(ref iso) = camera.iso {
+                    util::insert_tag(&mut tag_map, tag!(parsed GroupId::Exposure, TagId::ISOValue, "ISO", u32, |v| v.to_string(), iso.iso.round() as u32, vec![]), options);
+                }
+                if let Some(ref shutter) = camera.exposure_time {
+                    if shutter.exposure_time.len() >= 2 && shutter.exposure_time[1] != 0 {
+                        let val = shutter.exposure_time[0] as f64 / shutter.exposure_time[1] as f64;
+                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::Exposure, TagId::ShutterSpeed, "Shutter speed", f64, |v| format!("{:.6}", v), val, vec![]), options);
+                    }
+                }
+                if let Some(ref temp) = camera.white_balance_cct {
+                    util::insert_tag(&mut tag_map, tag!(parsed GroupId::Colors, TagId::Custom("ColorTemperature".into()), "Color temperature", f64, |v| format!("{:.1}", v), temp.white_balance_cct as f64, vec![]), options);
+                }
+                if let Some(ref acc) = camera.accelerometer {
+                    let t = info.timestamp_ms / 1000.0;
+                    let acc_vec = vec![TimeVector3 { t, x: acc.accelerometer_x as f64, y: acc.accelerometer_y as f64, z: acc.accelerometer_z as f64 }];
+                    util::insert_tag(&mut tag_map, tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), acc_vec, vec![]), options);
+                    util::insert_tag(&mut tag_map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(), Vec::new()), options);
+                    util::insert_tag(&mut tag_map, tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation", String, |v| v.to_string(), "XYZ".into(), Vec::new()), options);
+                }
+            }
+
+            if let Some(ref gps_frame) = frame.gps_frame_meta {
+                if let Some(ref gps_basic) = gps_frame.gps_basic {
+                    let mut gps_lat = gps_basic.gps_coordinates.as_ref().map(|c| c.latitude);
+                    let mut gps_lon = gps_basic.gps_coordinates.as_ref().map(|c| c.longitude);
+                    if let Some(ref coord) = gps_basic.gps_coordinates {
+                        if coord.position_coord_unit == dvtm_ow001::position_coord::PositionCoordUnit::UnitRad as i32 {
+                            if let Some(lat) = gps_lat { gps_lat = Some(lat.to_degrees()); }
+                            if let Some(lon) = gps_lon { gps_lon = Some(lon.to_degrees()); }
+                        }
+                    }
+
+                    if let Some(lat) = gps_lat {
+                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("GPSLatitude".into()), "GPS latitude", f64, |v| format!("{:.7}", v), lat, vec![]), options);
+                    }
+                    if let Some(lon) = gps_lon {
+                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("GPSLongitude".into()), "GPS longitude", f64, |v| format!("{:.7}", v), lon, vec![]), options);
+                    }
+
+                    let gps_alt_m = gps_basic.gps_altitude_mm as f64 / 1000.0;
+                    if gps_alt_m != 0.0 {
+                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("GPSAltitude".into()), "GPS altitude", f64, |v| format!("{:.3}", v), gps_alt_m, vec![]), options);
+                    }
+
+                    let status = gps_basic.gps_status as u64;
+                    let status_str = match status {
+                        0 => "GPS_NORMAL".to_string(),
+                        1 => "GPS_INVALID".to_string(),
+                        2 => "GPS_RTK".to_string(),
+                        _ => format!("GPS_UNKNOWN({})", status),
+                    };
+                    util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("GPSStatus".into()), "GPS status", String, |v| v.to_string(), status_str, vec![]), options);
+
+                    let alt_type = gps_basic.gps_altitude_type as u64;
+                    let alt_type_str = match alt_type {
+                        0 => "PRESSURE_ALTITUDE".to_string(),
+                        1 => "GPS_FUSION_ALTITUDE".to_string(),
+                        2 => "RTK_ALTITUDE".to_string(),
+                        _ => format!("ALTITUDE_UNKNOWN({})", alt_type),
+                    };
+                    util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("GPSAltitudeType".into()), "GPS altitude type", String, |v| v.to_string(), alt_type_str, vec![]), options);
+
+                    let has_gps_time = gps_basic.has_gps_time;
+                    util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("HasGpsTime".into()), "Has GPS time", bool, |v| format!("{:?}", v), has_gps_time, vec![]), options);
+
+                    let gps_dt = gps_basic.gps_time.as_ref().map(|d| d.time.clone());
+                    if let Some(ref dt) = gps_dt {
+                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("GPSDateTime".into()), "GPS datetime", String, |v| v.to_string(), dt.clone(), vec![]), options);
+                    }
+
+                    if let (Some(lat), Some(lon)) = (gps_lat, gps_lon) {
+                        let unix_ts = match (gps_dt.as_ref(), has_gps_time) {
+                            (Some(_), false) => 0.0,
+                            (Some(v), _) => parse_gps_datetime(v).unwrap_or(0.0),
+                            (None, _) => 0.0,
+                        };
+                        let is_acquired = matches!(status, 0 | 2);
+                        let gps = vec![GpsData {
+                            is_acquired,
+                            unix_timestamp: unix_ts,
+                            lat,
+                            lon,
+                            speed: 0.0,
+                            track: 0.0,
+                            altitude: gps_alt_m,
+                        }];
+                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Data, "GPS data", Vec_GpsData, |v| format!("{:?}", v), gps, vec![]), options);
+                    }
+                }
+            }
+        }
+
+        if tag_map.is_empty() {
+            None
+        } else {
+            Some(tag_map)
+        }
     }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P, _options: &crate::InputOptions) -> Option<Self> {
@@ -270,6 +559,8 @@ impl Dji {
                 let head = if data.len() > 128 { &data[0..128] } else { data };
                 if memmem::find(head, b"ac203").is_some() || memmem::find(head, b"ac204").is_some() {
                     which_proto = DeviceProtobuf::Ac20x;
+                } else if memmem::find(head, b"OW001").is_some() || memmem::find(head, b"ow001").is_some() {
+                    which_proto = DeviceProtobuf::Ow001;
                 } else if memmem::find(head, b"WA530").is_some() || memmem::find(head, b"wa530").is_some() {
                     which_proto = DeviceProtobuf::Wa530;
                 } else {
@@ -437,142 +728,25 @@ impl Dji {
                     Err(e) => { log::warn!("Failed to parse protobuf: {:?}", e); }
                 },
                 DeviceProtobuf::Ac20x => {
-                    let mut tag_map = GroupedTagMap::new();
-
-                    if let Some(serial) = get_string_at_path(data, &[1, 1, 5]) {
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::SerialNumber, "Serial number", String, |v| v.to_string(), serial, vec![]), &options);
-                    }
-                    if let Some(model) = get_string_at_path(data, &[1, 1, 10]) {
-                        let model = model.replace("DJI ", "");
-                        let model = model.replace('\n', " ").replace('\r', " ");
-                        let model = model.split_whitespace().collect::<Vec<_>>().join(" ");
-                        if self.model.is_none() {
-                            self.model = Some(model.clone());
-                        }
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::Custom("Model".into()), "Model", String, |v| v.to_string(), model, vec![]), &options);
-                    }
-
-                    let frame_width = get_u64_at_path(data, &[2, 3, 1]).map(|v| v as u32);
-                    let frame_height = get_u64_at_path(data, &[2, 3, 2]).map(|v| v as u32);
-                    let frame_rate = get_f64_at_path(data, &[2, 3, 3]);
-                    if let Some(w) = frame_width {
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::Custom("FrameWidth".into()), "Frame width", u32, |v| format!("{:?}", v), w, vec![]), &options);
-                    }
-                    if let Some(h) = frame_height {
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::Custom("FrameHeight".into()), "Frame height", u32, |v| format!("{:?}", v), h, vec![]), &options);
-                    }
-                    if let Some(fps) = frame_rate {
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::FrameRate, "Frame rate", f64, |v| format!("{:.3}", v), fps, vec![]), &options);
-                    }
-                    if frame_width.is_some() || frame_height.is_some() || frame_rate.is_some() {
-                        let mut obj = serde_json::Map::new();
-                        if let Some(w) = frame_width { obj.insert("width".into(), serde_json::Value::from(w)); }
-                        if let Some(h) = frame_height { obj.insert("height".into(), serde_json::Value::from(h)); }
-                        if let Some(fps) = frame_rate { obj.insert("fps".into(), serde_json::Value::from(fps)); }
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::Default, TagId::Custom("FrameInfo".into()), "Frame info", Json, |v| serde_json::to_string(v).unwrap(), serde_json::Value::Object(obj), vec![]), &options);
-                    }
-
-                    if let Some(shutter) = get_f64_at_path(data, &[3, 2, 4, 1]) {
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::Exposure, TagId::ShutterSpeed, "Shutter speed", f64, |v| format!("{:.6}", v), shutter, vec![]), &options);
-                    }
-                    if let Some(temp) = get_f64_at_path(data, &[3, 2, 6, 1]) {
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::Colors, TagId::Custom("ColorTemperature".into()), "Color temperature", f64, |v| format!("{:.1}", v), temp, vec![]), &options);
-                    }
-
-                    let coord_units = get_f64_at_path(data, &[3, 4, 2, 1, 1]);
-                    let mut gps_lat = get_f64_at_path(data, &[3, 4, 2, 1, 2]);
-                    let mut gps_lon = get_f64_at_path(data, &[3, 4, 2, 1, 3]);
-                    if let (Some(units), Some(lat), Some(lon)) = (coord_units, gps_lat, gps_lon) {
-                        if units.abs() > 0.0 && (lat.abs() > 180.0 || lon.abs() > 180.0) {
-                            let scaled_lat = if units > 1.0 { lat / units } else { lat * units };
-                            let scaled_lon = if units > 1.0 { lon / units } else { lon * units };
-                            gps_lat = Some(scaled_lat);
-                            gps_lon = Some(scaled_lon);
-                        }
-                    }
-
-                    if let Some(units) = coord_units {
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("CoordinateUnits".into()), "Coordinate units", f64, |v| format!("{:?}", v), units, vec![]), &options);
-                    }
-                    if let Some(lat) = gps_lat {
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("GPSLatitude".into()), "GPS latitude", f64, |v| format!("{:.7}", v), lat, vec![]), &options);
-                    }
-                    if let Some(lon) = gps_lon {
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("GPSLongitude".into()), "GPS longitude", f64, |v| format!("{:.7}", v), lon, vec![]), &options);
-                    }
-
-                    let gps_alt_m = get_altitude_m_at_path(data, &[3, 4, 2, 2]);
-                    if let Some(alt) = gps_alt_m {
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("GPSAltitude".into()), "GPS altitude", f64, |v| format!("{:.3}", v), alt, vec![]), &options);
-                    }
-
-                    let gps_status = get_u64_at_path(data, &[3, 4, 2, 3]);
-                    if let Some(status) = gps_status {
-                        let status_str = match status {
-                            0 => "GPS_NORMAL".to_string(),
-                            1 => "GPS_INVALID".to_string(),
-                            2 => "GPS_RTK".to_string(),
-                            _ => format!("GPS_UNKNOWN({})", status),
-                        };
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("GPSStatus".into()), "GPS status", String, |v| v.to_string(), status_str, vec![]), &options);
-                    }
-                    let gps_alt_type = get_u64_at_path(data, &[3, 4, 2, 4]);
-                    if let Some(alt_type) = gps_alt_type {
-                        let alt_type_str = match alt_type {
-                            0 => "PRESSURE_ALTITUDE".to_string(),
-                            1 => "GPS_FUSION_ALTITUDE".to_string(),
-                            2 => "RTK_ALTITUDE".to_string(),
-                            _ => format!("ALTITUDE_UNKNOWN({})", alt_type),
-                        };
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("GPSAltitudeType".into()), "GPS altitude type", String, |v| v.to_string(), alt_type_str, vec![]), &options);
-                    }
-                    let has_gps_time = get_u64_at_path(data, &[3, 4, 2, 5]).map(|v| v != 0);
-                    if let Some(has_time) = has_gps_time {
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("HasGpsTime".into()), "Has GPS time", bool, |v| format!("{:?}", v), has_time, vec![]), &options);
-                    }
-
-                    let gps_dt = get_string_at_path(data, &[3, 4, 2, 6, 1]);
-                    if let Some(dt) = gps_dt.clone() {
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Custom("GPSDateTime".into()), "GPS datetime", String, |v| v.to_string(), dt, vec![]), &options);
-                    }
-
-                    if let (Some(lat), Some(lon)) = (gps_lat, gps_lon) {
-                        let unix_ts = match (gps_dt.as_ref(), has_gps_time) {
-                            (Some(_), Some(false)) => 0.0,
-                            (Some(v), _) => parse_gps_datetime(v).unwrap_or(0.0),
-                            (None, _) => 0.0,
-                        };
-                        let is_acquired = match gps_status {
-                            Some(0) | Some(2) => true,
-                            Some(_) => false,
-                            None => false,
-                        };
-                        let gps = vec![GpsData {
-                            is_acquired,
-                            unix_timestamp: unix_ts,
-                            lat,
-                            lon,
-                            speed: 0.0,
-                            track: 0.0,
-                            altitude: gps_alt_m.unwrap_or(0.0),
-                        }];
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::GPS, TagId::Data, "GPS data", Vec_GpsData, |v| format!("{:?}", v), gps, vec![]), &options);
-                    }
-
-                    if let Some((ax, ay, az)) = parse_ac20x_accel(data) {
-                        let t = info.timestamp_ms / 1000.0;
-                        let acc = vec![TimeVector3 { t, x: ax as f64, y: ay as f64, z: az as f64 }];
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), acc, vec![]), &options);
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(), Vec::new()), &options);
-                        util::insert_tag(&mut tag_map, tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation", String, |v| v.to_string(), "XYZ".into(), Vec::new()), &options);
-                    }
-                    if !tag_map.is_empty() {
+                    if let Some(tag_map) = self.parse_ac20x_like(data, &info, &options) {
                         info.tag_map = Some(tag_map);
                         samples.push(info);
                         if options.probe_only {
                             cancel_flag2.store(true, std::sync::atomic::Ordering::Relaxed);
                         }
                     }
+                },
+                DeviceProtobuf::Ow001 => match dvtm_ow001::ProductMeta::decode(data) {
+                    Ok(parsed) => {
+                        if let Some(tag_map) = self.parse_ow001(&parsed, &info, &options, &mut fps, &mut sensor_fps, &mut sample_rate) {
+                            info.tag_map = Some(tag_map);
+                            samples.push(info);
+                            if options.probe_only {
+                                cancel_flag2.store(true, std::sync::atomic::Ordering::Relaxed);
+                            }
+                        }
+                    },
+                    Err(e) => { log::warn!("Failed to parse protobuf: {:?}", e); }
                 },
             }
         }, cancel_flag)?;

@@ -1,0 +1,44 @@
+/** DJI Video Metadata For Specific Product (inferred) */
+// version = 02.01.13 (from sample clip metadata)
+// NOTE: This schema is inferred from observed field paths and ac20x conventions.
+// It is intentionally minimal and may be incomplete or inaccurate.
+
+syntax = "proto3";
+
+import "dvtm_library.proto";
+
+message ProductMeta {
+    ClipMeta   clip_meta   = 1;
+    StreamMeta stream_meta = 2;
+    FrameMeta  frame_meta  = 3;
+}
+
+message ClipMeta {
+    ClipMetaHeader  clip_meta_header  = 1;
+    ClipStreamsMeta clip_streams_meta = 2;
+    EisStatus       eis_status        = 9;
+    IMUSamplingRate imu_sampling_rate = 10;
+    SensorFrameRate sensor_fps        = 11;
+}
+
+message StreamMeta {
+    StreamMetaHeader stream_meta_header = 1;
+    VideoStreamMeta  video_stream_meta  = 3;
+}
+
+message FrameMeta {
+    FrameMetaHeader   frame_meta_header = 1;
+    FrameMetaOfCamera camera_frame_meta = 2;
+    FrameMetaOfGps    gps_frame_meta    = 4;
+}
+
+message FrameMetaOfCamera {
+    ISO             iso                = 2;
+    ExposureTime    exposure_time      = 4;
+    WhiteBalanceCCT white_balance_cct  = 6;
+    Accelerometer   accelerometer      = 10;
+}
+
+message FrameMetaOfGps {
+    GpsBasic gps_basic = 2;
+}
