@@ -4,18 +4,6 @@
 use std::io::Read;
 use std::sync::OnceLock;
 
-#[cfg(target_os = "android")]
-mod base {
-    pub type FilesystemBase = jni::JavaVM;
-    pub fn get_base() -> FilesystemBase { unsafe { jni::JavaVM::from_raw(ndk_context::android_context().vm().cast()) } }
-}
-#[cfg(not(target_os = "android"))]
-mod base {
-    pub type FilesystemBase = ();
-    pub fn get_base() -> FilesystemBase { () }
-}
-pub use base::*;
-
 static FILESYSTEM_FUNCTIONS: OnceLock<FilesystemFunctions> = OnceLock::new();
 
 #[derive(Debug)]
@@ -23,10 +11,10 @@ pub struct FilesystemFunctions {
     pub get_filename: fn(&str) -> String,
     pub get_folder: fn(&str) -> String,
     pub list_folder: fn(&str) -> Vec<(String, String)>, // -> Vec<(name, path)>
-    pub open_file: for<'a> fn(&'a FilesystemBase, &str) -> std::io::Result<FileWrapper<'a>>,
+    pub open_file: fn(&str) -> std::io::Result<FileWrapper>,
 }
 
-pub unsafe fn set_filesystem_functions<'a>(functions: FilesystemFunctions) {
+pub unsafe fn set_filesystem_functions(functions: FilesystemFunctions) {
     FILESYSTEM_FUNCTIONS.set(functions).expect("Functions can be set only once");
 }
 
@@ -91,13 +79,13 @@ pub fn list_folder(path: &str) -> Vec<(String, String)> {
 pub trait ReadSeek: std::io::Read + std::io::Seek {}
 impl<T: std::io::Read + std::io::Seek> ReadSeek for T {}
 
-pub struct FileWrapper<'a> {
-    pub file: Box<dyn ReadSeek + 'a>,
+pub struct FileWrapper {
+    pub file: Box<dyn ReadSeek>,
     pub size: usize,
 }
-pub fn open_file<'a>(_base: &'a FilesystemBase, path: &str) -> std::io::Result<FileWrapper<'a>> {
+pub fn open_file(path: &str) -> std::io::Result<FileWrapper> {
     if let Some(funcs) = FILESYSTEM_FUNCTIONS.get() {
-        return (funcs.open_file)(_base, path);
+        return (funcs.open_file)(path);
     }
     let file = std::fs::File::open(path)?;
     let size = file.metadata()?.len() as usize;
@@ -113,8 +101,7 @@ pub fn get_extension(path: &str) -> String {
 }
 
 pub fn read_file(path: &str) -> std::io::Result<Vec<u8>> {
-    let base = get_base();
-    let mut wrapper = open_file(&base, path)?;
+    let mut wrapper = open_file( path)?;
     let mut bytes = Vec::with_capacity(wrapper.size);
     wrapper.file.read_to_end(&mut bytes)?;
     Ok(bytes)

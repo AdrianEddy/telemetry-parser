@@ -18,13 +18,12 @@ fn is_numbers_only(buf: &[u8]) -> bool {
 }
 
 fn get_possible_paths(path: &str) -> Vec<String> {
-    let fs = filesystem::get_base();
     let filename = filesystem::get_filename(path);
 
     let mut ret = Vec::new();
     let mut buf = vec![0u8; 200];
 
-    if let Ok(mut f) = filesystem::open_file(&fs, &path) {
+    if let Ok(mut f) = filesystem::open_file(&path) {
         if let Ok(_) = f.file.read_exact(&mut buf) {
             if filename.ends_with("gyro.csv") || filename.ends_with("accel.csv") || filename.ends_with("_imu_timestamps.csv") || filename.ends_with("magnetic.csv") {
                 if is_numbers_only(&buf) {
@@ -67,7 +66,6 @@ pub fn detect(_buffer: &[u8], filepath: &str, options: &crate::InputOptions) -> 
 }
 
 pub fn parse<T: Read + Seek>(_stream: &mut T, _size: usize, filepath: &str, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
-    let fs = filesystem::get_base();
     let paths = get_possible_paths(filepath);
 
     let mut gyro = Vec::new();
@@ -79,7 +77,7 @@ pub fn parse<T: Read + Seek>(_stream: &mut T, _size: usize, filepath: &str, opti
 
     for path in paths {
         let filename = filesystem::get_filename(&path);
-        let mut file = filesystem::open_file(&fs, &path)?;
+        let mut file = filesystem::open_file(&path)?;
 
         let mut csv = csv::ReaderBuilder::new()
             .has_headers(false)

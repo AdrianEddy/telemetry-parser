@@ -83,12 +83,11 @@ pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize, path: &str, options: 
     let filename = filesystem::get_filename(&path);
     read_from_stream(&filename, stream)?;
 
-    let fs = filesystem::get_base();
     let other_filenames = [ "Accelerometer.csv", "Gyroscope.csv", "Magnetometer.csv", "AccelerometerUncalibrated.csv", "GyroscopeUncalibrated.csv", "MagnetometerUncalibrated.csv" ];
     for x in filesystem::list_folder(&filesystem::get_folder(path)) {
         if filename == x.0 { continue; }
         if other_filenames.contains(&x.0.as_str()) {
-            if let Ok(mut buffer) = filesystem::open_file(&fs, &x.1) {
+            if let Ok(mut buffer) = filesystem::open_file(&x.1) {
                 read_from_stream(&x.0, &mut buffer.file)?;
             }
         }

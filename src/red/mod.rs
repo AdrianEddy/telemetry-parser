@@ -95,7 +95,6 @@ impl RedR3d {
         Ok(ret)
     }
     pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, _stream: &mut T, _size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
-        let fs = filesystem::get_base();
         let mut gyro = Vec::new();
         let mut accl = Vec::new();
         let mut first_timestamp = None;
@@ -118,7 +117,7 @@ impl RedR3d {
                 continue;
             }
 
-            let mut stream = filesystem::open_file(&fs, &path)?;
+            let mut stream = filesystem::open_file(&path)?;
             let filesize = stream.size;
 
             let mut stream = std::io::BufReader::with_capacity(128*1024, &mut stream.file);

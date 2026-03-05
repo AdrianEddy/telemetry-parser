@@ -790,6 +790,48 @@ pub fn read_box<R: Read + Seek>(reader: &mut R) -> Result<(u32, u64, u64, i64)> 
     }
 }
 
+fn trim_sequence_suffix(stem: &str) -> Option<&str> {
+    let stem_without_digits = stem.trim_end_matches(|c: char| c.is_ascii_digit());
+    if stem_without_digits.len() == stem.len() {
+        return None;
+    }
+    let sequence_base = stem_without_digits.trim_end_matches(|c: char| c == '_' || c == '-' || c == '.');
+    if sequence_base.is_empty() {
+        None
+    } else {
+        Some(sequence_base)
+    }
+}
+
+pub fn find_gcsv_sidecar_for_image_sequence(path: &str, ext: Option<&str>) -> Option<String> {
+    let ext = ext?;
+    if !matches!(ext, "dng" | "exr" | "jpg" | "jpeg" | "png") {
+        return None;
+    }
+
+    // First, check sidecar with the same basename (for names like 0000.ext -> 0000.gcsv).
+    for try_ext in ["gcsv", "GCSV"] {
+        if let Some(sidecar_path) = crate::filesystem::file_with_extension(path, try_ext) {
+            return Some(sidecar_path);
+        }
+    }
+
+    // Then check sequence sidecar stripped from frame index (for names like clip_00001.ext -> clip.gcsv).
+    let filename = crate::filesystem::get_filename(path);
+    let stem = filename.rsplit_once('.')?.0;
+    let sequence_base = trim_sequence_suffix(stem)?;
+    let sequence_base_path = std::path::Path::new(path)
+        .with_file_name(format!("{sequence_base}.{ext}"))
+        .to_string_lossy()
+        .to_string();
+    for try_ext in ["gcsv", "GCSV"] {
+        if let Some(sidecar_path) = crate::filesystem::file_with_extension(&sequence_base_path, try_ext) {
+            return Some(sidecar_path);
+        }
+    }
+    None
+}
+
 #[macro_export]
 macro_rules! try_block {
     ($type:ty, $body:block) => {

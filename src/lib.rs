@@ -33,55 +33,6 @@ use std::sync::{ Arc, atomic::AtomicBool };
 use std::collections::HashSet;
 use util::*;
 
-fn is_image_extension(ext: &str) -> bool {
-    matches!(
-        ext,
-        "dng" | "exr" | "jpg" | "jpeg" | "png"
-    )
-}
-
-fn trim_sequence_suffix(stem: &str) -> Option<&str> {
-    let stem_without_digits = stem.trim_end_matches(|c: char| c.is_ascii_digit());
-    if stem_without_digits.len() == stem.len() {
-        return None;
-    }
-    let sequence_base =
-        stem_without_digits.trim_end_matches(|c: char| c == '_' || c == '-' || c == '.');
-    if sequence_base.is_empty() {
-        None
-    } else {
-        Some(sequence_base)
-    }
-}
-
-fn find_gcsv_sidecar_for_image_sequence(path: &str, ext: Option<&str>) -> Option<String> {
-    let ext = ext?;
-    if !is_image_extension(ext) {
-        return None;
-    }
-
-    // First, check sidecar with the same basename (for names like 0000.ext -> 0000.gcsv).
-    for try_ext in ["gcsv", "GCSV"] {
-        if let Some(sidecar_path) = filesystem::file_with_extension(path, try_ext) {
-            return Some(sidecar_path);
-        }
-    }
-
-    // Then check sequence sidecar stripped from frame index (for names like clip_00001.ext -> clip.gcsv).
-    let filename = filesystem::get_filename(path);
-    let stem = filename.rsplit_once('.')?.0;
-    let sequence_base = trim_sequence_suffix(stem)?;
-    let sequence_base_path = std::path::Path::new(path)
-        .with_file_name(format!("{sequence_base}.{ext}"))
-        .to_string_lossy()
-        .to_string();
-    for try_ext in ["gcsv", "GCSV"] {
-        if let Some(sidecar_path) = filesystem::file_with_extension(&sequence_base_path, try_ext) {
-            return Some(sidecar_path);
-        }
-    }
-    None
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TagFilter {
@@ -154,18 +105,17 @@ macro_rules! impl_formats {
                 // If nothing was detected, check if there's a file with the same name but different extension
                 if !options.dont_look_for_sidecar_files {
                     if let Some(path) = filepath.as_ref().to_str() {
-                        let fs = filesystem::get_base();
                         if ext.as_deref() == Some("mp4") || ext.as_deref() == Some("mov") || ext.as_deref() == Some("mkv") {
                             for try_ext in ["gcsv", "bbl", "bfl", "csv", "GCSV", "BBL", "BFL", "CSV"] {
                                 if let Some(gyro_path) = filesystem::file_with_extension(path, try_ext) {
-                                    if let Ok(mut f) = filesystem::open_file(&fs, &gyro_path) {
+                                    if let Ok(mut f) = filesystem::open_file(&gyro_path) {
                                         return Self::from_stream(&mut f.file, f.size, &gyro_path, progress_cb, cancel_flag);
                                     }
                                 }
                             }
                         }
-                        if let Some(gyro_path) = find_gcsv_sidecar_for_image_sequence(path, ext.as_deref()) {
-                            if let Ok(mut f) = filesystem::open_file(&fs, &gyro_path) {
+                        if let Some(gyro_path) = util::find_gcsv_sidecar_for_image_sequence(path, ext.as_deref()) {
+                            if let Ok(mut f) = filesystem::open_file(&gyro_path) {
                                 return Self::from_stream(&mut f.file, f.size, &gyro_path, progress_cb, cancel_flag);
                             }
                         }
