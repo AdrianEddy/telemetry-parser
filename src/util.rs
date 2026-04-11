@@ -846,3 +846,462 @@ macro_rules! try_block {
         }())
     };
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// GpsPoint — normalized cross-format GPS sample
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// A single normalized GPS point from a video or telemetry file, analogous
+/// to [`IMUData`] for inertial sensors.
+///
+/// `GpsPoint` is the cross-format output type from [`normalized_gps`]: it
+/// hides the per-camera quirks (GoPro km/h vs m/s, Insta360 km/h, CAMM m/s,
+/// GoPro GPS9 per-sample timestamps vs GPS5 even distribution, rational
+/// DMS vs decimal degrees) and returns a uniform shape that downstream
+/// consumers (widgets, visualizers, trackers) can use directly.
+///
+/// All data fields are `Option<f64>` (or `Option<u8>` for fix) so consumers
+/// can distinguish "camera did not report" from "camera reported 0.0".
+///
+/// # Unit conventions
+///
+/// - `lat`, `lon`: WGS84 decimal degrees.
+/// - `altitude`: meters above MSL (whatever the camera itself reports — some
+///   formats report ellipsoidal height).
+/// - `speed_2d`, `speed_3d`: meters per second. Normalized from whichever
+///   unit the source format uses.
+/// - `heading`: degrees clockwise from true north, 0-360.
+/// - `dop`: unitless, lower = better. HDOP for sources that distinguish.
+/// - `fix`: `0` = no fix, `2` = 2D fix, `3` = 3D fix.
+///
+/// # Note on `fix == 0` with valid coordinates
+///
+/// GoPro firmware occasionally emits samples with `fix == 0` that still
+/// carry valid lat/lon. Consumers should treat non-zero coordinates as
+/// usable regardless of fix state — the raw GPS5 extractor in this module
+/// only drops samples where BOTH fix is zero AND coordinates are zero.
+#[derive(Default, serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct GpsPoint {
+    /// Timestamp in milliseconds relative to the start of the video/stream.
+    pub timestamp_ms: f64,
+
+    /// WGS84 latitude in decimal degrees.
+    pub lat: Option<f64>,
+
+    /// WGS84 longitude in decimal degrees.
+    pub lon: Option<f64>,
+
+    /// Altitude above MSL in meters.
+    pub altitude: Option<f64>,
+
+    /// 2D ground speed in meters per second.
+    pub speed_2d: Option<f64>,
+
+    /// 3D speed (including vertical component) in meters per second.
+    /// Only GoPro GPMF exposes this — `None` for Insta360, CAMM.
+    pub speed_3d: Option<f64>,
+
+    /// Course over ground in degrees clockwise from true north.
+    /// `None` if the format doesn't report heading (GoPro GPS5/GPS9 don't).
+    pub heading: Option<f64>,
+
+    /// Dilution of precision (HDOP, unitless, lower = better).
+    pub dop: Option<f64>,
+
+    /// Fix quality: 0 = no fix, 2 = 2D, 3 = 3D.
+    pub fix: Option<u8>,
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// normalized_gps — main public helper
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Extract a normalized, chronologically-sorted stream of GPS points from
+/// any supported format that carries location data.
+///
+/// # Supported formats
+///
+/// - **GoPro** HERO 5 – HERO 13 (GPMF GPS5 and GPS9, including Max, Fusion)
+/// - **Insta360** One R, X2, X3, X4, Ace Pro, and compatible
+/// - **CAMM** format (Google Spherical Video v2, iOS/Android camera apps)
+///
+/// Formats that do not carry GPS data — or whose GPS is not yet decoded
+/// into a typed form by this crate (Sony rational DMS tuples, DJI protobuf
+/// `PositionCoord`, Blackmagic, RED, Canon, Freefly) — return
+/// `Ok(Vec::new())`. These can be added in follow-up PRs without breaking
+/// API compatibility.
+///
+/// # Units
+///
+/// Speed is always returned in m/s; heading in degrees clockwise from true
+/// north; DOP unitless. See [`GpsPoint`] for per-field semantics and
+/// `None`-value handling.
+///
+/// # Timestamps
+///
+/// Samples are chronologically ordered. For formats with per-sample
+/// timestamps (CAMM, Insta360, GoPro GPS9) timestamps are used directly,
+/// rebased against the first sample when [`Input::has_accurate_timestamps`]
+/// is false. For formats without per-sample timestamps (GoPro GPS5)
+/// samples are distributed evenly across `SampleInfo::duration_ms` — the
+/// same strategy as [`normalized_imu`].
+///
+/// # Example
+///
+/// ```no_run
+/// use telemetry_parser::{Input, util};
+/// use std::fs::File;
+/// use std::sync::{Arc, atomic::AtomicBool};
+///
+/// let mut file = File::open("GH010001.MP4").unwrap();
+/// let size = file.metadata().unwrap().len() as usize;
+/// let input = Input::from_stream(
+///     &mut file, size, "GH010001.MP4",
+///     |_| {}, Arc::new(AtomicBool::new(false)),
+/// ).unwrap();
+///
+/// let gps = util::normalized_gps(&input).unwrap();
+/// for point in &gps {
+///     if let (Some(lat), Some(lon)) = (point.lat, point.lon) {
+///         println!("{:.6}ms: {:.6}, {:.6}", point.timestamp_ms, lat, lon);
+///     }
+/// }
+/// ```
+pub fn normalized_gps(input: &crate::Input) -> Result<Vec<GpsPoint>> {
+    let mut first_absolute_ms: Option<f64> = None;
+    let accurate_ts = input.has_accurate_timestamps();
+
+    let mut final_data = Vec::<GpsPoint>::with_capacity(1024);
+    let mut fix_timestamps = false;
+    let mut timestamp_cursor: f64 = 0.0;
+
+    if let Some(ref samples) = input.samples {
+        for info in samples {
+            if info.tag_map.is_none() { continue; }
+            let grouped_tag_map = info.tag_map.as_ref().unwrap();
+
+            // ─────────────────────────────────────────────────────────────
+            // Path A: Typed Vec_GpsData (CAMM + Insta360)
+            //
+            // Both camm/mod.rs and insta360/record.rs emit their GPS data
+            // through the typed TagValue::Vec_GpsData variant under
+            // GroupId::GPS with TagId::Data. This path covers them both
+            // uniformly. Insta360's speed is in km/h (see
+            // insta360/record.rs:217) and needs conversion.
+            // ─────────────────────────────────────────────────────────────
+            if let Some(map) = grouped_tag_map.get(&GroupId::GPS) {
+                if let Some(taginfo) = map.get(&TagId::Data) {
+                    if let TagValue::Vec_GpsData(arr) = &taginfo.value {
+                        let arr = arr.get();
+                        // Only Insta360 emits km/h in this variant;
+                        // CAMM is native m/s.
+                        let speed_divisor = if input.camera_type() == "Insta360" { 3.6 } else { 1.0 };
+
+                        for v in arr {
+                            let mut ts_ms = v.unix_timestamp * 1000.0;
+                            if !accurate_ts {
+                                if first_absolute_ms.is_none() {
+                                    first_absolute_ms = Some(ts_ms);
+                                }
+                                ts_ms -= first_absolute_ms.unwrap();
+                            }
+                            let all_zero = v.lat == 0.0 && v.lon == 0.0;
+                            final_data.push(GpsPoint {
+                                timestamp_ms: ts_ms,
+                                lat: if all_zero { None } else { Some(v.lat) },
+                                lon: if all_zero { None } else { Some(v.lon) },
+                                altitude: Some(v.altitude),
+                                speed_2d: Some(v.speed / speed_divisor),
+                                speed_3d: None,
+                                heading: if v.track == 0.0 { None } else { Some(v.track) },
+                                dop: None,
+                                fix: Some(if v.is_acquired { 3 } else { 0 }),
+                            });
+                        }
+                        continue; // Sample handled, move to next SampleInfo.
+                    }
+                }
+            }
+
+            // ─────────────────────────────────────────────────────────────
+            // Path B: GoPro GPS9 (Custom("GPS9") group)
+            //
+            // HERO 11 and HERO 13 write GPS9 under GroupId::Custom("GPS9")
+            // because the custom-type KLV branch in gopro/klv.rs handles
+            // the "lllllllSS" type (7×i32 + 2×u16). The data comes out as
+            // TagValue::Vec_Vec_Scalar. GPS9 has per-sample timestamps
+            // (days since 2000 + seconds of day).
+            //
+            // We check this BEFORE GPS5 because HERO 11+ firmware writes
+            // BOTH GPS5 and GPS9 in the same payload; GPS9 is higher
+            // precision and has per-sample timestamps, so we prefer it.
+            // ─────────────────────────────────────────────────────────────
+            if input.camera_type() == "GoPro" {
+                if let Some(map) = grouped_tag_map.get(&GroupId::Custom("GPS9".into())) {
+                    if let Some(taginfo) = map.get(&TagId::Unknown(u32::from_be_bytes(*b"GPS9"))) {
+                        if let TagValue::Vec_Vec_Scalar(arr) = &taginfo.value {
+                            let arr = arr.get();
+
+                            // Read SCAL factors. GPS9 has 9 scale values —
+                            // if missing, use spec defaults.
+                            let scales: Vec<f64> = map.get_t(TagId::Scale)
+                                .and_then(|v: &Vec<i32>| Some(v.iter().map(|&x| x as f64).collect()))
+                                .unwrap_or_else(|| vec![10_000_000.0, 10_000_000.0, 1000.0, 1000.0, 100.0, 1.0, 1000.0, 100.0, 1.0]);
+                            let sc = |i: usize, default: f64| scales.get(i).copied().unwrap_or(default);
+
+                            for sample in arr {
+                                if sample.len() < 9 { continue; }
+
+                                // Scalar → f64: use the variant-match helper.
+                                // (If Scalar::as_f64() doesn't exist in the
+                                // target commit, replace these calls with a
+                                // match on Scalar::i32 / Scalar::u16 / etc.)
+                                let lat_raw = scalar_to_f64(&sample[0]);
+                                let lon_raw = scalar_to_f64(&sample[1]);
+                                let alt_raw = scalar_to_f64(&sample[2]);
+                                let s2d_raw = scalar_to_f64(&sample[3]);
+                                let s3d_raw = scalar_to_f64(&sample[4]);
+                                let days = scalar_to_f64(&sample[5]);
+                                let secs_raw = scalar_to_f64(&sample[6]);
+                                let dop_raw = scalar_to_f64(&sample[7]);
+                                let fix = scalar_to_f64(&sample[8]) as u8;
+
+                                let lat = lat_raw / sc(0, 10_000_000.0);
+                                let lon = lon_raw / sc(1, 10_000_000.0);
+                                let alt = alt_raw / sc(2, 1000.0);
+                                let s2d = s2d_raw / sc(3, 1000.0);
+                                let s3d = s3d_raw / sc(4, 100.0);
+                                let secs = secs_raw / sc(6, 1000.0);
+                                let dop = dop_raw / sc(7, 100.0);
+
+                                // Drop definitive-empty samples.
+                                if fix == 0 && lat_raw == 0.0 && lon_raw == 0.0 { continue; }
+
+                                // GPS9 timestamp: days since 2000-01-01
+                                // + seconds of day. We use absolute seconds
+                                // here and rebase relative to first sample
+                                // in the post-loop normalization below.
+                                let ts_s = days * 86400.0 + secs;
+
+                                final_data.push(GpsPoint {
+                                    timestamp_ms: ts_s * 1000.0,
+                                    lat: Some(lat),
+                                    lon: Some(lon),
+                                    altitude: Some(alt),
+                                    speed_2d: Some(s2d),
+                                    speed_3d: Some(s3d),
+                                    heading: None,
+                                    dop: Some(dop),
+                                    fix: Some(fix),
+                                });
+                            }
+                            continue; // Sample handled.
+                        }
+                    }
+                }
+
+                // ─────────────────────────────────────────────────────────
+                // Path C: GoPro GPS5 (GroupId::GPS as Vec_Vec_i32)
+                //
+                // HERO 5-10, Max, Fusion write GPS5 as 5×i32 per sample
+                // under GroupId::GPS with TagId::Data. The KLV parser
+                // classifies this as TagValue::Vec_Vec_i32 via the
+                // generic (N, 5) fall-through branch.
+                //
+                // GPS5 has no per-sample timestamps; we set fix_timestamps
+                // = true and do the post-loop average-duration pass.
+                //
+                // Group-level sibling tags GPSF (u32 fix) and GPSP (u16 DOP×100)
+                // are broadcast to every sample in the payload.
+                // ─────────────────────────────────────────────────────────
+                if let Some(map) = grouped_tag_map.get(&GroupId::GPS) {
+                    if let Some(taginfo) = map.get(&TagId::Data) {
+                        if let TagValue::Vec_Vec_i32(arr) = &taginfo.value {
+                            let arr = arr.get();
+                            if arr.is_empty() { continue; }
+
+                            // Read SCAL for 5 values (lat, lon, alt, 2d, 3d).
+                            let scales: Vec<f64> = map.get_t(TagId::Scale)
+                                .and_then(|v: &Vec<i32>| Some(v.iter().map(|&x| x as f64).collect()))
+                                .unwrap_or_else(|| vec![10_000_000.0, 10_000_000.0, 1000.0, 1000.0, 100.0]);
+                            let sc = |i: usize, default: f64| scales.get(i).copied().unwrap_or(default);
+
+                            // Read group-level GPSF (fix) and GPSP (DOP × 100).
+                            let group_fix = map.get(&TagId::Unknown(u32::from_be_bytes(*b"GPSF")))
+                                .and_then(|t| if let TagValue::u32(v) = &t.value { Some(*v.get() as u8) } else { None });
+                            let group_dop = map.get(&TagId::Unknown(u32::from_be_bytes(*b"GPSP")))
+                                .and_then(|t| if let TagValue::u16(v) = &t.value { Some(*v.get() as f64 / 100.0) } else { None });
+
+                            let reading_duration_ms = info.duration_ms / arr.len() as f64;
+                            fix_timestamps = true;
+
+                            for sample in arr {
+                                if sample.len() < 5 { continue; }
+                                let lat_raw = sample[0];
+                                let lon_raw = sample[1];
+                                let alt_raw = sample[2];
+                                let s2d_raw = sample[3];
+                                let s3d_raw = sample[4];
+
+                                // Drop all-zero coordinates when no fix.
+                                if group_fix.unwrap_or(0) == 0 && lat_raw == 0 && lon_raw == 0 {
+                                    timestamp_cursor += reading_duration_ms;
+                                    continue;
+                                }
+
+                                let lat = lat_raw as f64 / sc(0, 10_000_000.0);
+                                let lon = lon_raw as f64 / sc(1, 10_000_000.0);
+                                let alt = alt_raw as f64 / sc(2, 1000.0);
+                                let s2d = s2d_raw as f64 / sc(3, 1000.0);
+                                let s3d = s3d_raw as f64 / sc(4, 100.0);
+
+                                final_data.push(GpsPoint {
+                                    timestamp_ms: timestamp_cursor,
+                                    lat: Some(lat),
+                                    lon: Some(lon),
+                                    altitude: Some(alt),
+                                    speed_2d: Some(s2d),
+                                    speed_3d: Some(s3d),
+                                    heading: None,
+                                    dop: group_dop,
+                                    fix: group_fix,
+                                });
+                                timestamp_cursor += reading_duration_ms;
+                            }
+                            continue; // Sample handled.
+                        }
+                    }
+                }
+            }
+            // Format has no GPS — nothing to do for this SampleInfo.
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Post-loop normalization
+    //
+    // 1. If we used GoPro GPS5 (fix_timestamps == true), rebase all
+    //    timestamps using the average sample duration, same strategy as
+    //    normalized_imu.
+    //
+    // 2. If we used GoPro GPS9 with absolute seconds-since-2000 timestamps
+    //    (values > 10^9), rebase relative to the first sample.
+    // ─────────────────────────────────────────────────────────────────────
+
+    if fix_timestamps && !final_data.is_empty() {
+        let avg_diff_ms = if input.camera_type() == "GoPro" {
+            crate::gopro::GoPro::get_avg_sample_duration(
+                input.samples.as_ref().unwrap(),
+                &GroupId::GPS,
+            )
+        } else {
+            let total_ms: f64 = input.samples.as_ref().unwrap()
+                .iter().map(|s| s.duration_ms).sum();
+            Some(total_ms / final_data.len() as f64)
+        };
+        if let Some(avg_diff) = avg_diff_ms {
+            if avg_diff > 0.0 {
+                for (i, p) in final_data.iter_mut().enumerate() {
+                    p.timestamp_ms = avg_diff * i as f64;
+                }
+            }
+        }
+    }
+
+    // GPS9 absolute-epoch → relative normalization.
+    if !final_data.is_empty() {
+        let first = final_data[0].timestamp_ms;
+        // Seconds-since-2000 * 1000 is at least ~1.5e12 for 2047-01-01, so
+        // any value > 10^11 is definitely absolute not relative.
+        if first > 1_000_000_000_000.0 {
+            for p in final_data.iter_mut() {
+                p.timestamp_ms -= first;
+            }
+        }
+    }
+
+    Ok(final_data)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper: Scalar → f64
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// If `Scalar::as_f64()` exists in the target commit, replace this helper
+// with direct calls. If not, this provides the variant-match fallback.
+// Match on whatever variants your Scalar type uses — check `tags_impl.rs`
+// for the exact definition. Typical variants: i8, u8, i16, u16, i32, u32,
+// i64, u64, f32, f64.
+
+fn scalar_to_f64(s: &Scalar) -> f64 {
+    match s {
+        Scalar::i8(v) => *v as f64,
+        Scalar::u8(v) => *v as f64,
+        Scalar::i16(v) => *v as f64,
+        Scalar::u16(v) => *v as f64,
+        Scalar::i32(v) => *v as f64,
+        Scalar::u32(v) => *v as f64,
+        Scalar::i64(v) => *v as f64,
+        Scalar::u64(v) => *v as f64,
+        Scalar::f32(v) => *v as f64,
+        Scalar::f64(v) => *v,
+        // Catch-all for any variants not listed — returns 0 so the rest of
+        // the decoder degrades gracefully rather than panicking.
+        _ => 0.0,
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Tests
+// ═════════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod gps_tests {
+    use super::*;
+
+    #[test]
+    fn gps_point_default_all_none() {
+        let p = GpsPoint::default();
+        assert_eq!(p.timestamp_ms, 0.0);
+        assert!(p.lat.is_none());
+        assert!(p.lon.is_none());
+        assert!(p.altitude.is_none());
+        assert!(p.speed_2d.is_none());
+        assert!(p.speed_3d.is_none());
+        assert!(p.heading.is_none());
+        assert!(p.dop.is_none());
+        assert!(p.fix.is_none());
+    }
+
+    #[test]
+    fn gps_point_serde_roundtrip() {
+        let p = GpsPoint {
+            timestamp_ms: 1234.5,
+            lat: Some(55.6761),
+            lon: Some(12.5683),
+            altitude: Some(42.0),
+            speed_2d: Some(3.14),
+            speed_3d: Some(3.5),
+            heading: Some(180.0),
+            dop: Some(1.2),
+            fix: Some(3),
+        };
+        let json = serde_json::to_string(&p).unwrap();
+        let p2: GpsPoint = serde_json::from_str(&json).unwrap();
+        assert_eq!(p2.timestamp_ms, p.timestamp_ms);
+        assert_eq!(p2.lat, p.lat);
+        assert_eq!(p2.lon, p.lon);
+        assert_eq!(p2.altitude, p.altitude);
+        assert_eq!(p2.speed_2d, p.speed_2d);
+        assert_eq!(p2.speed_3d, p.speed_3d);
+        assert_eq!(p2.heading, p.heading);
+        assert_eq!(p2.dop, p.dop);
+        assert_eq!(p2.fix, p.fix);
+    }
+
+    // Integration tests with real MP4 files would go in `tests/` directory
+    // at the repo root once sample fixtures are available. Per the existing
+    // test strategy (no `#[test]` attributes anywhere else in the crate),
+    // these would be new territory — omit for v1 of the PR and add in a
+    // follow-up if maintainer requests.
+}

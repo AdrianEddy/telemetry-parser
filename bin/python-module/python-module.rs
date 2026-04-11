@@ -74,6 +74,18 @@ impl Parser {
             Ok(pythonize(py, &imu_data)?)
         })
     }
+
+    /// Extract a normalized GPS point stream from supported camera formats
+    /// (GoPro GPS5/GPS9, Insta360, CAMM). See `util::normalized_gps` for
+    /// field semantics. Returns an empty list if the file has no GPS data
+    /// or the camera format is not yet supported.
+    fn normalized_gps(&self) -> PyResult<Py<PyAny>> {
+        let gps = util::normalized_gps(&self.input)?;
+
+        Python::with_gil(|py| {
+            Ok(pythonize(py, &gps)?)
+        })
+    }
 }
 
 #[pymodule]
