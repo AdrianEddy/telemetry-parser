@@ -71,14 +71,14 @@ macro_rules! impl_formats {
             pub fn from_stream_with_options<T: Read + Seek, P: AsRef<std::path::Path>, F: Fn(f64)>(stream: &mut T, size: usize, filepath: P, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: InputOptions) -> Result<Input> {
                 let read_mb = if size as u64 > 100u64*1024*1024*1024 { // If file is greater than 100 GB, read 500 MB header/footer
                     500
-                } else if size as u64 > 60u64*1024*1024*1024 { // If file is greater than 60 GB, read 100 MB header/footer
-                    100
-                } else if size as u64 > 30u64*1024*1024*1024 { // If file is greater than 30 GB, read 30 MB header/footer
-                    30
-                } else if size as u64 > 5u64*1024*1024*1024 { // If file is greater than 5 GB, read 10 MB header/footer
-                    10
+                } else if size as u64 > 60u64*1024*1024*1024 { // If file is greater than 60 GB, read 220 MB header/footer
+                    220
+                } else if size as u64 > 30u64*1024*1024*1024 { // If file is greater than 30 GB, read 180 MB header/footer
+                    180
+                } else if size as u64 > 5u64*1024*1024*1024 { // If file is greater than 5 GB, read 50 MB header/footer
+                    50
                 } else {
-                    4
+                    5
                 };
                 let buf = util::read_beginning_and_end(stream, size, read_mb*1024*1024)?;
                 if buf.is_empty() {

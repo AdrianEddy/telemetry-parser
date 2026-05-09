@@ -45,6 +45,9 @@ impl QoocamEgo {
         if memmem::find(buffer, b"QooCam 3 Ultra").is_some() {
             return Some(Self { model: Some("QooCam 3 Ultra".into()) });
         }
+        if memmem::find(buffer, b"QooCam 3").is_some() {
+            return Some(Self { model: Some("QooCam 3".into()) });
+        }
         None
     }
 
