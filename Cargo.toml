@@ -27,7 +27,7 @@ csv = "1.4"
 human-sort = "0.2"
 log = "0.4"
 
-quick-xml = { version = "0.39", optional = true }
+quick-xml = { version = "0.40", optional = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.22"

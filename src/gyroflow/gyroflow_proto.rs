@@ -45,32 +45,55 @@ pub mod header {
         /// Lens model
         #[prost(string, tag = "6")]
         pub lens_model: ::prost::alloc::string::String,
-        /// Sensor pixel pitch in nanometers
+        /// Sensor pixel pitch in nanometers, horizontal direction.
         #[prost(uint32, tag = "7")]
-        pub pixel_pitch_nm: u32,
-        /// Full sensor width in pixels
+        pub pixel_pitch_x_nm: u32,
+        /// Sensor pixel pitch in nanometers, vertical direction. Required — for square-pixel sensors, set equal to pixel_pitch_x_nm.
         #[prost(uint32, tag = "8")]
+        pub pixel_pitch_y_nm: u32,
+        /// Full sensor width in pixels
+        #[prost(uint32, tag = "9")]
         pub sensor_pixel_width: u32,
         /// Full sensor height in pixels
-        #[prost(uint32, tag = "9")]
+        #[prost(uint32, tag = "10")]
         pub sensor_pixel_height: u32,
         /// Crop factor in relation to full frame sensor size. e.g. 1.6x for APS-C
-        #[prost(float, optional, tag = "10")]
+        #[prost(float, optional, tag = "11")]
         pub crop_factor: ::core::option::Option<f32>,
         /// The Gyroflow lens identifier, or a path to lens profile json file (relative to the `camera_presets` directory), or the json contents directly
-        #[prost(string, optional, tag = "11")]
-        pub lens_profile: ::core::option::Option<::prost::alloc::string::String>,
-        /// IMU orientation used by Gyroflow as XYZ, Xyz, Zyx etc. Defaults to "XYZ". Read more in the Gyroflow documentation about this orientation convention.
         #[prost(string, optional, tag = "12")]
+        pub lens_profile: ::core::option::Option<::prost::alloc::string::String>,
+        /// Axis-permutation-and-sign string describing how IMU axes are labeled
+        /// relative to the camera body. Three characters, each one of
+        /// {X, Y, Z, x, y, z} where capital = positive axis and lowercase =
+        /// negated axis. Default "XYZ" = identity (IMU axes match camera body).
+        /// Example: "Xyz" means X stays, Y and Z are flipped. The transform is
+        /// applied to each raw IMU 3-vector as a pure permutation/sign before
+        /// any sensor fusion.
+        #[prost(string, optional, tag = "13")]
         pub imu_orientation: ::core::option::Option<::prost::alloc::string::String>,
-        /// Arbitrary IMU rotation. Applies to the raw IMU samples (FrameMetadata.imu field).
-        #[prost(message, optional, tag = "13")]
-        pub imu_rotation: ::core::option::Option<super::Quaternion>,
-        /// Arbitrary IMU rotation. Applies to the quaternions after sensor fusion (FrameMetadata.quaternions field).
+        /// Additional rigid rotation that aligns the IMU sensor frame with the
+        /// camera body frame. Applied to each raw IMU 3-vector v as
+        ///      v' = imu_rotation · v
+        /// (standard vector rotation). Applied AFTER imu_orientation when both
+        /// are present (orientation first as axis remap, then rotation).
         #[prost(message, optional, tag = "14")]
+        pub imu_rotation: ::core::option::Option<super::Quaternion>,
+        /// Additional rigid rotation that aligns the post-fusion quaternion
+        /// stream with the camera body frame. Applied to each quaternion q in
+        /// FrameMetadata.quaternions as CONJUGATION (not composition):
+        ///      q' = quats_rotation · q · quats_rotation⁻¹
+        /// The effect is to rotate the AXIS of q by quats_rotation while
+        /// preserving its angle — i.e. to re-express the same physical rotation
+        /// in a rotated coordinate frame. Use this to correct a misaligned
+        /// fused-orientation stream without disturbing the IMU pipeline.
+        /// imu_rotation and quats_rotation are independent: they apply to
+        /// different streams (raw IMU vs. fused quaternions). Most producers
+        /// need only one of them.
+        #[prost(message, optional, tag = "15")]
         pub quats_rotation: ::core::option::Option<super::Quaternion>,
         /// Optional note or additional data. If it starts with {, it will be parsed as JSON
-        #[prost(string, optional, tag = "15")]
+        #[prost(string, optional, tag = "16")]
         pub additional_data: ::core::option::Option<::prost::alloc::string::String>,
     }
     #[derive(Clone, PartialEq, ::prost::Message)]
@@ -81,9 +104,11 @@ pub mod header {
         /// Video frame height in pixels
         #[prost(uint32, tag = "2")]
         pub frame_height: u32,
-        /// Clip duration in microseconds
-        #[prost(float, tag = "3")]
-        pub duration_us: f32,
+        /// Clip duration in microseconds. MUST be double — a 32-bit float loses
+        /// µs precision beyond ~16.7 s (mantissa = 24 bits); at 10 min the step
+        /// grows to ~64 µs which causes audible jitter in any time-domain math.
+        #[prost(double, tag = "3")]
+        pub duration_us: f64,
         /// Recording frame rate
         #[prost(float, tag = "4")]
         pub record_frame_rate: f32,
@@ -105,9 +130,14 @@ pub mod header {
         /// For anamorphic lenses
         #[prost(float, tag = "10")]
         pub pixel_aspect_ratio: f32,
-        /// Time it takes to read the video frame from the sensor, for rolling shutter correction. NOTE: It should be the time between first row of pixels to the last row of pixels, not for full sensor readout (if the crop is involved).
-        #[prost(float, tag = "11")]
-        pub frame_readout_time_us: f32,
+        /// Time it takes to read the video frame from the sensor, for rolling
+        /// shutter correction. It is the time between the first row of pixels
+        /// and the last row of pixels of the CROP area — not the full sensor
+        /// readout. Stored as double for consistency with the per-frame double-
+        /// precision start_timestamp_us / end_timestamp_us against which it is
+        /// compared and arithmetically combined.
+        #[prost(double, tag = "11")]
+        pub frame_readout_time_us: f64,
         /// Frame readout direction
         #[prost(enumeration = "clip_metadata::ReadoutDirection", tag = "12")]
         pub frame_readout_direction: i32,
@@ -164,10 +194,53 @@ pub mod header {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct FrameMetadata {
-    /// Frame capture start - the timestamp when the first row of pixels was captured. Internal camera clock timestamp. Unit: microseconds
+    /// Time, in microseconds on the camera's internal clock, at the READOUT INSTANT
+    /// of the FIRST-read sensor row — i.e. the moment that row finished integrating
+    /// photons and was latched out by the sense amplifier / ADC. NOT the moment that
+    /// row started exposing; NOT the midpoint of its exposure.
+    ///
+    /// "First-read" follows ClipMetadata.frame_readout_direction:
+    ///    TopToBottom → top row     (visual row 0)
+    ///    BottomToTop → bottom row  (visual row frame_height - 1)
+    ///    LeftToRight → left column (visual column 0)
+    ///    RightToLeft → right column
+    ///
+    /// Rationale for the readout-latch convention: hardware naturally timestamps the
+    /// readout latch event, since that is the observable moment for the readout chain.
+    /// The exposure midpoint (the canonical per-row time for stabilization) is derived
+    /// by subtracting exposure_time_us / 2.
+    ///
+    /// PER-ROW INTERPOLATION: for per-row stabilization, consumers SHOULD linearly
+    /// interpolate per-row time between start_timestamp_us and end_timestamp_us
+    /// (NOT derive it from start + frame_readout_time_us, because the two timestamp
+    /// fields are doubles and authoritative, while frame_readout_time_us is a float
+    /// helper). For an output row index r in readout order (r = 0 for the first-read
+    /// row, r = N-1 for the last-read row, where N = ClipMetadata.frame_height for
+    /// vertical readout or ClipMetadata.frame_width for horizontal readout):
+    ///
+    ///      row_readout_instant(r) = start_timestamp_us
+    ///                             + (r / (N - 1)) · (end_timestamp_us - start_timestamp_us)
+    ///      row_exposure_midpoint(r) = row_readout_instant(r) - exposure_time_us / 2
+    ///      frame_center_of_capture  = (start_timestamp_us + end_timestamp_us) / 2
+    ///                               - exposure_time_us / 2
+    ///
+    /// For consumers indexing by visual (top-down) row v, convert to readout-order r
+    /// using frame_readout_direction (e.g. for BottomToTop: r = (N - 1) - v).
+    ///
+    /// Producers whose hardware reports a different physical event (start of row 0
+    /// integration, or the row 0 exposure midpoint) must shift by ±exposure_time_us / 2
+    /// before writing this field.
     #[prost(double, tag = "1")]
     pub start_timestamp_us: f64,
-    /// Frame capture end - the timestamp when the last row of pixels was captured. Internal camera clock timestamp. Unit: microseconds
+    /// Time, in microseconds on the camera's internal clock, at the readout instant
+    /// of the LAST-read sensor row (per frame_readout_direction). Together with
+    /// start_timestamp_us this defines the rolling-shutter timeline of the frame.
+    ///
+    /// AUTHORITATIVE for per-row interpolation. The relation
+    ///      end_timestamp_us ≈ start_timestamp_us + frame_readout_time_us
+    /// holds approximately, but the two timestamp fields are doubles measured directly
+    /// by the camera clock and take precedence over the float helper
+    /// frame_readout_time_us if the two ever disagree.
     #[prost(double, tag = "2")]
     pub end_timestamp_us: f64,
     /// Frame number in sequence. The first frame of the video clip should have this set to 1.
@@ -176,9 +249,10 @@ pub struct FrameMetadata {
     /// ISO Value
     #[prost(uint32, optional, tag = "4")]
     pub iso: ::core::option::Option<u32>,
-    /// Actual exposure time in microseconds
-    #[prost(float, optional, tag = "5")]
-    pub exposure_time_us: ::core::option::Option<f32>,
+    /// Actual exposure time in microseconds. Stored as double — float loses µs
+    /// precision beyond ~16.7 s, which matters for astro / long-exposure work.
+    #[prost(double, optional, tag = "5")]
+    pub exposure_time_us: ::core::option::Option<f64>,
     /// White balance in kelvins
     #[prost(uint32, optional, tag = "6")]
     pub white_balance_kelvin: ::core::option::Option<u32>,
@@ -188,12 +262,30 @@ pub struct FrameMetadata {
     /// Digital zoom ratio. If the video is zoomed in digitally, this value should indicate that. E.g. 0.9 for 10% digital crop
     #[prost(float, optional, tag = "8")]
     pub digital_zoom_ratio: ::core::option::Option<f32>,
+    /// EXPOSURE PRECEDENCE: if more than one of exposure_time_us /
+    /// shutter_speed_{numerator,denominator} / shutter_angle_degrees is present,
+    /// consumers MUST use them in this order (highest precedence first):
+    ///    1. exposure_time_us (microsecond-precise; most authoritative)
+    ///    2. shutter_speed_numerator / shutter_speed_denominator (exact rational)
+    ///    3. shutter_angle_degrees (derived from frame rate + angle, as
+    ///       exposure_time_us = shutter_angle_degrees / 360 · 1e6
+    ///                        / ClipMetadata.sensor_frame_rate).
+    ///       Use sensor_frame_rate — not record_frame_rate or file_frame_rate —
+    ///       because the shutter angle is a property of the sensor's exposure
+    ///       cycle: the rate at which the rolling-shutter sweep physically
+    ///       repeats. For the typical case where sensor_frame_rate ==
+    ///       record_frame_rate this is a no-op; for slow-motion / high-frame-
+    ///       rate modes where they differ, sensor_frame_rate is the correct
+    ///       divisor.
+    /// Producers SHOULD set the most precise field they have and MAY omit the
+    /// less-precise ones.
+    ///
     /// Shutter speed numerator. E.g. 1 in case of 1/240 shutter speed.
     #[prost(int32, optional, tag = "9")]
     pub shutter_speed_numerator: ::core::option::Option<i32>,
-    /// Shutter speed denumerator. E.g. 240 in case of 1/240 shutter speed.
+    /// Shutter speed denominator. E.g. 240 in case of 1/240 shutter speed.
     #[prost(int32, optional, tag = "10")]
-    pub shutter_speed_denumerator: ::core::option::Option<i32>,
+    pub shutter_speed_denominator: ::core::option::Option<i32>,
     /// Shutter angle in degrees. E.g. 180
     #[prost(float, optional, tag = "11")]
     pub shutter_angle_degrees: ::core::option::Option<f32>,
@@ -218,98 +310,286 @@ pub struct FrameMetadata {
     /// Per-frame quaternion data. Optional, can contain camera orientation after sensor fusion
     #[prost(message, repeated, tag = "18")]
     pub quaternions: ::prost::alloc::vec::Vec<QuaternionData>,
-    /// Per-frame Lens optical stabilization data. Not present when OIS is disabled.          ??? Exact data and format to be determined ???
+    /// Per-frame lens optical stabilization data. See LensOISData for units, sign
+    /// convention (unified with IBISData), and coordinate frame.
+    ///
+    /// SAMPLE-COVERAGE REQUIREMENT: for per-row rolling-shutter correction, the sample
+    /// timestamps must cover the row-exposure-midpoint span of this frame, i.e. at minimum
+    ///      [ start_timestamp_us - exposure_time_us / 2,
+    ///        end_timestamp_us   - exposure_time_us / 2 ]
+    /// plus one or two guard samples on each side for spline tangents. A typical
+    /// cadence is 4–8 samples per frame plus guards. A single sample per frame degenerates
+    /// to per-frame correction (no rolling-shutter compensation).
+    ///
+    /// Not present when OIS is disabled.
     #[prost(message, repeated, tag = "19")]
     pub ois: ::prost::alloc::vec::Vec<LensOisData>,
-    /// Per-frame in-body image stabilization (IBIS) data. Not present when IBIS is disabled. ??? Exact data and format to be determined ???
+    /// Per-frame in-body image stabilization data. See IBISData for units, sign convention,
+    /// and coordinate frame. Same sample-coverage requirement as `ois`. Not present when
+    /// IBIS is disabled.
     #[prost(message, repeated, tag = "20")]
     pub ibis: ::prost::alloc::vec::Vec<IbisData>,
-    /// Per-frame electronic in-camera stabilization data. Not present when EIS is disabled.  ??? Exact data and format to be determined ???
+    /// Per-frame electronic in-camera stabilization data. Describes transforms the
+    /// camera applied between sensor read-out and encoded pixels. See EISData for
+    /// the per-variant semantics. Not present when in-camera EIS is disabled.
     #[prost(message, repeated, tag = "21")]
     pub eis: ::prost::alloc::vec::Vec<EisData>,
+    /// Per-frame GPS / GNSS position samples. See GPSData for layout, units, and
+    /// timing conventions. Sample cadence is producer-dependent (typically 1 Hz
+    /// for generic GNSS receivers, up to ~10–18 Hz for high-rate receivers).
+    /// Empty when GPS is disabled, unavailable, or simply hasn't ticked during
+    /// this frame's interval — most video frames at typical 1 Hz GPS rates carry
+    /// no entries.
+    #[prost(message, repeated, tag = "22")]
+    pub gps: ::prost::alloc::vec::Vec<GpsData>,
 }
+/// Per-frame lens information: intrinsic matrix, focal length, distortion model.
+///
+/// The lens distortion model is encoded as a `oneof distortion` variant. Exactly one
+/// variant is present per LensData entry. Each variant message defines its own
+/// coefficient layout and projection math.
+///
+/// MULTIPLE ENTRIES PER FRAME:
+///    FrameMetadata.lens is `repeated`. Multiple entries per frame are permitted to
+///    handle intra-frame changes (e.g. zoom or focus actuator moving during readout,
+///    per-row intrinsics for rolling-shutter-corrected anamorphic). Each entry
+///    carries its own sample_timestamp_us on the same camera clock as
+///    FrameMetadata.start_timestamp_us, and consumers interpolate between samples
+///    by timestamp using the same row-midpoint convention used for ois / ibis.
+///    When only one entry exists, the lens parameters apply uniformly to the whole
+///    frame and the timestamp may be omitted.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct LensData {
-    #[prost(enumeration = "lens_data::DistortionModel", tag = "1")]
-    pub distortion_model: i32,
-    /// Distortion model coefficients as an array of float values.
-    #[prost(float, repeated, tag = "2")]
-    pub distortion_coefficients: ::prost::alloc::vec::Vec<f32>,
-    /// Row-major 3x3 camera intrinsic matrix. Usually \[[fx, 0, cx\], \[0, fy, cy\], \[0, 0, 1]\], where fx and fy are focal length values in pixels (f_mm = f_pixels * sensor_width_mm / image_width_px ; f_pixels = f_mm / sensor_width_mm * image_width_px), and cx and cy is the principal point in pixels (usually width/2, height/2).
-    #[prost(float, repeated, tag = "3")]
+    /// Sample timestamp on the same camera clock as FrameMetadata.start_timestamp_us.
+    /// Unit: microseconds. Optional; when omitted (single-entry case), the entry
+    /// applies to the whole frame.
+    #[prost(double, optional, tag = "12")]
+    pub sample_timestamp_us: ::core::option::Option<f64>,
+    /// Row-major 3x3 camera intrinsic matrix. Usually \[[fx, 0, cx\], \[0, fy, cy\], \[0, 0, 1]\],
+    /// where fx and fy are focal length values in pixels
+    ///    (f_mm = f_pixels * sensor_width_mm / image_width_px ;
+    ///     f_pixels = f_mm / sensor_width_mm * image_width_px),
+    /// and cx, cy is the principal point in pixels (usually width/2, height/2).
+    #[prost(float, repeated, tag = "1")]
     pub camera_intrinsic_matrix: ::prost::alloc::vec::Vec<f32>,
-    /// Native lens focal length in mm
-    #[prost(float, optional, tag = "4")]
+    /// Native lens focal length in millimeters.
+    ///
+    /// REQUIRED when `distortion` is GenericPolynomial (the polynomial coefficients
+    /// are normalized assuming this focal length; see GenericPolynomial message docs).
+    ///
+    /// RELATIONSHIP TO camera_intrinsic_matrix:
+    ///    focal_length_mm is the physical lens focal length and is resolution-INDEPENDENT.
+    ///    camera_intrinsic_matrix carries f_x / f_y in OUTPUT-PIXEL units, which IS
+    ///    resolution-dependent. They are related (but not equivalent) by
+    ///        f_x_pixels = focal_length_mm · (output_width  / sensor_width_used_mm)
+    ///    where sensor_width_used_mm = pixel_pitch_x_nm · crop_width / 1e6.
+    ///
+    /// PRECEDENCE for projection: camera_intrinsic_matrix is the source of truth for
+    /// sensor → output-pixel mapping. focal_length_mm is the source of truth for
+    /// anything that needs physical-lens reasoning (e.g. GenericPolynomial
+    /// normalization, FOV calculation, sensor geometry). When a producer sets both,
+    /// they MUST be self-consistent under the formula above.
+    #[prost(float, optional, tag = "2")]
     pub focal_length_mm: ::core::option::Option<f32>,
     /// Lens aperture number. E.g. 2.8
-    #[prost(float, optional, tag = "5")]
+    #[prost(float, optional, tag = "3")]
     pub f_number: ::core::option::Option<f32>,
     /// Focal plane distance in millimeters
-    #[prost(float, optional, tag = "6")]
+    #[prost(float, optional, tag = "4")]
     pub focus_distance_mm: ::core::option::Option<f32>,
+    /// The distortion model. Exactly one variant is present.
+    #[prost(oneof = "lens_data::Distortion", tags = "5, 6, 7, 8, 9, 10, 11")]
+    pub distortion: ::core::option::Option<lens_data::Distortion>,
 }
 /// Nested message and enum types in `LensData`.
 pub mod lens_data {
-    #[derive(
-        Clone,
-        Copy,
-        Debug,
-        PartialEq,
-        Eq,
-        Hash,
-        PartialOrd,
-        Ord,
-        ::prost::Enumeration
-    )]
-    #[repr(i32)]
-    pub enum DistortionModel {
-        /// OpenCV's fisheye model. More details: <https://docs.opencv.org/4.x/db/d58/group__calib3d__fisheye.html>
-        OpenCvFisheye = 0,
-        /// OpenCV's standard model. More details: <https://docs.opencv.org/4.x/d9/d0c/group__calib3d.html>
-        OpenCvStandard = 1,
-        /// LensFun's Poly3 model. More details: <https://lensfun.github.io/manual/latest/group__Lens.html#gaa505e04666a189274ba66316697e308e>
-        Poly3 = 2,
-        /// LensFun's Poly5 model. More details: <https://lensfun.github.io/manual/latest/group__Lens.html#gaa505e04666a189274ba66316697e308e>
-        Poly5 = 3,
-        /// LensFun's PTLens model. More details: <https://lensfun.github.io/manual/latest/group__Lens.html#gaa505e04666a189274ba66316697e308e>
-        PtLens = 4,
-        /// ??? Not implemented yet. ???
-        GenericPolynomial = 5,
+    /// The distortion model. Exactly one variant is present.
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Distortion {
+        #[prost(message, tag = "5")]
+        NoDistortion(super::NoDistortion),
+        #[prost(message, tag = "6")]
+        OpencvFisheye(super::OpenCvFisheye),
+        #[prost(message, tag = "7")]
+        OpencvStandard(super::OpenCvStandard),
+        #[prost(message, tag = "8")]
+        LensfunPoly3(super::LensFunPoly3),
+        #[prost(message, tag = "9")]
+        LensfunPoly5(super::LensFunPoly5),
+        #[prost(message, tag = "10")]
+        LensfunPtlens(super::LensFunPtLens),
+        #[prost(message, tag = "11")]
+        GenericPolynomial(super::GenericPolynomial),
     }
-    impl DistortionModel {
-        /// String value of the enum field names used in the ProtoBuf definition.
-        ///
-        /// The values are not transformed in any way and thus are considered stable
-        /// (if the ProtoBuf definition does not change) and safe for programmatic use.
-        pub fn as_str_name(&self) -> &'static str {
-            match self {
-                Self::OpenCvFisheye => "OpenCVFisheye",
-                Self::OpenCvStandard => "OpenCVStandard",
-                Self::Poly3 => "Poly3",
-                Self::Poly5 => "Poly5",
-                Self::PtLens => "PTLens",
-                Self::GenericPolynomial => "GenericPolynomial",
-            }
-        }
-        /// Creates an enum from field names used in the ProtoBuf definition.
-        pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
-            match value {
-                "OpenCVFisheye" => Some(Self::OpenCvFisheye),
-                "OpenCVStandard" => Some(Self::OpenCvStandard),
-                "Poly3" => Some(Self::Poly3),
-                "Poly5" => Some(Self::Poly5),
-                "PTLens" => Some(Self::PtLens),
-                "GenericPolynomial" => Some(Self::GenericPolynomial),
-                _ => None,
-            }
-        }
-    }
+}
+/// Pinhole (rectilinear) projection — the encoded pixels are already linearized
+/// so that r = f · tan(θ). Producers that fully correct lens distortion in-camera
+/// SHOULD emit this variant rather than fitting a polynomial; the consumer treats
+/// the image as pinhole with no further geometric remap. Mathematically
+/// equivalent to GenericPolynomial with coefficients \[1, 0, 1/3, 0, 2/15, 0\]
+/// (the Taylor expansion of tan) but simpler and faster on the consumer side —
+/// no Newton iteration, no per-pixel polynomial evaluation.
+///
+/// For producers that apply PARTIAL in-camera correction (residual barrel /
+/// pincushion remains in the encoded image), use GenericPolynomial refit
+/// against the post-correction projection instead.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct NoDistortion {}
+/// OpenCV's fisheye distortion model.
+/// Reference: <https://docs.opencv.org/4.x/db/d58/group__calib3d__fisheye.html>
+///
+/// Projection (forward):
+///    θ        = angle from optical axis (radians)
+///    θ_d      = θ · (1 + k₁·θ² + k₂·θ⁴ + k₃·θ⁶ + k₄·θ⁸)
+///    r_pixels = θ_d · f_px        (f_px from camera_intrinsic_matrix)
+///
+/// Coefficients: \[k₁, k₂, k₃, k₄\] — exactly 4 floats.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenCvFisheye {
+    #[prost(float, repeated, tag = "1")]
+    pub coefficients: ::prost::alloc::vec::Vec<f32>,
+}
+/// OpenCV's standard radial + tangential distortion model.
+/// Reference: <https://docs.opencv.org/4.x/d9/d0c/group__calib3d.html>
+///
+/// Coefficients (variable length, following OpenCV conventions):
+///    4 elements:  \[k₁, k₂, p₁, p₂\]
+///    5 elements:  \[k₁, k₂, p₁, p₂, k₃\]
+///    8 elements:  \[k₁, k₂, p₁, p₂, k₃, k₄, k₅, k₆\]
+///    12 elements: \[k₁..k₆, p₁, p₂, s₁..s₄\]                  (rational+thin-prism)
+///    14 elements: \[k₁..k₆, p₁, p₂, s₁..s₄, τ_x, τ_y\]        (tilt)
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenCvStandard {
+    #[prost(float, repeated, tag = "1")]
+    pub coefficients: ::prost::alloc::vec::Vec<f32>,
+}
+/// LensFun's Poly3 radial distortion model.
+/// Reference: <https://lensfun.github.io/manual/latest/group__Lens.html#gaa505e04666a189274ba66316697e308e>
+///    r_d = r · (1 + k₁ · r²)
+/// Coefficients: \[k₁\] — 1 float.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LensFunPoly3 {
+    #[prost(float, repeated, tag = "1")]
+    pub coefficients: ::prost::alloc::vec::Vec<f32>,
+}
+/// LensFun's Poly5 radial distortion model.
+///    r_d = r · (1 + k₁·r² + k₂·r⁴)
+/// Coefficients: \[k₁, k₂\] — 2 floats.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LensFunPoly5 {
+    #[prost(float, repeated, tag = "1")]
+    pub coefficients: ::prost::alloc::vec::Vec<f32>,
+}
+/// LensFun's PTLens distortion model.
+///    r_d = r · (a·r³ + b·r² + c·r + 1)
+/// Coefficients: \[a, b, c\] — 3 floats.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LensFunPtLens {
+    #[prost(float, repeated, tag = "1")]
+    pub coefficients: ::prost::alloc::vec::Vec<f32>,
+}
+/// Generic polynomial fisheye projection — a clean generalization of OpenCVFisheye
+/// with full power range and dimensionless normalization.
+///
+/// SEMANTICS — WHAT THE POLYNOMIAL DESCRIBES
+///    coefficients describe the projection of the ENCODED PIXELS as they appear in
+///    the recorded image — NOT the raw lens optics. If the producer applies any
+///    in-camera distortion correction, geometric crop, anamorphic desqueeze, or
+///    any other geometric remap between sensor read-out and the encoded pixels,
+///    the polynomial MUST be refit against the resulting (post-correction)
+///    projection. Concretely:
+///
+///      - Producer applies NO in-camera correction → polynomial = raw lens projection
+///      - Producer applies in-camera correction toward pinhole → polynomial converges
+///        toward the rectilinear Taylor expansion \[1, 0, 1/3, 0, 2/15, 0, ...\]
+///      - Producer fully linearizes to pinhole → emit NoDistortion instead
+///
+///    The consumer ALWAYS undistorts using these coefficients without needing to
+///    know whether in-camera correction was applied. The polynomial alone encodes
+///    the projection state.
+///
+/// MATHEMATICAL FORM
+///    Maps the ray angle θ from the optical axis (radians) to a DIMENSIONLESS
+///    normalized projected radius on the image plane:
+///
+///        r_normalized = Σᵢ  coefficients\[i\] · θ^(i+1)
+///                     = c₀·θ + c₁·θ² + c₂·θ³ + ... + c_{N-1}·θ^N
+///
+///    The polynomial is intrinsically radial — a function of θ only. To project
+///    to pixels relative to the principal point, scale by each axis's pixel
+///    focal length INDEPENDENTLY (this matters for non-square pixels and any
+///    anamorphic case where f_x ≠ f_y):
+///
+///        f_x = camera_intrinsic_matrix\[0, 0\]   (pixel focal length, X axis)
+///        f_y = camera_intrinsic_matrix\[1, 1\]   (pixel focal length, Y axis)
+///        c_x = camera_intrinsic_matrix\[0, 2\]   (principal point X)
+///        c_y = camera_intrinsic_matrix\[1, 2\]   (principal point Y)
+///
+///        r_pixels_x = r_normalized · f_x
+///        r_pixels_y = r_normalized · f_y
+///        u          = unit_direction.x · r_pixels_x + c_x
+///        v          = unit_direction.y · r_pixels_y + c_y
+///
+///    where unit_direction is the unit vector pointing from the optical axis to
+///    the projected ray in the image plane (cos φ, sin φ for azimuth φ).
+///
+/// COEFFICIENT ORDER
+///    coefficients\[i\] is the coefficient of θ^(i+1):
+///      index 0 → θ¹      (the linear/leading term)
+///      index 1 → θ²
+///      index 2 → θ³
+///      ...
+///    Both odd and even powers are allowed. This is the only structural
+///    difference from OpenCVFisheye, which restricts to θ³, θ⁵, θ⁷, θ⁹
+///    with an implicit leading θ¹ coefficient of 1.0 — i.e. OpenCVFisheye can
+///    be expressed in this model as \[1, 0, k₁, 0, k₂, 0, k₃, 0, k₄\].
+///
+/// STRICT NORMALIZATION REQUIREMENTS
+///    This model uses STRICT semantics:
+///
+///    1. LensData.focal_length_mm MUST be set on the parent LensData entry. The
+///       polynomial coefficients are normalized assuming a specific physical
+///       focal length; consumers that need to relate to physical sensor
+///       geometry require this value.
+///
+///    2. The polynomial MUST be normalized so that c₀ ≈ 1.0 for a paraxial
+///       (small-θ) ray. Concretely, if a calibration produces coefficients
+///       in meters/radian^n, divide all coefficients by the focal length in
+///       meters before writing them here. Consumers MAY reject coefficients
+///       whose c₀ is outside a reasonable tolerance (e.g. \[0.8, 1.2\]) as
+///       malformed.
+///
+///    3. Reference projections under this normalization:
+///         Equidistant fisheye:  r_normalized = θ            → \[1, 0, 0, ...\]
+///         Rectilinear pinhole:  r_normalized = tan(θ)       → \[1, 0, 1/3, 0, 2/15, ...\]
+///         Stereographic:        r_normalized = 2·tan(θ/2)   → \[1, 0, 1/12, 0, 1/120, ...\]
+///
+/// NUMBER OF COEFFICIENTS
+///    Variable. Typical ranges:
+///      - 4 terms: mild fisheye, narrow-to-medium FOV
+///      - 6 terms: wide-angle / fisheye
+///      - 8+ terms: extreme wide-angle or non-symmetric optics
+///    Producers SHOULD report only as many terms as the calibration
+///    actually fitted; do not pad with trailing zeros.
+///
+/// INVERSION
+///    Forward (θ → r_normalized) is closed-form polynomial evaluation.
+///    Inverse (r_normalized → θ) requires numerical iteration; Newton's
+///    method on the polynomial converges in <10 iterations for any
+///    physically reasonable lens.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GenericPolynomial {
+    #[prost(float, repeated, tag = "1")]
+    pub coefficients: ::prost::alloc::vec::Vec<f32>,
 }
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct ImuData {
-    /// Exact timestamp of the sampling time from the internal camera clock. Unit: microseconds
-    #[prost(double, tag = "1")]
-    pub sample_timestamp_us: f64,
+    /// Sample timestamp on the same camera clock as FrameMetadata.start_timestamp_us.
+    /// Unit: microseconds. Optional; when omitted (single-entry case), the sample
+    /// applies to the whole frame. For multi-sample entries (the normal case for
+    /// IMU at 200–1000 Hz) this MUST be set on every sample.
+    #[prost(double, optional, tag = "1")]
+    pub sample_timestamp_us: ::core::option::Option<f64>,
     /// Gyroscope X reading. Unit: degrees/sec
     #[prost(float, tag = "2")]
     pub gyroscope_x: f32,
@@ -338,77 +618,346 @@ pub struct ImuData {
     #[prost(float, optional, tag = "10")]
     pub magnetometer_z: ::core::option::Option<f32>,
 }
+/// Unit quaternion (w + xi + yj + zk) using the HAMILTON convention:
+///    - Right-handed coordinate system.
+///    - Multiplication: i·j = k, j·k = i, k·i = j, and i² = j² = k² = ijk = -1.
+///      This is NOT the JPL convention (which uses i·j = -k) found in some IMU
+///      vendor literature; producers that natively use JPL must convert before
+///      writing here.
+///    - The four components MUST satisfy w² + x² + y² + z² = 1 (within float
+///      precision); consumers MAY renormalize on read.
+///    - Storage order is (w, x, y, z) as the four float fields below; this is
+///      independent of the multiplication convention but listed for clarity.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Quaternion {
-    /// Quaternion component W (angle)
+    /// Quaternion component W (real / scalar part)
     #[prost(float, tag = "1")]
     pub w: f32,
-    /// Quaternion component X
+    /// Quaternion component X (i-axis imaginary part)
     #[prost(float, tag = "2")]
     pub x: f32,
-    /// Quaternion component Y
+    /// Quaternion component Y (j-axis imaginary part)
     #[prost(float, tag = "3")]
     pub y: f32,
-    /// Quaternion component Z
+    /// Quaternion component Z (k-axis imaginary part)
     #[prost(float, tag = "4")]
     pub z: f32,
 }
+/// Per-sample camera orientation as a quaternion.
+///
+/// This is the camera's orientation in some inertial / world frame, derived from
+/// sensor fusion of raw IMU samples — the same role as the output of a complementary
+/// or Kalman filter, or the camera's own onboard sensor fusion. Producers should fill
+/// this when the camera reports a fused orientation. When only raw IMU is available,
+/// leave this field empty and the consumer will integrate from `FrameMetadata.imu`.
+///
+/// For cameras that emit TWO related quaternion streams (a body-orientation stream and
+/// an image-orientation in-camera transform), this field carries the COMBINED product
+/// (body_orientation · image_orientation). The image-orientation transform alone, if
+/// separately useful (e.g. for re-expressing gravity in the encoded-frame coordinate
+/// system, or for horizon-lock integration), is reported under EISData.data.quaternion
+/// — see EISData docs.
+///
+/// Sample cadence: typically denser than one per frame (commonly one quaternion per
+/// gyro sample, ~200 Hz). The consumer interpolates between samples by timestamp.
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct QuaternionData {
-    /// Exact timestamp of the sampling time from the internal camera clock. Unit: microseconds
-    #[prost(double, tag = "1")]
-    pub sample_timestamp_us: f64,
-    /// Quaternion
+    /// Sample timestamp on the same camera clock as FrameMetadata.start_timestamp_us.
+    /// Unit: microseconds. Optional; when omitted (single-entry case), the sample
+    /// applies to the whole frame. For multi-sample entries this MUST be set on
+    /// every sample.
+    #[prost(double, optional, tag = "1")]
+    pub sample_timestamp_us: ::core::option::Option<f64>,
     #[prost(message, optional, tag = "2")]
     pub quat: ::core::option::Option<Quaternion>,
 }
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct LensOisData {
-    /// Exact timestamp of the sampling time from the internal camera clock. Unit: microseconds
-    #[prost(double, tag = "1")]
-    pub sample_timestamp_us: f64,
-    /// Optical element shift value in the X axis in nanometers
+    /// Sample timestamp on the same camera clock as FrameMetadata.start_timestamp_us.
+    /// Unit: microseconds. Optional; when omitted (single-entry case), the sample
+    /// applies to the whole frame. For multi-sample entries this MUST be set on
+    /// every sample.
+    #[prost(double, optional, tag = "1")]
+    pub sample_timestamp_us: ::core::option::Option<f64>,
+    /// Image-plane displacement caused by OIS, in nanometers, in sensor-native
+    /// coordinates. Positive = content moved in +X direction.
     #[prost(float, tag = "2")]
-    pub x: f32,
-    /// Optical element shift value in the Y axis in nanometers
+    pub shift_x_nm: f32,
+    /// Same, Y axis.
     #[prost(float, tag = "3")]
-    pub y: f32,
+    pub shift_y_nm: f32,
 }
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct IbisData {
-    /// Exact timestamp of the sampling time from the internal camera clock. Unit: microseconds
-    #[prost(double, tag = "1")]
-    pub sample_timestamp_us: f64,
-    /// X Sensor shift value in nanometers
+    /// Sample timestamp on the same camera clock as FrameMetadata.start_timestamp_us.
+    /// Unit: microseconds. Optional; when omitted (single-entry case), the sample
+    /// applies to the whole frame. For multi-sample entries this MUST be set on
+    /// every sample.
+    #[prost(double, optional, tag = "1")]
+    pub sample_timestamp_us: ::core::option::Option<f64>,
+    /// Image-plane displacement caused by IBIS, in nanometers, in sensor-native
+    /// coordinates. Positive = content moved in +X direction. NOTE: this is the
+    /// displacement of the IMAGE CONTENT, not the sensor — i.e. it's the negative
+    /// of the sensor's mechanical displacement. See the unified-sign-convention
+    /// block above LensOISData for the producer rule.
     #[prost(float, tag = "2")]
-    pub shift_x: f32,
-    /// Y Sensor shift value in nanometers
+    pub shift_x_nm: f32,
+    /// Same, Y axis.
     #[prost(float, tag = "3")]
-    pub shift_y: f32,
-    /// Sensor roll rotation angle in degrees.
+    pub shift_y_nm: f32,
+    /// Sensor rotation about the optical axis (Z), in degrees, pivoting about
+    /// the principal point. Positive = counterclockwise viewed from the lens
+    /// toward the sensor.
+    ///
+    /// PIVOT COORDINATE FRAME: the rotation is applied in sensor-native pixel
+    /// coordinates (the same frame as shift_x_nm / shift_y_nm — origin at the
+    /// top-left of the sensor active area, +X right, +Y down). The pivot
+    /// therefore must be expressed in the same frame, NOT in output-pixel
+    /// coordinates. Convert the principal point from camera_intrinsic_matrix
+    /// (which is in output-pixel units, per LensData docs) using the per-frame
+    /// crop:
+    ///
+    ///      pivot_sensor_px_x = FrameMetadata.crop_x
+    ///                        + (camera_intrinsic_matrix\[0, 2\] / frame_width)
+    ///                          · FrameMetadata.crop_width
+    ///      pivot_sensor_px_y = FrameMetadata.crop_y
+    ///                        + (camera_intrinsic_matrix\[1, 2\] / frame_height)
+    ///                          · FrameMetadata.crop_height
+    ///
+    /// (where frame_width/frame_height are ClipMetadata.frame_{width,height}).
+    /// Producers that don't expose camera_intrinsic_matrix should approximate
+    /// the pivot as the center of the per-frame crop rectangle.
+    ///
+    /// PHYSICAL MODEL: the IBIS mechanism has exactly three mechanical degrees
+    /// of freedom — translation X, translation Y, and this rotation about the
+    /// optical axis. The sensor does not pitch or yaw (physically tilting the
+    /// sensor would defocus the image). The X/Y shift pair captures ALL linear
+    /// corrective output, including correction for camera yaw/pitch shake (both
+    /// manifest at the sensor as horizontal/vertical image translation by
+    /// approximately f·tan(θ)).
     #[prost(float, tag = "4")]
     pub roll_angle_degrees: f32,
 }
+/// Per-sample electronic-image-stabilization data — describes a transform the camera
+/// applied INTERNALLY between sensor read-out and the encoded pixels. The consumer
+/// applies the inverse to recover the sensor-native frame before doing its own
+/// stabilization on top.
+///
+/// Distinct from QuaternionData (which carries camera ORIENTATION in world frame,
+/// not an in-camera transform applied to pixels).
+///
+/// VARIANTS:
+///
+///    - `quaternion`: a rotation the camera applied to the captured pixels before
+///      encoding (e.g. the image-orientation half of a body-orientation +
+///      image-orientation quaternion pair, used to re-express data into the encoded
+///      frame and for horizon-lock integration).
+///
+///    - `mesh_warp`: a 2D mesh describing a spatial warp the camera applied as part
+///      of in-camera electronic stabilization. The consumer numerically inverts the
+///      mesh to recover the sensor-native frame. See MeshWarpData for layout.
+///
+///    - `matrix_4x4`: a 4×4 affine transform the camera applied. Preliminary — no
+///      grounded producer yet.
+///
+/// MULTIPLE ENTRIES PER FRAME:
+///    Multiple EISData samples per frame are permitted; use sample_timestamp_us for
+///    per-sample timing (aligned with the row-midpoint timeline for rolling shutter).
+///    When only one entry exists, the transform applies uniformly to the whole frame
+///    and the timestamp may be omitted.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EisData {
-    /// Exact timestamp of the sampling time from the internal camera clock. Unit: microseconds. Timestamp is ignored if there's only one entry of EISData per frame.
+    /// Sample timestamp on the same camera clock as FrameMetadata.start_timestamp_us.
+    /// Unit: microseconds. Optional; when omitted (single-entry case), the transform
+    /// applies to the whole frame.
     #[prost(double, optional, tag = "1")]
     pub sample_timestamp_us: ::core::option::Option<f64>,
-    /// Type of EIS. Can be quaternion, mesh warp or 4x4 transform matrix.
-    #[prost(enumeration = "eis_data::EisDataType", tag = "2")]
-    pub r#type: i32,
-    /// If type is QUATERNION, this field contains the quaternion data
-    #[prost(message, optional, tag = "3")]
-    pub quaternion: ::core::option::Option<Quaternion>,
-    /// If type is MESH_WARP, this field contains the mesh values
-    #[prost(message, optional, tag = "4")]
-    pub mesh_warp: ::core::option::Option<MeshWarpData>,
-    /// If type is MATRIX_4x4, this field contains the 16 float matrix values (row-major order).
-    #[prost(float, repeated, tag = "5")]
-    pub matrix_4x4: ::prost::alloc::vec::Vec<f32>,
+    /// Exactly one variant is present. Each describes a different kind of in-camera
+    /// applied transform.
+    #[prost(oneof = "eis_data::Data", tags = "2, 3, 4")]
+    pub data: ::core::option::Option<eis_data::Data>,
 }
 /// Nested message and enum types in `EISData`.
 pub mod eis_data {
+    /// Exactly one variant is present. Each describes a different kind of in-camera
+    /// applied transform.
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Data {
+        /// Rotation the camera applied to the captured pixels before encoding.
+        /// Consumer applies the inverse to undo it.
+        #[prost(message, tag = "2")]
+        Quaternion(super::Quaternion),
+        /// 2D mesh warp the camera applied. See MeshWarpData.
+        #[prost(message, tag = "3")]
+        MeshWarp(super::MeshWarpData),
+        /// 4×4 affine transform the camera applied. Preliminary — no grounded
+        /// producer yet.
+        #[prost(message, tag = "4")]
+        Matrix4x4(super::Matrix4x4),
+    }
+}
+/// 4×4 affine transform. Row-major: values\[0..4\] = first row, etc.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Matrix4x4 {
+    /// 16 floats, row-major
+    #[prost(float, repeated, tag = "1")]
+    pub values: ::prost::alloc::vec::Vec<f32>,
+}
+/// 2D mesh describing an in-camera spatial warp the camera applied between sensor
+/// read-out and the encoded frame. Used by the EISData.mesh_warp variant.
+///
+/// DIRECTION:
+///    The mesh is the FORWARD direction — it describes what the camera DID to map
+///    from sensor-native positions to encoded-frame positions. The consumer
+///    numerically inverts (Newton / Nelder-Mead on the interpolated mesh) to map
+///    encoded positions back to sensor positions for sampling.
+///
+/// COORDINATE FRAME:
+///    Both grid anchors and warped output positions are in SENSOR-pixel coordinates,
+///    measured relative to FrameMetadata.crop_x, crop_y (the per-frame capture-area
+///    origin). Axes match LensOISData / IBISData: +X right, +Y down, sensor-native
+///    (do NOT rotate with ClipMetadata.rotation_degrees).
+///
+/// LAYOUT:
+///    Grid anchors are uniformly spaced over the rectangle \[0, region_width\] ×
+///    \[0, region_height\] in sensor-pixel coordinates:
+///        anchor(i, j) = ( i · region_width  / (grid_width  - 1),
+///                         j · region_height / (grid_height - 1) )
+///
+///    For each anchor in row-major order (index k = j · grid_width + i), the pair
+///    (warped_xy\[2k\], warped_xy\[2k + 1\]) gives the (x, y) position the camera
+///    mapped that anchor TO under its in-camera EIS warp. Typically the warped
+///    position is the anchor itself plus a small displacement (sub-pixel to a few
+///    pixels) representing the per-frame stabilization correction.
+///
+///    Total warped_xy length = 2 · grid_width · grid_height.
+///
+/// INTERPOLATION:
+///    Between grid anchors, the consumer interpolates the warped positions. Cubic
+///    spline (Catmull-Rom or natural cubic) is recommended for smoothness; bilinear
+///    is acceptable for low-precision use cases.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MeshWarpData {
+    /// Grid resolution. Typically 9 × 9.
+    #[prost(uint32, tag = "1")]
+    pub grid_width: u32,
+    #[prost(uint32, tag = "2")]
+    pub grid_height: u32,
+    /// Rectangular region the grid covers, in sensor pixels relative to crop origin.
+    #[prost(float, tag = "3")]
+    pub region_width: f32,
+    #[prost(float, tag = "4")]
+    pub region_height: f32,
+    /// Warped target position for each anchor. 2 · grid_width · grid_height floats,
+    /// row-major, two per anchor (x, y).
+    #[prost(float, repeated, tag = "5")]
+    pub warped_xy: ::prost::alloc::vec::Vec<f32>,
+}
+/// Per-sample GPS / GNSS position fix.
+///
+/// SAMPLE CADENCE: typically much lower than IMU — 1 Hz for generic GNSS chips,
+/// 10–18 Hz for high-rate sport-camera receivers (GoPro GPS5/GPS9, Insta360).
+/// Most video frames at 1 Hz GPS rates contain no GPSData entries; producers
+/// emit them only on the frames during whose interval the receiver fired.
+/// Multi-sample entries within a single frame are permitted and MUST set
+/// sample_timestamp_us on every sample.
+///
+/// COORDINATE / UNIT CONVENTIONS:
+///    - latitude_degrees  ∈ \[−90, +90\],   WGS-84, N positive / S negative.
+///    - longitude_degrees ∈ \[−180, +180\], WGS-84, E positive / W negative.
+///      NMEA producers (lat/lon as DMS plus N/S/E/W hemisphere char) MUST
+///      convert to signed decimal degrees before writing.
+///    - altitude_m in meters. The reference surface (WGS-84 ellipsoid vs MSL via
+///      internal geoid model) is producer-defined — this schema does not
+///      distinguish them. Most consumer GNSS chips output MSL via a built-in
+///      geoid model; CAMM type-6 and Insta360 emit MSL; raw RTK altitude is
+///      usually ellipsoid. Consumers that need a specific reference SHOULD
+///      verify against the producer's documented behavior.
+///    - speed_mps in m/s (SI). Producers whose native unit is km/h MUST divide by 3.6.
+///    - track_degrees ∈ [0, 360), 0° = true north, 90° = east (clockwise).
+///    - velocity_*_mps decompose ground velocity in the ENU (East-North-Up)
+///      local-tangent-plane frame, m/s. CAMM type-6 emits these natively.
+///      Optional and independent of speed_mps / track_degrees: producers MAY
+///      emit either, both, or neither. When both are present they MUST be
+///      self-consistent:
+///         speed_mps   ≈ √(velocity_east_mps² + velocity_north_mps²)
+///         track_degrees ≈ ((atan2(velocity_east_mps, velocity_north_mps) · 180/π) + 360) mod 360
+///       (the +360 / mod 360 wrap is required because atan2 returns (−180°, +180°]
+///       but track_degrees is defined on [0, 360); westerly headings would
+///       otherwise come out negative.)
+///    - *_accuracy_* fields are 1-σ standard deviations as estimated by the
+///      receiver (typically from satellite geometry + signal-to-noise — NOT a
+///      fixed multiple of σ). Producers SHOULD omit these unless their hardware
+///      provides them; setting them to zero would be misinterpreted as "perfect
+///      accuracy" rather than "unknown accuracy".
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct GpsData {
+    /// Sample timestamp on the same camera clock as FrameMetadata.start_timestamp_us.
+    /// Unit: microseconds. Optional; when omitted (single-entry case), the sample
+    /// applies to the whole frame. For multi-sample entries this MUST be set on
+    /// every sample. Producers that have only an absolute UTC time (no camera-
+    /// clock alignment) SHOULD leave this unset and rely on unix_timestamp_s.
+    #[prost(double, optional, tag = "1")]
+    pub sample_timestamp_us: ::core::option::Option<f64>,
+    /// Absolute time of the fix in Unix-epoch seconds (UTC), if known. Producers
+    /// that natively use GPS-epoch time (e.g. CAMM type-6's `time_gps_epoch`)
+    /// MUST subtract the GPS↔UTC leap-second offset (~18 s as of 2025) before
+    /// writing — UTC is the universal convention here. Independent of
+    /// sample_timestamp_us: producers MAY emit either, both, or (rarely) neither;
+    /// when both are present they refer to the same physical instant.
+    #[prost(double, optional, tag = "2")]
+    pub unix_timestamp_s: ::core::option::Option<f64>,
+    /// True iff the receiver has a valid position fix at this sample. Defaults
+    /// to false (proto3 scalar default), which is the safe interpretation for
+    /// producers that omit it. Producers SHOULD also set fix_type when their
+    /// hardware reports finer detail — consumers MAY treat fix_type ∈
+    /// {Fix2D, Fix3D, RTK} as implying is_acquired = true even when the bool
+    /// is unset.
+    #[prost(bool, tag = "3")]
+    pub is_acquired: bool,
+    /// Finer fix-quality classification, when the producer hardware reports it.
+    /// Optional — is_acquired alone is enough for the basic valid/invalid split.
+    #[prost(enumeration = "gps_data::FixType", optional, tag = "4")]
+    pub fix_type: ::core::option::Option<i32>,
+    /// WGS-84 latitude in degrees, N positive / S negative.
+    #[prost(double, tag = "5")]
+    pub latitude_degrees: f64,
+    /// WGS-84 longitude in degrees, E positive / W negative.
+    #[prost(double, tag = "6")]
+    pub longitude_degrees: f64,
+    /// Altitude in meters. Reference surface (ellipsoid vs MSL) is producer-
+    /// defined — see the COORDINATE / UNIT CONVENTIONS block above.
+    #[prost(float, optional, tag = "7")]
+    pub altitude_m: ::core::option::Option<f32>,
+    /// Ground speed in m/s.
+    #[prost(float, optional, tag = "8")]
+    pub speed_mps: ::core::option::Option<f32>,
+    /// Ground course / heading in degrees, 0° = true north, increasing clockwise.
+    #[prost(float, optional, tag = "9")]
+    pub track_degrees: ::core::option::Option<f32>,
+    /// 1-σ uncertainty estimates as reported by the receiver, in the corresponding
+    /// native units. Producers SHOULD omit these when their hardware doesn't
+    /// supply them — zero is NOT a valid placeholder for "unknown".
+    #[prost(float, optional, tag = "10")]
+    pub horizontal_accuracy_m: ::core::option::Option<f32>,
+    #[prost(float, optional, tag = "11")]
+    pub vertical_accuracy_m: ::core::option::Option<f32>,
+    #[prost(float, optional, tag = "12")]
+    pub speed_accuracy_mps: ::core::option::Option<f32>,
+    /// Decomposed ground velocity in the ENU (East-North-Up) local-tangent-plane
+    /// frame, m/s. CAMM type-6 is the canonical grounded producer; most other
+    /// GNSS-only formats (Insta360, GoPro GPS5/GPS9) emit speed_mps +
+    /// track_degrees instead. See the self-consistency requirement in the
+    /// COORDINATE / UNIT CONVENTIONS block when both representations are present.
+    #[prost(float, optional, tag = "13")]
+    pub velocity_east_mps: ::core::option::Option<f32>,
+    #[prost(float, optional, tag = "14")]
+    pub velocity_north_mps: ::core::option::Option<f32>,
+    #[prost(float, optional, tag = "15")]
+    pub velocity_up_mps: ::core::option::Option<f32>,
+}
+/// Nested message and enum types in `GPSData`.
+pub mod gps_data {
     #[derive(
         Clone,
         Copy,
@@ -421,46 +970,42 @@ pub mod eis_data {
         ::prost::Enumeration
     )]
     #[repr(i32)]
-    pub enum EisDataType {
-        /// Rotation only, indicates how the frame was rotated internally by the camera EIS, from pixels read from the sensor to the final pixels in the encoded video file.
-        Quaternion = 0,
-        /// Mesh warp. Allows for arbitrary mapping of the video frame. Contains exact transform/deform of the video frame read from the sensor to the final pixels in the encoded video file.
-        MeshWarp = 1,
-        /// 4x4 matrix - rotation, translation and scaling. Indicates how the frame was transformed in the 3d space by the camera EIS, from pixels read from the sensor to the final pixels in the encoded video file.
-        Matrix4x4 = 2,
+    pub enum FixType {
+        /// Producer did not classify the fix
+        Unknown = 0,
+        /// Receiver has no usable fix this sample
+        NoFix = 1,
+        /// Horizontal position valid; altitude unreliable
+        Fix2D = 2,
+        /// Horizontal position + altitude valid
+        Fix3D = 3,
+        /// Real-Time Kinematic — centimeter-class accuracy (DJI, survey-grade)
+        Rtk = 4,
     }
-    impl EisDataType {
+    impl FixType {
         /// String value of the enum field names used in the ProtoBuf definition.
         ///
         /// The values are not transformed in any way and thus are considered stable
         /// (if the ProtoBuf definition does not change) and safe for programmatic use.
         pub fn as_str_name(&self) -> &'static str {
             match self {
-                Self::Quaternion => "QUATERNION",
-                Self::MeshWarp => "MESH_WARP",
-                Self::Matrix4x4 => "MATRIX_4X4",
+                Self::Unknown => "Unknown",
+                Self::NoFix => "NoFix",
+                Self::Fix2D => "Fix2D",
+                Self::Fix3D => "Fix3D",
+                Self::Rtk => "RTK",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
         pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
             match value {
-                "QUATERNION" => Some(Self::Quaternion),
-                "MESH_WARP" => Some(Self::MeshWarp),
-                "MATRIX_4X4" => Some(Self::Matrix4x4),
+                "Unknown" => Some(Self::Unknown),
+                "NoFix" => Some(Self::NoFix),
+                "Fix2D" => Some(Self::Fix2D),
+                "Fix3D" => Some(Self::Fix3D),
+                "RTK" => Some(Self::Rtk),
                 _ => None,
             }
         }
     }
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct MeshWarpData {
-    /// Number of video frame divisions in the horizontal direction.
-    #[prost(int32, tag = "1")]
-    pub grid_width: i32,
-    /// Number of video frame divisions in the vertical direction.
-    #[prost(int32, tag = "2")]
-    pub grid_height: i32,
-    /// grid_width * grid_height float numbers representing new position of a coordinate at X and Y grid position.
-    #[prost(float, repeated, tag = "3")]
-    pub values: ::prost::alloc::vec::Vec<f32>,
 }
