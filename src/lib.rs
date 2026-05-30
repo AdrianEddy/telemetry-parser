@@ -23,6 +23,7 @@ mod senseflow;
 mod freefly;
 mod canon;
 mod nikon;
+mod zcam;
 
 pub mod tags_impl;
 pub mod util;
@@ -177,4 +178,5 @@ impl_formats! {
     Cooke     => cooke::Cooke,
     SenseFlow => senseflow::SenseFlow,
     Freefly   => freefly::Freefly,
+    Zcam      => zcam::Zcam,
 }
