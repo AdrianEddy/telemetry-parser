@@ -1,0 +1,75 @@
+// IMVT Metadata for specific product
+
+// version = 1.0.0
+
+syntax = "proto3";
+
+package imvtmeta;
+
+import "imvt_lib.proto";
+
+/**
+ * Product metadata
+ */
+message ProductMeta {
+    ClipMeta clip_meta = 1;
+    StreamMeta stream_meta = 2;
+    FrameMeta frame_meta = 3;
+}
+
+/**
+ * Per clip metadata
+ */
+message ClipMeta {
+    ClipMetaHeader clip_meta_header = 1;
+    LensInfo lens_info = 2;
+    ImageSensorInfo image_sensor_info = 3;
+    StorageInfo storage_info = 4;
+    IMUInfo imu_info = 5;
+    MultiCameraLinkSync multi_camera_link_sync = 6;
+}
+
+/**
+ * Per stream metadata
+ */
+message StreamMeta {
+    StreamMetaHeader stream_meta_header = 1;
+    VideoStreamMeta video_stream_meta = 2;
+    ImageProfile image_profile = 3;
+    ImageDenoise image_denoise = 4;
+    ImageSharpen image_sharpen = 5;
+    ImageHueSat image_hue_sat = 6;
+    ImageAdvancedColorMatrix image_advanced_color_matrix = 7;
+    ImageAdvancedColorHueSat image_advanced_color_hue_sat = 8;
+    ImageBlackLevel image_black_level = 9;
+}
+
+/**
+ * Per frame metadata
+ */
+message FrameMeta {
+    FrameMetaHeader frame_meta_header = 1;
+    FrameMetaOfCamera frame_meta_of_camera = 2;
+    FrameMetaOfIMU frame_meta_of_imu = 3;
+    FrameMetaOfPanTilt frame_meta_of_pan_tilt = 4;
+}
+
+message FrameMetaOfCamera {
+    DeviceMetaHeader device_meta_header = 1;
+    ExposureData exposure_data = 2;
+    WhiteBalanceData white_balance_data = 3;
+    FocusData focus_data = 4;
+    FocalLength focal_length = 5;
+    DigitalZoonRation digital_zoon_ration = 6;
+    SystemInfo system_info = 7;
+}
+
+message FrameMetaOfIMU {
+    IMUData imu_data = 1;
+}
+
+message FrameMetaOfPanTilt {
+    PanTiltData pan_tilt_data = 1;
+}
+
+

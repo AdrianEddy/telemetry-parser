@@ -50,9 +50,16 @@ pub struct GyroflowProtobuf {
     lens_profile_emitted: bool,
 
     // ---- timing reference ----
-    // start_timestamp_us of the very first FrameMetadata seen. Used to make
-    // IMU / quaternion / per-frame timestamps file-relative (start at 0) so
-    // they line up with MP4 sample composition timestamps.
+    // start_timestamp_us of the very first FrameMetadata seen. Used ONLY to compute
+    // the per-frame FirstFrameTimestamp jitter J_i (= start_ts/1000 −
+    // info.timestamp_ms) and per-frame readout. It is deliberately NOT subtracted
+    // from the IMU / quaternion sample timestamps: per the gyroflow.proto contract
+    // those stay on the camera clock (the same clock as start_timestamp_us), and
+    // gyroflow's contract-native gyroflow_proto::get_time_offset converts the
+    // video-PTS lookup ONTO that clock via FirstFrameTimestamp − exp/2 + readout/2.
+    // Rebasing the IMU axis here would shift the gyro keys by start_timestamp_us[0]
+    // (≈ J_0) without a matching shift in the lookup, producing a constant
+    // ~frame-jitter (tens of ms) misalignment.
     first_start_ts_us: Option<f64>,
 }
 
@@ -346,10 +353,7 @@ impl GyroflowProtobuf {
         // spline timing — a J_0 offset there picks DIFFERENT IBIS samples than native
         // by exactly J_0 µs and degrades rolling-shutter / IBIS stability.
         let first_frame_ts_ms = frame.start_timestamp_us / 1000.0 - info.timestamp_ms;
-        insert_tag(tag_map,
-            tag!(parsed GroupId::Imager, TagId::FirstFrameTimestamp, "First frame timestamp", f64,
-                 |v| format!("{:.4} ms", v), first_frame_ts_ms, vec![]),
-            options);
+        insert_tag(tag_map, tag!(parsed GroupId::Imager, TagId::FirstFrameTimestamp, "First frame timestamp", f64, |v| format!("{:.4} ms", v), first_frame_ts_ms, vec![]), options);
 
         // Effective exposure time (apply EXPOSURE PRECEDENCE from the proto).
         let exposure_time_us = self.resolve_exposure_us(frame);
@@ -568,14 +572,18 @@ impl GyroflowProtobuf {
 
         // ---- Raw IMU samples → Gyroscope / Accelerometer / Magnetometer ----
         // TimeVector3.t convention for Vec_TimeVector3_f64 is SECONDS. We keep IMU
-        // sample times on the CAMERA CLOCK (no rebase) — per the proto spec,
-        // sample_timestamp_us is on the same clock as start_timestamp_us, and the
-        // downstream gyro_source code only ever consumes RELATIVE timings
-        // (durations, BTreeMap lookups by an arbitrary key origin). Keeping the
-        // camera clock means FirstFrameTimestamp can stay = pure J_i above (no J_0
-        // shift), which is what stab_collect's IBIS-spline timing requires.
-        // See telemetry-parser/src/util.rs:544-560 (Vec_TimeVector3_f64 branch in
-        // normalized_imu_interpolated, which keys gyro_map by us = (t * 1000).round()).
+        // sample times on the CAMERA CLOCK (NO rebase) — per the gyroflow.proto
+        // contract, sample_timestamp_us is on the same clock as start_timestamp_us.
+        // We emit FirstFrameTimestamp + ExposureTime + FrameReadoutTime, so
+        // gyroflow's contract-native gyroflow_proto::get_time_offset converts the
+        // video-PTS frame lookup ONTO this camera clock via per_frame_time_offsets
+        // (lookup = PTS + FirstFrameTimestamp − exp/2 + readout/2 = the camera-clock
+        // frame centre of capture). The gyro keys must therefore STAY on the camera
+        // clock; rebasing them to file-relative would shift the keys by
+        // start_timestamp_us[0] (≈ J_0) with no matching shift in the lookup — a
+        // constant ~frame-jitter (tens of ms) misalignment. See util.rs:544-560
+        // (Vec_TimeVector3_f64 branch keys gyro_map by us = (t * 1000).round()
+        // verbatim, since has_accurate_timestamps() is true).
         let mut gyro: Vec<TimeVector3<f64>> = Vec::with_capacity(frame.imu.len());
         let mut acc:  Vec<TimeVector3<f64>> = Vec::with_capacity(frame.imu.len());
         let mut mag:  Vec<TimeVector3<f64>> = Vec::new();
@@ -631,20 +639,18 @@ impl GyroflowProtobuf {
             insert_tag(tag_map, tag!(parsed GroupId::Gyroscope,     TagId::Data,        "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]), options);
             insert_tag(tag_map, tag!(parsed GroupId::Gyroscope,     TagId::Unit,        "Gyroscope unit",     String,              |v| v.to_string(),     "deg/s".into(), vec![]), options);
             insert_tag(tag_map, tag!(parsed GroupId::Gyroscope,     TagId::Orientation, "IMU orientation",    String,              |v| v.to_string(),     emit_orientation.clone(), vec![]), options);
-            // Frequency / TimeOffset are read by sony::get_time_offset:
-            //   * Frequency = gyro sample rate (Hz)
-            //   * TimeOffset = 0 because our IMU `t` values are already file-relative,
-            //     which is exactly what sony::get_time_offset's `- offset` term assumes.
+            // Frequency = gyro sample rate (Hz). Still required by gyroflow's
+            // sony::stab_collect (it reads Gyroscope.Frequency for the IBIS/OIS
+            // spline timebase). We do NOT emit Gyroscope.TimeOffset: the proto
+            // timing path is gyroflow's gyroflow_proto::get_time_offset, which is
+            // contract-native and reads no TimeOffset; the only consumer that ever
+            // read it (sony::get_time_offset) is no longer invoked for this format.
             if imu_sample_rate > 0 {
                 insert_tag(tag_map,
                     tag!(parsed GroupId::Gyroscope, TagId::Frequency, "Gyroscope frequency", i32,
                          |v| format!("{} Hz", v), imu_sample_rate as i32, vec![]),
                     options);
             }
-            insert_tag(tag_map,
-                tag!(parsed GroupId::Gyroscope, TagId::TimeOffset, "Gyroscope offset", f64,
-                     |v| format!("{:.4} ms", v), 0.0_f64, vec![]),
-                options);
         }
         if !acc.is_empty() {
             insert_tag(tag_map, tag!(parsed GroupId::Accelerometer, TagId::Data,        "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), acc, vec![]), options);
@@ -656,10 +662,6 @@ impl GyroflowProtobuf {
                          |v| format!("{} Hz", v), imu_sample_rate as i32, vec![]),
                     options);
             }
-            insert_tag(tag_map,
-                tag!(parsed GroupId::Accelerometer, TagId::TimeOffset, "Accelerometer offset", f64,
-                     |v| format!("{:.4} ms", v), 0.0_f64, vec![]),
-                options);
         }
         if !mag.is_empty() {
             insert_tag(tag_map, tag!(parsed GroupId::Magnetometer, TagId::Data,        "Magnetometer data",  Vec_TimeVector3_f64, |v| format!("{:?}", v), mag, vec![]), options);
@@ -670,7 +672,8 @@ impl GyroflowProtobuf {
         // ---- Quaternions (fused orientation) ----
         // TimeQuaternion.t is MILLISECONDS; gyro_source/mod.rs:177 does
         // (v.t * 1000.0) → us key. Like raw IMU above, we keep the camera-clock
-        // origin (no rebase) so quat keys stay on the same axis as gyro_map keys.
+        // origin (no rebase) so quat keys stay on the same axis as gyro_map keys
+        // and the get_time_offset-converted lookup lands on them.
         if !frame.quaternions.is_empty() {
             let quats: Vec<TimeQuaternion<f64>> = frame.quaternions.iter().filter_map(|q| {
                 let qu = q.quat.as_ref()?;

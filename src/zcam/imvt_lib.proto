@@ -1,0 +1,404 @@
+syntax = "proto3";
+
+package imvtmeta;
+
+message ClipMetaHeader {
+    fixed64 clip_timestamp = 1; /** Unit: microseconds. powerup time*/
+
+    string proto_file_name = 2;
+    string proto_product_version = 3;
+    string proto_library_version = 4;
+
+    string product_name = 6;
+    string product_serial_number = 7;
+    string product_firmware_version = 8;
+    string product_firmware_build_time = 9;
+    string product_firmware_commit_id = 10;
+    string product_hardware_version = 11;
+}
+
+message StreamMetaHeader {
+    uint32 stream_id = 1;
+
+    enum StreamType {
+        STREAM_TYPE_VIDEO = 0;
+        STREAM_TYPE_AUDIO = 1;
+    }
+    StreamType stream_type = 2;
+}
+
+message FrameMetaHeader {
+    fixed64 frame_timestamp = 1; /** Unit: microseconds. from powerup time*/
+    fixed64 frame_seq = 2; /** Frame sequence number. start from 0*/
+    uint32 stream_id = 3;  /** Which stream this frame belongs to*/
+}
+
+message DeviceMetaHeader {
+    uint32 device_id = 1; /** Device ID*/
+    enum DeviceType {
+        DEVICE_TYPE_UNDEFINED = 0;
+        DEVICE_TYPE_CAMERA = 1;
+    }
+    DeviceType device_type = 2;
+}
+
+
+// Multi Camera
+message MultiCameraLinkSync {
+    enum MultiCameraLinkMode {
+        MULTI_CAMERA_LINK_MODE_NONE = 0;
+        MULTI_CAMERA_LINK_MODE_PIXELLINK = 1;
+        MULTI_CAMERA_LINK_MODE_EZLINK = 2;
+        MULTI_CAMERA_LINK_MODE_GENLOCK = 3;
+    }
+    MultiCameraLinkMode multi_camera_link_mode = 1;
+
+    enum MultiCameraLinkRole {
+        MULTI_CAMERA_LINK_ROLE_I = 0;
+        MULTI_CAMERA_LINK_ROLE_M = 1;
+        MULTI_CAMERA_LINK_ROLE_S = 2;
+    }
+    MultiCameraLinkRole multi_camera_link_role = 2;
+
+    enum MultiCameraLinkTrigger {
+        MULTI_CAMERA_LINK_TRIGGER_AUTO = 0;
+        MULTI_CAMERA_LINK_TRIGGER_MANUAL = 1;
+    }
+    MultiCameraLinkTrigger multi_camera_link_trigger = 3;
+}
+
+// Lens
+message LensInfo {
+    string lens_name = 1;
+    float image_circle_diameter = 2; /** Unit: mm*/
+}
+
+// ImageSensor
+message ImageSensorInfo {
+    uint32 pixel_size_nm = 1; /** Unit: nm*/
+    uint32 sensor_pixel_width = 2;    /** Unit: pixels*/
+    uint32 sensor_pixel_height = 3;    /** Unit: pixels*/
+    float frame_rate = 4;   /** Unit: fps*/
+    float read_out_time = 5; /** Unit: microseconds*/
+
+    enum ReadOutDirection {
+        READ_OUT_DIRECTION_TOP_TO_BOTTOM = 0;
+        READ_OUT_DIRECTION_BOTTOM_TO_TOP = 1;
+        READ_OUT_DIRECTION_RIGHT_TO_LEFT = 2;
+        READ_OUT_DIRECTION_LEFT_TO_RIGHT = 3;
+    }
+    ReadOutDirection read_out_direction = 6;
+
+    optional uint32 crop_x = 7;  /** Unit: pixels*/
+    optional uint32 crop_y = 8;
+    optional uint32 crop_width = 9;
+    optional uint32 crop_height = 10;
+}
+
+// Storage
+message StorageInfo {
+    enum StorageType {
+        STORAGE_TYPE_UNDEFINED = 0;
+        STORAGE_TYPE_SD = 1;
+        STORAGE_TYPE_CFE = 2;
+        STORAGE_TYPE_USB = 3;
+        STORAGE_TYPE_CFAST = 4;
+    }
+    StorageType storage_type = 1;
+
+    uint64 free_space_size = 2; /** Unit: bytes*/
+    uint64 total_space_size = 3; /** Unit: bytes*/
+    string storage_name = 4;
+}
+
+// VideoStream
+message VideoStreamMeta {
+    uint32 width = 1; /** Unit: pixels*/
+    uint32 height = 2; /** Unit: pixels*/
+    float project_fps = 3;
+    float shot_fps = 4;
+    uint32 rotation = 6; /** Unit: degree, e.g. 180 for upside down*/
+    uint32 timelapse_interval = 7; /** Unit: seconds*/
+    uint32 split_duration = 8; /** Unit: seconds*/
+    uint32 preroll_duration = 9; /** Unit: seconds*/
+
+    enum VideoCodec {
+        VIDEO_CODEC_H264 = 0;
+        VIDEO_CODEC_H265 = 1;
+        VIDEO_CODEC_JPEG = 2;
+        VIDEO_CODEC_PRORES = 3;
+        VIDEO_CODEC_PRORESRAW = 4;
+    }
+    VideoCodec video_codec = 10;
+}
+
+// Focal Length
+message FocalLength {
+    float focal_length = 1; /** Unit: mm*/
+}
+
+message DigitalZoonRation {
+    float digital_zoon_ratio = 1;
+}
+
+message FocusDistance {
+    enum FocusDistanceUnit {
+        FOCUS_DISTANCE_UNIT_MM = 0;
+        FOCUS_DISTANCE_UNIT_IN = 1;
+    }
+    FocusDistanceUnit focus_distance_unit = 1;
+    float focus_distance = 2;   /** Unit: mm or inch*/
+    fixed32 focus_position = 3; /** internal use only*/
+}
+
+message FocusData {
+    enum FocusMode {
+        FOCUS_MODE_AUTO = 0;
+        FOCUS_MODE_MANUAL = 1;
+    }
+    FocusMode focus_mode = 1;
+
+    bool follow_ptz = 2;
+    FocusDistance focus_distance = 3;
+    Rect focus_roi = 4;
+
+    enum AutoFocusSensitivity {
+        AUTO_FOCUS_SENSITIVITY_LOW = 0;
+        AUTO_FOCUS_SENSITIVITY_MEDIUM = 1;
+        AUTO_FOCUS_SENSITIVITY_HIGH = 2;
+    }
+    AutoFocusSensitivity auto_focus_sensitivity = 5;
+    enum AutoFocusSpeed {
+        AUTO_FOCUS_SPEED_SLOW = 0;
+        AUTO_FOCUS_SPEED_MEDIUM = 1;
+        AUTO_FOCUS_SPEED_FAST = 2;
+    }
+    AutoFocusSpeed auto_focus_speed = 6;
+    FocusDistance limit_near = 7;
+    FocusDistance limit_far = 8;
+}
+
+// white balance
+message WhiteBalanceData {
+    enum WhiteBalanceMode {
+        WHITE_BALANCE_MODE_AUTO = 0;
+        WHITE_BALANCE_MODE_MANUAL = 1;
+        // todo
+    }
+    WhiteBalanceMode white_balance_mode = 1;
+
+    enum AutoWhiteBalancPriority {
+        AUTO_WHITE_BALANCE_PRIORITY_AMBIENT = 0;
+        AUTO_WHITE_BALANCE_PRIORITY_WHITE = 1;
+    }
+    AutoWhiteBalancPriority auto_white_balance_priority = 2;
+
+    fixed32 kelvin = 3;
+    fixed32 tint = 4;
+    repeated fixed32 rgb_gain = 5; /** 3 channel gain */
+    repeated fixed32 rgb_offset = 6; /** 3 channel gain offset */
+}
+
+// exposure
+message ExposureData {
+    float iso = 1;
+    float exposure_time = 2;  /**Unit: seconds */
+    float f_no = 3;
+    float ev = 4;
+
+    optional float shutter_angle = 5; /**Unit: degree*/
+    optional fixed32 shutter_speed_num = 6; /** e.g. 1 for 1/100 */
+    optional fixed32 shutter_speed_den = 7; /** e.g. 100 for 1/100 */
+
+    enum ShutterUnit {
+        SHUTTER_UNIT_TIME = 0;
+        SHUTTER_UNIT_ANGLE = 1;
+    }
+    ShutterUnit shutter_unit = 8;
+    enum ExposureControlMode {
+        EXPOSURE_CONTROL_MODE_AUTO = 0;
+        EXPOSURE_CONTROL_MODE_MANUAL = 1;
+    }
+    ExposureControlMode exposure_shutter_mode = 9;
+    ExposureControlMode exposure_iso_mode = 10;
+    ExposureControlMode exposure_f_no_mode = 11;
+}
+
+message ExposureIndex {
+    fixed32 exposure_index = 1;
+}
+
+// Image
+message ImageProfile {
+    string profile_name = 1;
+}
+
+message ImageDenoise {
+    float denoising_strength = 1;
+}
+
+message ImageSharpen {
+    float sharpening_strength = 1;
+}
+
+message ImageHueSat {
+    float brightness = 1;
+    float contrast = 2;
+    float saturation = 3;
+    float hue = 4;
+}
+
+message ImageAdvancedColorMatrix {
+    bool user_color_matrix_status = 1; /** On/Off*/
+    repeated fixed32 matrix = 2;
+}
+
+message ImageAdvancedColorHueSat {
+    bool user_color_hue_sat_status = 1; /** On/Off*/
+    fixed32 channel_count = 2;
+    repeated fixed32 hue = 3;
+    repeated fixed32 saturation = 4;
+}
+
+message ImageBlackLevel {
+    bool image_black_level_status = 1; /** On/Off*/
+    repeated fixed32 black_level = 2;
+}
+
+// todo : image other settings
+
+message Rect {
+    float x = 1;
+    float y = 2;
+    float width = 3;
+    float height = 4;
+}
+
+message Point {
+    float x = 1;
+    float y = 2;
+}
+
+message Size {
+    float width = 1;
+    float height = 2;
+}
+
+message Quaternion {
+    float qw = 1;
+    float qx = 2;
+    float qy = 3;
+    float qz = 4;
+}
+
+message EulerAngles {
+    float roll = 1; /** Unit: rad*/
+    float pitch = 2; /** Unit: rad*/
+    float yaw = 3; /** Unit: rad*/
+}
+
+message DegreeAngles {
+    float roll = 1; /** Unit: degree*/
+    float pitch = 2; /** Unit: degree*/
+    float yaw = 3; /** Unit: degree*/
+}
+
+message Acceleration {
+    float ax = 1; /** Unit: m/s^2*/
+    float ay = 2; /** Unit: m/s^2*/
+    float az = 3; /** Unit: m/s^2*/
+}
+
+message AngularVelocity {
+    float wx = 1; /** Unit: rad/s*/
+    float wy = 2; /** Unit: rad/s*/
+    float wz = 3; /** Unit: rad/s*/
+}
+
+message Velocity {
+    float vx = 1; /** Unit: m/s*/
+    float vy = 2; /** Unit: m/s*/
+    float vz = 3; /** Unit: m/s*/
+}
+
+message Position {
+    float px = 1; /** Unit: m*/
+    float py = 2; /** Unit: m*/
+    float pz = 3; /** Unit: m*/
+}
+
+message IMUInfo {
+    float sampling_rate = 1; /** Unit: Hz*/
+    float gyro_scale = 2; /** Unit: deg/s/LSB*/
+    float accel_scale = 3; /** Unit: m/s^2/LSB*/
+    float mag_scale = 4; /** Unit: uT/LSB*/
+    float time_offset = 5; /** Unit: us*/
+    repeated float orientation_matrix = 6; /** 3x3 matrix*/
+}
+
+/** RAW_IMU = [gx, gy, gz, ax, ay, az]
+ * IMU_DATA = [gx * gyro_scale, gy * gyro_scale, gz * gyro_scale, ax * accel_scale, ay * accel_scale, az * accel_scale]
+ * IMU_DATA = RAW_IMU * [orientation_matrix]
+ */
+message IMURawItem {
+    float gx = 1; /** Unit: LSB*/
+    float gy = 2; /** Unit: LSB*/
+    float gz = 3; /** Unit: LSB*/
+    float ax = 4; /** Unit: LSB*/
+    float ay = 5; /** Unit: LSB*/
+    float az = 6; /** Unit: LSB*/ 
+}
+
+message IMUData {
+    fixed64 timestamp = 1; /** Unit: microseconds*/
+    repeated IMURawItem items = 2;
+}
+
+message DeviceAttitude {
+    uint32 timestamp = 1; /** Unit: microseconds. from powerup time*/
+    repeated Quaternion attitude = 2; /** Unit: quaternion*/
+}
+
+// Pan Tilt
+message PanTiltData {
+    float pan = 1; /** Unit: degree*/
+    float tilt = 2; /** Unit: degree*/
+    float roll = 3; /** Unit: degree*/
+}
+
+// AI
+enum AITrackingState {
+    AITRACKING_STATE_UNTRACKED = 0;
+    AITRACKING_STATE_TRACKED = 1;
+}
+message AIBoundingBox {
+    fixed32 class_id = 1;
+    AITrackingState tracking_state = 2;
+    string class_name = 3;
+    fixed32 score = 4;
+    fixed32 x = 5;
+    fixed32 y = 6;
+    fixed32 width = 7;
+    fixed32 height = 8;
+    fixed32 distance = 9; /** Unit: mm*/
+}
+
+message AIMOTData {
+    // tood: other settings
+    fixed32 mot_count = 1;
+    repeated AIBoundingBox bounding_boxes = 2;
+}
+
+// system
+message SystemInfo {
+    float temperature = 1; /** Unit: C*/
+    float voltage = 2; /** Unit: V*/
+
+    enum PowerSource {
+        POWER_SOURCE_UNDEFINED = 0;
+        POWER_SOURCE_BATTERY = 1;
+        POWER_SOURCE_DC = 2;
+        POWER_SOURCE_POE = 3;
+    }
+    PowerSource power_source = 3;
+}

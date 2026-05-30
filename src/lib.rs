@@ -3,7 +3,7 @@
 
 mod sony;
 mod gopro;
-mod gyroflow;
+pub mod gyroflow;
 mod insta360;
 mod blackbox;
 mod runcam;
@@ -23,6 +23,7 @@ mod senseflow;
 mod freefly;
 mod canon;
 mod nikon;
+mod zcam;
 
 pub mod tags_impl;
 pub mod util;
@@ -123,6 +124,11 @@ macro_rules! impl_formats {
                 }
                 return Err(Error::new(ErrorKind::Other, "Unsupported file format"));
             }
+            pub fn parser_name(&self) -> &'static str {
+                match &self.inner {
+                    $(SupportedFormats::$name(_) => stringify!($name),)*
+                }
+            }
             pub fn camera_type(&self) -> String {
                 match &self.inner {
                     $(SupportedFormats::$name(x) => x.camera_type(),)*
@@ -177,4 +183,5 @@ impl_formats! {
     Cooke     => cooke::Cooke,
     SenseFlow => senseflow::SenseFlow,
     Freefly   => freefly::Freefly,
+    Zcam      => zcam::Zcam,
 }
