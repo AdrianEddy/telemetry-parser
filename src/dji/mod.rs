@@ -3,6 +3,7 @@
 
 pub mod dvtm_wm169;
 pub mod dvtm_eagle4_wa530;
+pub mod dvtm_oq101;
 
 use std::io::*;
 use std::sync::{ Arc, atomic::AtomicBool };
@@ -26,6 +27,7 @@ enum DeviceProtobuf {
     Unknown,
     Wm169,
     Wa530,
+    Oq101,
 }
 
 impl Dji {
@@ -36,7 +38,7 @@ impl Dji {
         true
     }
     pub fn possible_extensions() -> Vec<&'static str> {
-        vec!["mp4", "mov", "csv"]
+        vec!["mp4", "mov", "osv", "csv"]
     }
     pub fn frame_readout_time(&self) -> Option<f64> {
         self.frame_readout_time
@@ -91,7 +93,9 @@ impl Dji {
             }
 
             if which_proto == DeviceProtobuf::Unknown {
-                if data.len() > 64 && (memmem::find(&data[0..64], b"WA530").is_some() || memmem::find(&data[0..64], b"wa530").is_some()) {
+                if data.len() > 64 && memmem::find(&data[0..64], b"oq101").is_some() {
+                    which_proto = DeviceProtobuf::Oq101;
+                } else if data.len() > 64 && (memmem::find(&data[0..64], b"WA530").is_some() || memmem::find(&data[0..64], b"wa530").is_some()) {
                     which_proto = DeviceProtobuf::Wa530;
                 } else {
                     which_proto = DeviceProtobuf::Wm169;
@@ -100,7 +104,7 @@ impl Dji {
             }
 
             macro_rules! handle_parsed {
-                ($parsed:expr, $field:tt) => {
+                ($parsed:expr, $field:tt $(, $sub:tt)?) => {
                     let mut tag_map = GroupedTagMap::new();
 
                     if let Some(ref clip) = $parsed.clip_meta {
@@ -146,7 +150,7 @@ impl Dji {
                         }
 
                         if let Some(ref imu) = frame.imu_frame_meta {
-                            if let Some(ref attitude) = imu.$field {
+                            if let Some(attitude) = imu.$field.as_ref()$(.and_then(|m| m.$sub.as_ref()))? {
                                 // let ts = attitude.timestamp as i64;
                                 // println!("{} {} {} {}, vsync: {}", frame_ts, ts, frame_relative_ts, ts - frame_ts, attitude.vsync);
                                 let len = attitude.attitude.len() as f64;
@@ -255,6 +259,10 @@ impl Dji {
                 },
                 DeviceProtobuf::Wa530 => match dvtm_eagle4_wa530::ProductMeta::decode(data) {
                     Ok(parsed) => { handle_parsed!(parsed, imu_single_attitude_after_fusion); },
+                    Err(e) => { log::warn!("Failed to parse protobuf: {:?}", e); }
+                },
+                DeviceProtobuf::Oq101 => match dvtm_oq101::ProductMeta::decode(data) {
+                    Ok(parsed) => { handle_parsed!(parsed, imu_attitude_after_fusion, current_frame); },
                     Err(e) => { log::warn!("Failed to parse protobuf: {:?}", e); }
                 },
             }
