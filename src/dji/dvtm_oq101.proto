@@ -1,71 +1,96 @@
-/** DJI Video Metadata For Specific Product */
-
-// version = 02.01.15
-
 syntax = "proto3";
+
+package oq101;
 
 import "dvtm_library.proto";
 
-/**
- * Represents the proto entry when we do the encoding or decoding.
- */
 message ProductMeta {
-    ClipMeta   clip_meta = 1;
+    ClipMeta clip_meta = 1;
     StreamMeta stream_meta = 2;
-    FrameMeta  frame_meta = 3;
+    FrameMeta frame_meta = 3;
 }
 
-/**
- * Represents the metadata about video clip.
- */
 message ClipMeta {
-    ClipMetaHeader             clip_meta_header = 1;
-    ClipStreamsMeta            clip_streams_meta = 2;
+    ClipMetaHeader clip_meta_header = 1;
+    ClipStreamsMeta clip_streams_meta = 2;
     LensDistortionCoefficients distortion_coefficients = 3;
-    SensorFrameReadOutTime     sensor_readout_time = 4;
-    SensorReadDirection        sensor_read_direction = 5;
-    DigitalFocalLength         digital_focal_length = 8;
-    EisStatus                  eis_status = 9;
-    IMUSamplingRate            imu_sampling_rate = 10;
-    SensorFrameRate            sensor_fps = 11;
+    SensorFrameReadOutTime sensor_readout_time = 4;
+    SensorReadDirection sensor_read_direction = 5;
+    DigitalFocalLength digital_focal_length = 8;
+    EisStatus eis_status = 9;
+    IMUSamplingRate imu_sampling_rate = 10;
+    SensorFrameRate sensor_fps = 11;
+    ITDValue ITD_value = 12;
+    LROValue LRO_value = 13;
+    SensorRes sensor_res = 14;
+    FNumber f_number = 15;
+    StyleFilterMode style_filter_mode = 16;
+    YltmEnable yltm_enable = 17;
 }
 
-/**
- * Represents the metadata about video stream.
- */
 message StreamMeta {
-    StreamMetaHeader   stream_meta_header = 1;
-    VideoStreamMeta    video_stream_meta = 3;
-    ColorMode          color_mode = 4;
-    PanoDewarpParams   pano_dewarp_params = 6;
+    StreamMetaHeader stream_meta_header = 1;
+    VideoStreamMeta video_stream_meta = 3;
+    ColorMode color_mode = 4;
+    FOVType fov_type = 5;
+    PanoDewarpParams pano_dewarp_params = 6;
+    ExtriLensMode extri_lens_mode = 7;
+    ShadingCalibModeNum shading_calib_mode_num = 8;
 }
 
-/**
- * Represents the metadata about video frame.
- */
 message FrameMeta {
-    FrameMetaHeader   frame_meta_header = 1;
+    FrameMetaHeader frame_meta_header = 1;
     FrameMetaOfCamera camera_frame_meta = 2;
-    FrameMetaOfIMU    imu_frame_meta = 3;
+    FrameMetaOfIMU imu_frame_meta = 3;
+    FrameMetaOfGimbal gimbal_frame_meta = 4;
+    FrameMetaOfEbike ebike_frame_meta = 5;
 }
 
-/**
- * Represents the frame metadata of camera device.
- */
 message FrameMetaOfCamera {
-    MetaHeaderOfDevice         camera_dev_header    = 1;
-    ExposureIndex              exposure_index       = 2;
-    ISO                        iso                  = 3;
-    ExposureTime               exposure_time        = 4;
-    DigitalZoomRatio           digital_zoom_ratio   = 5;
-    WhiteBalanceCCT            white_balance_cct    = 6;
-    Orientation                orientation          = 7;
+    MetaHeaderOfDevice camera_dev_header = 1;
+    ExposureIndex exposure_index = 2;
+    ISO iso = 3;
+    ExposureTime exposure_time = 4;
+    DigitalZoomRatio digital_zoom_ratio = 5;
+    WhiteBalanceCCT white_balance_cct = 6;
+    Orientation orientation = 7;
+    CurrentUnderwaterConfidence current_underwater_confidence = 8;
+    Quaternion camera_attitude = 9;
+    Accelerometer camera_acc = 10;
+    Sharpness sharpness = 11;
+    NoiseReductionApplied denoising = 12;
+    TrackResultBox track_ret = 14;
+    AecAe aec_ae = 15;
+    SensorTemperature sensor_temperature = 16;
+    EquivalentFocalLength equivalent_focal_length = 17;
 }
 
-/**
- * Represents the frame metadata of IMU device.
- */
 message FrameMetaOfIMU {
-    MetaHeaderOfDevice      IMU_dev_header = 1;
-    DeviceMultiAttitude     IMU_attitude_after_fusion = 2;
+    MetaHeaderOfDevice IMU_dev_header = 1;
+    DeviceMultiAttitude IMU_attitude_after_fusion = 2;
+    ImuVsyncPos IMU_vsync_pos = 3;
+}
+
+message FrameMetaOfGimbal {
+    MetaHeaderOfDevice gimbal_dev_header = 1;
+    GpsBasic gps_basic = 2;
+    Velocity velocity = 3;
+}
+
+message FrameMetaOfEbike {
+    MetaHeaderOfDevice ebike_dev_header = 1;
+    EbikeGps ebike_gps = 2;
+    EbikeAcc ebike_acc = 3;
+    EbikeTiltAngle tilt_angle = 4;
+    EbikeMotorPower motor_power = 5;
+    EbikePedalingPower pedaling_power = 6;
+    EbikeCadence cadence = 7;
+    EbikeMotorTorque motor_torque = 8;
+    EbikePedalingTorque pedaling_torque = 9;
+    EbikeSlope slope = 10;
+    EbikeMileage mileage = 11;
+    EbikeSpeed speed = 12;
+    HeartRate heart_rate = 13;
+    EbikePressure pressure = 14;
+    EbikeCalories calories = 15;
 }

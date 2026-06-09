@@ -5,8 +5,7 @@
 /// messages which are used to describe the basic information and to distinguish different clips. About the detailed
 /// properties of the clip, we shall put them in a clip metadata message after ClipMetaHeader and shall not put them in
 /// the header part. Note that this message shall be included in the ClipMeta.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ClipMetaHeader {
     /// * The name of the product proto file. The max string length of
     /// it is 32 bytes (including ending symbol).
@@ -48,7 +47,6 @@ pub struct ClipMetaHeader {
 }
 /// Nested message and enum types in `ClipMetaHeader`.
 pub mod clip_meta_header {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -83,7 +81,6 @@ pub mod clip_meta_header {
             }
         }
     }
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -124,8 +121,7 @@ pub mod clip_meta_header {
 /// different streams. About the detailed properties of the stream, we shall put them in a stream metadata message after
 /// StreamMetaHeader and shall not put them in the header part. Note that this message shall be included in the
 /// StreamMeta.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StreamMetaHeader {
     /// * The unique ID which is used to distinguish different streams
     /// having the same stream type.
@@ -142,7 +138,6 @@ pub struct StreamMetaHeader {
 }
 /// Nested message and enum types in `StreamMetaHeader`.
 pub mod stream_meta_header {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -186,8 +181,7 @@ pub mod stream_meta_header {
 /// It would include some essential messages which are used to describe the basic information and to distinguish
 /// different frames. About the detailed properties of the frame, we shall put them in a frame metadata message after
 /// FrameMetaHeader and shall not put them in the header part. Note that this message shall be included in the FrameMeta.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FrameMetaHeader {
     /// * The frame sequence number which is used to distinguish the
     /// different frame in a stream.
@@ -217,7 +211,6 @@ pub struct FrameMetaHeader {
 }
 /// Nested message and enum types in `FrameMetaHeader`.
 pub mod frame_meta_header {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -262,8 +255,7 @@ pub mod frame_meta_header {
 /// It would include some essential messages which are used to distinguish the different devices. About the device
 /// properties, we shall put them in a message after the metadata header of device and shall not put them in the header
 /// part.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct MetaHeaderOfDevice {
     /// * The unique ID for distinguishing the different device.
     #[prost(uint32, tag = "1")]
@@ -292,7 +284,6 @@ pub struct MetaHeaderOfDevice {
 }
 /// Nested message and enum types in `MetaHeaderOfDevice`.
 pub mod meta_header_of_device {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -335,7 +326,6 @@ pub mod meta_header_of_device {
             }
         }
     }
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -399,8 +389,7 @@ pub mod meta_header_of_device {
 /// It would include some essential messages which are used to distinguish the different sub-devices. About the
 /// sub-device properties, we shall put them in a message after the metadata header of sub-device and shall not put them
 /// in the header part.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct MetaHeaderOfSubDevice {
     /// * The unique ID for distinguishing the different
     /// sub-devices.
@@ -429,7 +418,6 @@ pub struct MetaHeaderOfSubDevice {
 }
 /// Nested message and enum types in `MetaHeaderOfSubDevice`.
 pub mod meta_header_of_sub_device {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -472,7 +460,6 @@ pub mod meta_header_of_sub_device {
             }
         }
     }
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -515,8 +502,7 @@ pub mod meta_header_of_sub_device {
 /// *
 /// The fixed feature of the specified video stream.
 /// If it has been filled, it always follows the message StreamMetaHeader.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct VideoStreamMeta {
     /// * The width of the resolution. Unit: pixel.
     #[prost(uint32, tag = "1")]
@@ -545,7 +531,6 @@ pub struct VideoStreamMeta {
 }
 /// Nested message and enum types in `VideoStreamMeta`.
 pub mod video_stream_meta {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -604,7 +589,6 @@ pub mod video_stream_meta {
             }
         }
     }
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -675,7 +659,6 @@ pub mod video_stream_meta {
             }
         }
     }
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -735,8 +718,7 @@ pub mod video_stream_meta {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ImageProcessingQuality {
     /// * It is defined by DJI, which indicates different image
     /// processing in the ISP (Image Signal Processor)
@@ -749,7 +731,6 @@ pub struct ImageProcessingQuality {
 }
 /// Nested message and enum types in `ImageProcessingQuality`.
 pub mod image_processing_quality {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -789,8 +770,7 @@ pub mod image_processing_quality {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ProresCodecQuality {
     /// * The value will be filled only when the video codec type is
     /// prores or prores raw.
@@ -799,7 +779,6 @@ pub struct ProresCodecQuality {
 }
 /// Nested message and enum types in `ProresCodecQuality`.
 pub mod prores_codec_quality {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -857,8 +836,7 @@ pub mod prores_codec_quality {
 }
 /// *
 /// The multiple streams description in one clip.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ClipStreamsMeta {
     /// * The number of video stream track in this clip.
     #[prost(uint32, tag = "1")]
@@ -867,24 +845,21 @@ pub struct ClipStreamsMeta {
     #[prost(uint32, tag = "2")]
     pub audio_stream_num: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DeviceSn {
     /// * The serial number of this device. The max string length of
     /// it is 32 bytes (including ending symbol).
     #[prost(string, tag = "1")]
     pub device_sn: ::prost::alloc::string::String,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ENdSerialNumber {
     /// * The serial number of eND mounted. The max string length of
     /// it is 32 bytes (including ending symbol).
     #[prost(string, tag = "1")]
     pub e_nd_sn: ::prost::alloc::string::String,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DeviceVersion {
     /// * The hardware version of this device. The max string length
     /// of it is 32 bytes (including ending symbol).
@@ -897,8 +872,7 @@ pub struct DeviceVersion {
 }
 /// *
 /// The user-specified cinema production information.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CinemaProductionInfo {
     /// * The user-specified name of the production. The max string
     /// length of it is 64 bytes (including ending symbol).
@@ -945,8 +919,7 @@ pub struct CinemaProductionInfo {
 ///      Clip name is A001C0001_190101_ABCD.MOV
 ///      Spin name is A001C0001_190101_ABCD_001.MOV
 /// Refer to each field of this message for more details.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CinemaClipNaming {
     /// * The user-specified camera index for identifying the
     /// individual camera unit (A - Z). The max string length of it
@@ -975,16 +948,14 @@ pub struct CinemaClipNaming {
     #[prost(string, tag = "5")]
     pub spin_name: ::prost::alloc::string::String,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct ProjectFps {
     /// * The user-specified framerate which the recoding project
     /// used. Unit: frame/second.
     #[prost(float, tag = "1")]
     pub project_fps: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ImageSizeType {
     /// * The user-specified image size which is the maximum area of a
     /// sample that the camera can image.
@@ -993,7 +964,6 @@ pub struct ImageSizeType {
 }
 /// Nested message and enum types in `ImageSizeType`.
 pub mod image_size_type {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -1045,8 +1015,7 @@ pub mod image_size_type {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FovType {
     /// * The user-specified FOV (Field of View), which is the maximum
     /// area of a sample that the camera can image.
@@ -1055,7 +1024,6 @@ pub struct FovType {
 }
 /// Nested message and enum types in `FOVType`.
 pub mod fov_type {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -1081,6 +1049,10 @@ pub mod fov_type {
         Snarrow = 4,
         /// * The user-specified FOV is natural wide.
         NaturalWide = 5,
+        /// * The user-specified FOV is extreme wide.
+        ExtremeWide = 6,
+        /// * The user-specified FOV is flat.
+        Flat = 7,
     }
     impl FovType {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -1095,6 +1067,8 @@ pub mod fov_type {
                 Self::Wide => "FOV_TYPE_WIDE",
                 Self::Snarrow => "FOV_TYPE_SNARROW",
                 Self::NaturalWide => "FOV_TYPE_NATURAL_WIDE",
+                Self::ExtremeWide => "FOV_TYPE_EXTREME_WIDE",
+                Self::Flat => "FOV_TYPE_FLAT",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1106,6 +1080,8 @@ pub mod fov_type {
                 "FOV_TYPE_WIDE" => Some(Self::Wide),
                 "FOV_TYPE_SNARROW" => Some(Self::Snarrow),
                 "FOV_TYPE_NATURAL_WIDE" => Some(Self::NaturalWide),
+                "FOV_TYPE_EXTREME_WIDE" => Some(Self::ExtremeWide),
+                "FOV_TYPE_FLAT" => Some(Self::Flat),
                 _ => None,
             }
         }
@@ -1113,8 +1089,7 @@ pub mod fov_type {
 }
 /// *
 /// It will be filled only when the video format is raw.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ImageArea {
     /// * A rectangle zone of valid pixel in photosite data array used
     /// in recording, composed of the left-top location (horizonal
@@ -1130,8 +1105,7 @@ pub struct ImageArea {
 }
 /// *
 /// It will be filled only when the video format is raw.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CfaPattern {
     /// * The Bayer arrangement of color filters on a square grid of
     /// photosensors.
@@ -1140,7 +1114,6 @@ pub struct CfaPattern {
 }
 /// Nested message and enum types in `CFAPattern`.
 pub mod cfa_pattern {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -1188,8 +1161,7 @@ pub mod cfa_pattern {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct BayerGreenSplit {
     /// * The difference between the values of the green pixels in the
     /// blue/green rows and the values of the green pixels in the
@@ -1201,8 +1173,7 @@ pub struct BayerGreenSplit {
     #[prost(float, tag = "1")]
     pub bayer_green_split: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ColorSpace {
     /// * The specific transformation of image data will be used in
     /// the nominal processing algorithm.
@@ -1211,7 +1182,6 @@ pub struct ColorSpace {
 }
 /// Nested message and enum types in `ColorSpace`.
 pub mod color_space {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -1265,8 +1235,7 @@ pub mod color_space {
 }
 /// *
 /// This is a sub-message only quoted by the message ColorMatrix.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct ColorMatrixBox {
     /// * It stores 3x3 matrix in row-major order. Refer to the
     /// message ColorMatrix for more detail about the definition of
@@ -1276,8 +1245,7 @@ pub struct ColorMatrixBox {
 }
 /// *
 /// It will contains the message ColorMatrixBox.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct ColorMatrix {
     /// * Each box will contain a color matrix, which transforms
     /// linear RGB pixel values in the camera native color space to
@@ -1287,24 +1255,21 @@ pub struct ColorMatrix {
     #[prost(message, repeated, tag = "1")]
     pub color_matrix_box: ::prost::alloc::vec::Vec<ColorMatrixBox>,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CalibrationIlluminant {
     /// * The illuminants used in color calibration with the message
     /// ColorMatrix in order. Unit: Kelvin.
     #[prost(int32, repeated, tag = "1")]
     pub calibration_illuminant: ::prost::alloc::vec::Vec<i32>,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct NoiseReductionApplied {
     /// * The denoise strength applied on the image with range from
     /// -10.0 to +10.0. 0 is the default strength.
     #[prost(float, tag = "1")]
     pub noise_reduction_applied: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Saturation {
     /// * The factor by which the saturation of the image is altered
     /// in the conversion to the target color space with range from
@@ -1314,8 +1279,7 @@ pub struct Saturation {
     #[prost(float, tag = "1")]
     pub saturation: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Sharpness {
     /// * The factor by which the sharpness of the image is altered in
     /// the conversion to the target color space with range from
@@ -1325,8 +1289,7 @@ pub struct Sharpness {
     #[prost(float, tag = "1")]
     pub sharpness: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct PixelAspectRatio {
     /// * The factor be used to stretch reconstructed pixel data
     /// horizontally to compensate for anamorphic distortion.
@@ -1335,8 +1298,7 @@ pub struct PixelAspectRatio {
 }
 /// *
 /// It stores the specific or custom three-dimensional look up table (3D LUT) file.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct LookUpTable3DFile {
     /// * The name of the 3D-LUT file. The max string length of it is
     /// 256 bytes (including ending symbol).
@@ -1353,8 +1315,7 @@ pub struct LookUpTable3DFile {
 }
 /// *
 /// It will be filled only when the video format is raw.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ColorProcessingVersion {
     /// * The color processing version of reference image processing
     /// flows, which describes specific op groups shoule be applied
@@ -1368,8 +1329,7 @@ pub struct ColorProcessingVersion {
 /// *
 /// Once op(operation) which contains type and data in the op group.
 /// This is a sub-message only quoted by the message OpGroup.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct OpBox {
     /// * The type of this operation which is used.
     #[prost(enumeration = "op_box::OpType", tag = "1")]
@@ -1385,7 +1345,6 @@ pub struct OpBox {
 }
 /// Nested message and enum types in `OpBox`.
 pub mod op_box {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -1466,8 +1425,7 @@ pub mod op_box {
 /// pipeline sequentially.
 /// It will contains the message OpBox.
 /// It will be filled only when the video format is raw.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct OpGroup {
     /// * The op group1 includes operation(op)s that should applied
     /// sequentially to the raw image as read directly from the
@@ -1491,37 +1449,32 @@ pub struct OpGroup {
 }
 /// *
 /// It will be filled only when the video format is raw.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct NoiseProfile {
     /// * The amount of noise in a raw image at time of capture.
     #[prost(double, repeated, tag = "1")]
     pub noise_profile: ::prost::alloc::vec::Vec<f64>,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ImageDataSize {
     /// * The size in bytes of stored frame data.
     #[prost(uint32, tag = "1")]
     pub image_data_size: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct ExposureIndex {
     /// * The index of effective exposure selected on camera at time
     /// of image data capture.
     #[prost(float, tag = "1")]
     pub exposure_index: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Iso {
     /// * The sensitivity (the signal gain) of the camera system.
     #[prost(float, tag = "1")]
     pub iso: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ExposureTime {
     /// * The exposure time (or the shutter speed) is the length of
     /// time that the camera sensor is exposed to light. Its value
@@ -1537,8 +1490,7 @@ pub struct ExposureTime {
     #[prost(int32, repeated, tag = "1")]
     pub exposure_time: ::prost::alloc::vec::Vec<i32>,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FNumber {
     /// * The ratio of the focal length to the aperture in an optical
     /// system. Its value will be described as rational type, so for
@@ -1549,8 +1501,7 @@ pub struct FNumber {
     #[prost(uint32, repeated, tag = "1")]
     pub f_number: ::prost::alloc::vec::Vec<u32>,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ApertureValue {
     /// * The lens aperture in the APEX (Additive System of
     /// Photographic Exposure) value unit. The relation of the
@@ -1562,8 +1513,7 @@ pub struct ApertureValue {
     #[prost(uint32, repeated, tag = "1")]
     pub aperture_value: ::prost::alloc::vec::Vec<u32>,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct ShutterAngle {
     /// * The shutter angle is exposure period expressed as an angle
     /// in seconds. When the message ExposureTime and ShutterAngle
@@ -1574,8 +1524,7 @@ pub struct ShutterAngle {
     #[prost(float, tag = "1")]
     pub shutter_angle: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FocusDistance {
     /// * The specified unit for the focus distance.
     #[prost(enumeration = "focus_distance::FocusUnit", tag = "1")]
@@ -1588,7 +1537,6 @@ pub struct FocusDistance {
 }
 /// Nested message and enum types in `FocusDistance`.
 pub mod focus_distance {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -1628,8 +1576,7 @@ pub mod focus_distance {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FocalLength {
     /// * The distance from the center of the lens to the focal points
     /// of the lens. 0 means the focal length is invalid or unknown.
@@ -1639,8 +1586,7 @@ pub struct FocalLength {
     #[prost(int32, repeated, tag = "1")]
     pub focal_length: ::prost::alloc::vec::Vec<i32>,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct SensorZoomRatio {
     /// * The sensor zoom ratio of current frame. The sensor zoom ratio is
     /// related to sensor mode's crop params, so for example, IMX586's
@@ -1649,46 +1595,40 @@ pub struct SensorZoomRatio {
     #[prost(float, tag = "1")]
     pub sensor_zoom_ratio: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct OpticalZoomRatio {
     /// * The optical zoom ratio of current frame.
     #[prost(float, tag = "1")]
     pub optical_zoom_ratio: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct DigitalZoomRatio {
     /// * The digital zoom ratio of current frame.
     #[prost(float, tag = "1")]
     pub digital_zoom_ratio: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct WhiteBalanceCct {
     /// * The white balance color temperature (CCT), selected at the
     /// time of capture. Unit: Kelvin.
     #[prost(uint32, tag = "1")]
     pub white_balance_cct: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct WhiteBalanceTint {
     /// * The deviation from blackbody radiator, with range from -99.0
     /// to +99.0.
     #[prost(float, tag = "1")]
     pub white_balance_tint: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct AsShotNeutral {
     /// * The white balance in the normalized coordinates of a
     /// perfectly neutral color in linear reference space values.
     #[prost(float, repeated, tag = "1")]
     pub as_shot_neutral: ::prost::alloc::vec::Vec<f32>,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct NdFilter {
     /// * The flag indicates whether the ND filter is enable.
     #[prost(bool, tag = "1")]
@@ -1700,8 +1640,7 @@ pub struct NdFilter {
 }
 /// *
 /// It will be filled only when the video format is raw.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct BlackLevel {
     /// * The offset of the raw sample values.
     #[prost(float, repeated, tag = "1")]
@@ -1709,16 +1648,14 @@ pub struct BlackLevel {
 }
 /// *
 /// It will be filled only when the video format is raw.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct WhiteLevel {
     /// * The fully saturated encoding level for the raw sample
     /// value.
     #[prost(float, tag = "1")]
     pub white_level: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct TimeCode {
     /// * The user-specified run mode of the timecode which includes
     /// cam_free run mode and record run mode.
@@ -1737,7 +1674,6 @@ pub struct TimeCode {
 }
 /// Nested message and enum types in `TimeCode`.
 pub mod time_code {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -1777,8 +1713,7 @@ pub mod time_code {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Orientation {
     /// * Any top-to-bottom reversals (flips) or left-to-right
     /// reversals (flops) that are performed on image data for
@@ -1789,7 +1724,6 @@ pub struct Orientation {
 }
 /// Nested message and enum types in `Orientation`.
 pub mod orientation {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -1850,8 +1784,7 @@ pub mod orientation {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ColorMode {
     /// * The user-specified color profile for video recording.
     #[prost(enumeration = "color_mode::ColorModeType", tag = "1")]
@@ -1859,7 +1792,6 @@ pub struct ColorMode {
 }
 /// Nested message and enum types in `ColorMode`.
 pub mod color_mode {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -1917,6 +1849,8 @@ pub mod color_mode {
         ColorModeLaserFillLight = 20,
         /// * The color mode is Spot Light.
         ColorModeSpotLight = 21,
+        /// * The color mode is D-Log2.
+        ColorModeDlog2 = 22,
     }
     impl ColorModeType {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -1947,6 +1881,7 @@ pub mod color_mode {
                 Self::ColorModeDlogM => "COLOR_MODE_DLOG_M",
                 Self::ColorModeLaserFillLight => "COLOR_MODE_LASER_FILL_LIGHT",
                 Self::ColorModeSpotLight => "COLOR_MODE_SPOT_LIGHT",
+                Self::ColorModeDlog2 => "COLOR_MODE_DLOG2",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1974,13 +1909,13 @@ pub mod color_mode {
                 "COLOR_MODE_DLOG_M" => Some(Self::ColorModeDlogM),
                 "COLOR_MODE_LASER_FILL_LIGHT" => Some(Self::ColorModeLaserFillLight),
                 "COLOR_MODE_SPOT_LIGHT" => Some(Self::ColorModeSpotLight),
+                "COLOR_MODE_DLOG2" => Some(Self::ColorModeDlog2),
                 _ => None,
             }
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ExposureIndexMode {
     /// * If the exposure index mode is on, it means that the exposure
     /// index value is valid.
@@ -1989,7 +1924,6 @@ pub struct ExposureIndexMode {
 }
 /// Nested message and enum types in `ExposureIndexMode`.
 pub mod exposure_index_mode {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -2029,8 +1963,7 @@ pub mod exposure_index_mode {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GainMode {
     /// * The user-specified gain mode which will determining the
     /// sensor conversion gain mode.
@@ -2039,7 +1972,6 @@ pub struct GainMode {
 }
 /// Nested message and enum types in `GainMode`.
 pub mod gain_mode {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -2085,8 +2017,7 @@ pub mod gain_mode {
 }
 /// *
 /// It will be filled only when the video format is raw.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct BaselineExposure {
     /// * The amount in EV units to move the zero point for exposure
     /// compensation
@@ -2096,8 +2027,7 @@ pub struct BaselineExposure {
 /// *
 /// The quaternion provides a convenient mathematical notation for representing spatial orientations and rotations of
 /// elements in three dimensional space. It can be converted to the Euler angle.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Quaternion {
     /// * The w value of quaternion.
     #[prost(float, tag = "1")]
@@ -2114,8 +2044,7 @@ pub struct Quaternion {
 }
 /// *
 /// The velocity of the device on the XYZ.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Velocity {
     /// * The velocity value on the X-axis. Unit: meter/second.
     #[prost(float, tag = "1")]
@@ -2130,8 +2059,7 @@ pub struct Velocity {
 /// *
 /// The position of the device on the XYZ. The definition of origins may be different when this message is included in
 /// different device, so refer to the specific product proto file for more details.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Position {
     /// * The position value on the X-axis. Unit: meter.
     #[prost(float, tag = "1")]
@@ -2143,16 +2071,14 @@ pub struct Position {
     #[prost(float, tag = "3")]
     pub position_z: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct AbsoluteAltitude {
     /// * The absolute altitude of this device. It may come from the
     /// visual odometer. Unit: meter.
     #[prost(float, tag = "1")]
     pub absolute_altitude_m: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct RelativeAltitude {
     /// * The relative altitude of this device. It may come from the
     /// visual odometer. Unit: millimeter.
@@ -2165,15 +2091,13 @@ pub struct RelativeAltitude {
 }
 /// *
 /// Represents the relative distance.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RelativeDistance {
     /// * The relative distance between two points. Unit: millimeter
     #[prost(int32, tag = "1")]
     pub relative_distance: i32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GimbalInstallPosition {
     /// * The install position of the gimbal which means the gimbal
     /// can be installed reversed or normally.
@@ -2185,7 +2109,6 @@ pub struct GimbalInstallPosition {
 }
 /// Nested message and enum types in `GimbalInstallPosition`.
 pub mod gimbal_install_position {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -2225,8 +2148,7 @@ pub mod gimbal_install_position {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GimbalMode {
     /// * The user-specified gimbal mode.
     #[prost(enumeration = "gimbal_mode::GimbalModeType", tag = "1")]
@@ -2234,7 +2156,6 @@ pub struct GimbalMode {
 }
 /// Nested message and enum types in `GimbalMode`.
 pub mod gimbal_mode {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -2280,8 +2201,7 @@ pub mod gimbal_mode {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GimbalModeFollowSubStatus {
     /// * The flag to indicate whether the pan follow is on.
     #[prost(bool, tag = "1")]
@@ -2297,8 +2217,7 @@ pub struct GimbalModeFollowSubStatus {
 /// The Euler angles of gimbal relative to the NED (North, East, Down) coordinate system. Rotation sequence of the Euler
 /// angle is ZXY (yaw, roll, pitch), intrinsic. For upward gimbal, the Euler angles translate from the real quaternion
 /// of gimbal after rotate 180 degree around the X axis of moving body.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct EulerAngle {
     /// * The Euler angles of Pitch. Unit: deci-degree.
     #[prost(int32, tag = "1")]
@@ -2312,8 +2231,7 @@ pub struct EulerAngle {
 }
 /// *
 /// Represents the positioning coordinates expressed in latitude and longitude.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct PositionCoord {
     /// * The unit of positioning coordinates.
     #[prost(enumeration = "position_coord::PositionCoordUnit", tag = "1")]
@@ -2327,7 +2245,6 @@ pub struct PositionCoord {
 }
 /// Nested message and enum types in `PositionCoord`.
 pub mod position_coord {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -2369,8 +2286,7 @@ pub mod position_coord {
 }
 /// *
 /// Represents the time of GPS.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GpsTime {
     /// * The GPS time,format: YYYY-MM-DD HH-MM-SS.
     #[prost(string, tag = "1")]
@@ -2378,8 +2294,7 @@ pub struct GpsTime {
 }
 /// *
 /// Represents the basic information for GPS.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct GpsBasic {
     /// * The GPS latitude and longitude coordinates.
     #[prost(message, optional, tag = "1")]
@@ -2403,7 +2318,6 @@ pub struct GpsBasic {
 }
 /// Nested message and enum types in `GpsBasic`.
 pub mod gps_basic {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -2446,7 +2360,6 @@ pub mod gps_basic {
             }
         }
     }
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -2495,8 +2408,7 @@ pub mod gps_basic {
 }
 /// *
 /// Represents the accelerometer of IMU.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Accelerometer {
     /// * The accelerometer in X direction, unit: degree.
     #[prost(float, tag = "2")]
@@ -2510,8 +2422,7 @@ pub struct Accelerometer {
 }
 /// *
 /// Represents the gyroscope of IMU.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Gyroscope {
     /// * The timestamp of each frame, unit: nano-seconds.
     #[prost(uint64, tag = "1")]
@@ -2528,15 +2439,13 @@ pub struct Gyroscope {
 }
 /// *
 /// Represents the status of laser ranging finder.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct LaserStatus {
     #[prost(enumeration = "laser_status::LaserStatusType", tag = "1")]
     pub laser_status: i32,
 }
 /// Nested message and enum types in `LaserStatus`.
 pub mod laser_status {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -2590,8 +2499,7 @@ pub mod laser_status {
 }
 /// *
 /// Represents the raw sensor data of laser ranging finder.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct LaserRawData {
     /// * unit: millimeter
     #[prost(uint32, repeated, tag = "1")]
@@ -2602,15 +2510,13 @@ pub struct LaserRawData {
 }
 /// *
 /// Represents the status of ranging function.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RangingStatus {
     #[prost(enumeration = "ranging_status::RangingStatusType", tag = "1")]
     pub ranging_status: i32,
 }
 /// Nested message and enum types in `RangingStatus`.
 pub mod ranging_status {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -2652,8 +2558,7 @@ pub mod ranging_status {
 }
 /// *
 /// Represents the target offset in screen.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ScreenOffset {
     /// * The target offset on horizontal direction of screen in permillage.
     #[prost(uint32, tag = "1")]
@@ -2664,8 +2569,7 @@ pub struct ScreenOffset {
 }
 /// *
 /// Represents the scene mode of infrared camera.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct InfraredSceneMode {
     /// * The scene mode of infrared camera.
     #[prost(enumeration = "infrared_scene_mode::InfraredSceneModeType", tag = "1")]
@@ -2682,7 +2586,6 @@ pub struct InfraredSceneMode {
 }
 /// Nested message and enum types in `InfraredSceneMode`.
 pub mod infrared_scene_mode {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -2728,8 +2631,7 @@ pub mod infrared_scene_mode {
 }
 /// *
 /// Represents the pseudo color of infrared camera.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct InfraredPseudoColor {
     /// * The infrared pseudo color.
     #[prost(enumeration = "infrared_pseudo_color::InfraredPseudoColorType", tag = "1")]
@@ -2737,7 +2639,6 @@ pub struct InfraredPseudoColor {
 }
 /// Nested message and enum types in `InfraredPseudoColor`.
 pub mod infrared_pseudo_color {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -2827,8 +2728,7 @@ pub mod infrared_pseudo_color {
 }
 /// *
 /// Represents the isotherm of infrared camera.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct InfraredIsotherm {
     /// * The infrared isotherm mode.
     #[prost(enumeration = "infrared_isotherm::InfraredIsothermModeType", tag = "1")]
@@ -2842,7 +2742,6 @@ pub struct InfraredIsotherm {
 }
 /// Nested message and enum types in `InfraredIsotherm`.
 pub mod infrared_isotherm {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -2884,8 +2783,7 @@ pub mod infrared_isotherm {
 }
 /// *
 /// Represents the gain mode of infrared camera.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct InfraredGainMode {
     /// * The user-specified gain mode of infrared camera.
     #[prost(enumeration = "infrared_gain_mode::InfraredGainModeType", tag = "1")]
@@ -2893,7 +2791,6 @@ pub struct InfraredGainMode {
 }
 /// Nested message and enum types in `InfraredGainMode`.
 pub mod infrared_gain_mode {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -2935,27 +2832,23 @@ pub mod infrared_gain_mode {
 }
 /// *
 /// Represents the bias of exposure value.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct ExposureValue {
     #[prost(float, tag = "1")]
     pub exposure_value: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ColorTempAtmosphere {
     #[prost(uint32, tag = "1")]
     pub color_temp_atmosphere: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct SensorTemperature {
     /// * uint: celsius degree.
     #[prost(float, tag = "1")]
     pub sensor_temperature: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SensorActiveSize {
     /// * The physical width for current sensor mode. uint: um
     #[prost(uint32, tag = "1")]
@@ -2964,9 +2857,30 @@ pub struct SensorActiveSize {
     #[prost(uint32, tag = "2")]
     pub sensor_active_physical_height_um: u32,
 }
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
+pub struct ImuRawData {
+    #[prost(float, tag = "1")]
+    pub gyro_x: f32,
+    #[prost(float, tag = "2")]
+    pub gyro_y: f32,
+    #[prost(float, tag = "3")]
+    pub gyro_z: f32,
+    #[prost(float, tag = "4")]
+    pub acc_x: f32,
+    #[prost(float, tag = "5")]
+    pub acc_y: f32,
+    #[prost(float, tag = "6")]
+    pub acc_z: f32,
+}
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
+pub struct DeviceRawAttitude {
+    #[prost(uint64, tag = "1")]
+    pub timestamp: u64,
+    #[prost(message, repeated, tag = "2")]
+    pub imu_raw_data: ::prost::alloc::vec::Vec<ImuRawData>,
+}
 /// Attitude of a specific device
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct DeviceAttitude {
     /// timestamp of the first sample in the attidue array.
     #[prost(uint32, tag = "1")]
@@ -2982,8 +2896,7 @@ pub struct DeviceAttitude {
     pub offset: f32,
 }
 /// Multi of the attitude set for a specific device
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct DeviceMultiAttitude {
     #[prost(message, optional, tag = "1")]
     pub current_frame: ::core::option::Option<DeviceAttitude>,
@@ -2992,8 +2905,7 @@ pub struct DeviceMultiAttitude {
     #[prost(message, optional, tag = "3")]
     pub next_frame: ::core::option::Option<DeviceAttitude>,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SensorShiftParam {
     #[prost(uint32, repeated, tag = "1")]
     pub sensor_shift_arr: ::prost::alloc::vec::Vec<u32>,
@@ -3009,16 +2921,14 @@ pub struct SensorShiftParam {
 /// *
 /// Represents the heading deviation between ground and navi.
 /// Unit in 0.1 degree.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FaiDegree {
     #[prost(int32, tag = "1")]
     pub fai_g_deg: i32,
 }
 /// *
 /// One-click fancy flight mode information for LightCut APP.
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FancyMode {
     /// * Timestamp of fancy flight mode in ms.
     #[prost(uint32, tag = "1")]
@@ -3032,7 +2942,6 @@ pub struct FancyMode {
 }
 /// Nested message and enum types in `FancyMode`.
 pub mod fancy_mode {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -3085,8 +2994,7 @@ pub mod fancy_mode {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct LiveViewHfov {
     /// * liveview h_fov *
     #[prost(float, tag = "1")]
@@ -3101,8 +3009,7 @@ pub struct LiveViewHfov {
     #[prost(float, tag = "4")]
     pub lv_frame_ratio: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct GimbalAngleDeviation {
     #[prost(float, tag = "1")]
     pub x_deviation: f32,
@@ -3111,8 +3018,7 @@ pub struct GimbalAngleDeviation {
     #[prost(float, tag = "3")]
     pub z_deviation: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct TrackingInfo {
     /// * smart eye mode for tk mode in video editor. bit 0:  is in tracking mode. bits 1-7: sub tracking mode, See DJI_TRACKING_MODE.
     #[prost(uint32, tag = "1")]
@@ -3133,8 +3039,7 @@ pub struct TrackingInfo {
     #[prost(float, tag = "8")]
     pub height: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct UavToTargetPos {
     #[prost(uint64, tag = "1")]
     pub time_stamp_us: u64,
@@ -3161,7 +3066,6 @@ pub struct UavToTargetPos {
 }
 /// Nested message and enum types in `UavToTargetPos`.
 pub mod uav_to_target_pos {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -3238,21 +3142,18 @@ pub mod uav_to_target_pos {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SensorFrameReadOutTime {
     /// read out time per frame of a certain mode.
     #[prost(uint64, tag = "1")]
     pub readout_time: u64,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct LroValue {
     #[prost(uint32, tag = "1")]
     pub lro_value: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SensorRes {
     /// * The sensor width for current sensor mode.
     #[prost(uint32, tag = "1")]
@@ -3261,29 +3162,32 @@ pub struct SensorRes {
     #[prost(uint32, tag = "2")]
     pub sensor_height: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FlatRes {
+    #[prost(uint32, tag = "1")]
+    pub flat_width: u32,
+    #[prost(uint32, tag = "2")]
+    pub flat_height: u32,
+}
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ImuVsyncPos {
     /// Represents imu downsampling phase
     #[prost(uint32, tag = "1")]
     pub vsync_pos: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ItdValue {
     #[prost(int32, tag = "1")]
     pub itd_value: i32,
 }
 /// TODO: comment
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SensorReadDirection {
     #[prost(enumeration = "sensor_read_direction::SenorReadDirectionType", tag = "1")]
     pub direction: i32,
 }
 /// Nested message and enum types in `SensorReadDirection`.
 pub mod sensor_read_direction {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -3339,42 +3243,36 @@ pub mod sensor_read_direction {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct SensorFrameRate {
     #[prost(float, tag = "1")]
     pub sensor_frame_rate: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ImuSamplingRate {
     #[prost(uint32, tag = "1")]
     pub imu_sampling_rate: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct DigitalFocalLength {
     /// focal length output(fx) in both pinhole and fisheye in camera intrinsic matrix,
     /// lightCut app/gyroflow need to know this value to do c2w/w2c, in our model, fx equals to fy.
     #[prost(float, tag = "1")]
     pub focal_length: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct LensDistortionCoefficients {
     /// 1*4 array containing distortion coefficients (k1, k2, k3, k4) of an OpenCV fisheye model.
     #[prost(float, repeated, tag = "1")]
     pub coeffients: ::prost::alloc::vec::Vec<f32>,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct EisStatus {
     #[prost(enumeration = "eis_status::EisStatusType", tag = "1")]
     pub status: i32,
 }
 /// Nested message and enum types in `EisStatus`.
 pub mod eis_status {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -3396,6 +3294,8 @@ pub mod eis_status {
         EisHorizonBalancing = 5,
         EisDeepspace = 6,
         EisOffWithCrop = 7,
+        EisHorizonCorrection = 8,
+        EisRsAuto = 9,
     }
     impl EisStatusType {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -3412,6 +3312,8 @@ pub mod eis_status {
                 Self::EisHorizonBalancing => "EIS_HORIZON_BALANCING",
                 Self::EisDeepspace => "EIS_DEEPSPACE",
                 Self::EisOffWithCrop => "EIS_OFF_WITH_CROP",
+                Self::EisHorizonCorrection => "EIS_HORIZON_CORRECTION",
+                Self::EisRsAuto => "EIS_RS_AUTO",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
@@ -3425,6 +3327,8 @@ pub mod eis_status {
                 "EIS_HORIZON_BALANCING" => Some(Self::EisHorizonBalancing),
                 "EIS_DEEPSPACE" => Some(Self::EisDeepspace),
                 "EIS_OFF_WITH_CROP" => Some(Self::EisOffWithCrop),
+                "EIS_HORIZON_CORRECTION" => Some(Self::EisHorizonCorrection),
+                "EIS_RS_AUTO" => Some(Self::EisRsAuto),
                 _ => None,
             }
         }
@@ -3432,22 +3336,19 @@ pub mod eis_status {
 }
 /// *
 /// Represents current underwater confidence level
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CurrentUnderwaterConfidence {
     /// * To determine whether the device is currently underwater.
     #[prost(uint32, tag = "1")]
     pub current_underwater_confidence: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct WayPointStatus {
     #[prost(enumeration = "way_point_status::WayPointStatusType", tag = "1")]
     pub status: i32,
 }
 /// Nested message and enum types in `WayPointStatus`.
 pub mod way_point_status {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -3485,8 +3386,7 @@ pub mod way_point_status {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct FcmData {
     #[prost(fixed64, tag = "1")]
     pub timestamp: u64,
@@ -3525,7 +3425,6 @@ pub struct FcmData {
 }
 /// Nested message and enum types in `FCMData`.
 pub mod fcm_data {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -3569,7 +3468,6 @@ pub mod fcm_data {
         }
     }
     /// geometrical orientations relative to a body
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -3648,7 +3546,6 @@ pub mod fcm_data {
             }
         }
     }
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -3691,7 +3588,6 @@ pub mod fcm_data {
             }
         }
     }
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -3732,15 +3628,13 @@ pub mod fcm_data {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RcMode {
     #[prost(enumeration = "rc_mode::RcModeEnum", tag = "1")]
     pub rc_mode: i32,
 }
 /// Nested message and enum types in `RC_Mode`.
 pub mod rc_mode {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -3790,14 +3684,12 @@ pub mod rc_mode {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct BatteryInfo {
     #[prost(fixed32, tag = "1")]
     pub battery_percent: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct BarrierDistance {
     #[prost(enumeration = "barrier_distance::TofState", tag = "1")]
     pub below_tof_state: i32,
@@ -3806,7 +3698,6 @@ pub struct BarrierDistance {
 }
 /// Nested message and enum types in `Barrier_Distance`.
 pub mod barrier_distance {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -3844,8 +3735,7 @@ pub mod barrier_distance {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RealFocalLength {
     /// * Because of the accuracy error which may comes from the lens
     /// craftsmanship, the real focal length may not be the same as
@@ -3859,8 +3749,7 @@ pub struct RealFocalLength {
     #[prost(int32, repeated, tag = "1")]
     pub real_focal_length: ::prost::alloc::vec::Vec<i32>,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Barometer {
     /// * Is in the water.
     #[prost(bool, tag = "1")]
@@ -3872,15 +3761,13 @@ pub struct Barometer {
     #[prost(uint32, tag = "3")]
     pub atmospheric_hpa: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CameraControllerScene {
     #[prost(enumeration = "camera_controller_scene::CameraControllerScene", tag = "1")]
     pub camera_controller_scene: i32,
 }
 /// Nested message and enum types in `CameraControllerScene`.
 pub mod camera_controller_scene {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -3924,8 +3811,7 @@ pub mod camera_controller_scene {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct EquivalentFocalLength {
     /// * The current 35mm equivalent hybrid focal length.
     /// Its value will be described as rational type, so for
@@ -3934,8 +3820,21 @@ pub struct EquivalentFocalLength {
     #[prost(int32, repeated, tag = "1")]
     pub equivalent_focal_length: ::prost::alloc::vec::Vec<i32>,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Effective35mmEqFocalLen {
+    #[prost(int32, repeated, tag = "1")]
+    pub equivalent_focal_length: ::prost::alloc::vec::Vec<i32>,
+}
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GimbalSelfCailParams {
+    #[prost(uint32, tag = "1")]
+    pub flag: u32,
+    #[prost(uint32, tag = "2")]
+    pub gimbal_yaw_h1: u32,
+    #[prost(uint32, tag = "3")]
+    pub gimbal_yaw_h2: u32,
+}
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct DewarpParams {
     #[prost(float, tag = "1")]
     pub fx: f32,
@@ -4006,9 +3905,10 @@ pub struct DewarpParams {
     pub gimbal_yaw_h1: f32,
     #[prost(float, tag = "33")]
     pub gimbal_yaw_h2: f32,
+    #[prost(message, optional, tag = "34")]
+    pub gimbal_self_cail_param: ::core::option::Option<GimbalSelfCailParams>,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct PanoDewarpParams {
     #[prost(message, optional, tag = "1")]
     pub native_refine_slave: ::core::option::Option<DewarpParams>,
@@ -4059,8 +3959,7 @@ pub struct PanoDewarpParams {
     #[prost(message, optional, tag = "24")]
     pub native_refine_far_16_master: ::core::option::Option<DewarpParams>,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct AecAe {
     #[prost(float, tag = "1")]
     pub lv: f32,
@@ -4078,17 +3977,67 @@ pub struct AecAe {
     pub dark_boost_gain: f32,
     #[prost(enumeration = "AeMode", tag = "8")]
     pub ae_mode: i32,
+    #[prost(uint32, tag = "9")]
+    pub yltm_enable_flag: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AtomicGainInfo {
+    #[prost(uint32, tag = "1")]
+    pub sensor_again: u32,
+    #[prost(uint32, tag = "2")]
+    pub sensor_dgain: u32,
+    #[prost(uint32, tag = "3")]
+    pub isp_dgain: u32,
+    #[prost(uint32, tag = "4")]
+    pub cg_ratio: u32,
+    #[prost(uint32, tag = "5")]
+    pub sensor_again_s: u32,
+    #[prost(uint32, tag = "6")]
+    pub isp_dgain_s: u32,
+}
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
+pub struct GacGainInfo {
+    #[prost(bool, tag = "1")]
+    pub gac_enable: bool,
+    #[prost(float, tag = "2")]
+    pub isp_dgain: f32,
+    #[prost(float, tag = "3")]
+    pub gamma_dgain: f32,
+    #[prost(float, tag = "4")]
+    pub ccm_dgain: f32,
+    #[prost(float, tag = "5")]
+    pub drc_gtm_dgain: f32,
+    #[prost(float, tag = "6")]
+    pub drc_in_dgain: f32,
+    #[prost(float, tag = "7")]
+    pub drc_gamma_dgain: f32,
+    #[prost(float, tag = "8")]
+    pub gamma_knee_dgain: f32,
+    #[prost(float, tag = "9")]
+    pub dsp_dgain: f32,
+}
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
+pub struct AecEagle {
+    #[prost(int32, tag = "1")]
+    pub lv: i32,
+    #[prost(message, optional, tag = "2")]
+    pub atomic_gain_info: ::core::option::Option<AtomicGainInfo>,
+    #[prost(message, optional, tag = "3")]
+    pub gac_gain_info: ::core::option::Option<GacGainInfo>,
+}
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ExpoBalanceMode {
+    #[prost(uint32, tag = "1")]
+    pub mode: u32,
+}
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Coordinate {
     #[prost(float, tag = "1")]
     pub fx: f32,
     #[prost(float, tag = "2")]
     pub fy: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct TrackResultBox {
     #[prost(message, optional, tag = "1")]
     pub vertex_top_left: ::core::option::Option<Coordinate>,
@@ -4099,15 +4048,55 @@ pub struct TrackResultBox {
     #[prost(message, optional, tag = "4")]
     pub vertex_bottom_right: ::core::option::Option<Coordinate>,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
+pub struct Coordinate3D {
+    #[prost(float, tag = "1")]
+    pub x: f32,
+    #[prost(float, tag = "2")]
+    pub y: f32,
+    #[prost(float, tag = "3")]
+    pub z: f32,
+}
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
+pub struct TrackResultBox3D {
+    #[prost(message, optional, tag = "1")]
+    pub vertex_top_left: ::core::option::Option<Coordinate3D>,
+    #[prost(message, optional, tag = "2")]
+    pub vertex_top_right: ::core::option::Option<Coordinate3D>,
+    #[prost(message, optional, tag = "3")]
+    pub vertex_bottom_left: ::core::option::Option<Coordinate3D>,
+    #[prost(message, optional, tag = "4")]
+    pub vertex_bottom_right: ::core::option::Option<Coordinate3D>,
+}
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
+pub struct TrackRoiBox {
+    #[prost(uint32, tag = "1")]
+    pub roi_id: u32,
+    #[prost(message, optional, tag = "2")]
+    pub roi_box: ::core::option::Option<TrackResultBox3D>,
+}
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
+pub struct TrackRoiBoxListSurround {
+    #[prost(bool, tag = "1")]
+    pub is_check_valid: bool,
+    #[prost(uint32, tag = "2")]
+    pub roi_frame_id: u32,
+    #[prost(uint32, tag = "3")]
+    pub real_frame_id: u32,
+    #[prost(uint32, tag = "4")]
+    pub main_roi_id: u32,
+    #[prost(message, repeated, tag = "5")]
+    pub roi_box_face_list: ::prost::alloc::vec::Vec<TrackRoiBox>,
+    #[prost(message, repeated, tag = "6")]
+    pub roi_box_body_list: ::prost::alloc::vec::Vec<TrackRoiBox>,
+}
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct AimotDataVersion {
     /// * The protocal version of AI Multi-object Tracking.
     #[prost(fixed32, tag = "1")]
     pub ai_mot_version: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ObjGroup2DBoxWithDistance {
     /// * Object ID.
     #[prost(fixed32, tag = "1")]
@@ -4134,8 +4123,7 @@ pub struct ObjGroup2DBoxWithDistance {
     #[prost(fixed32, tag = "8")]
     pub distance: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct AimotData {
     /// * Indicates whether the AI object recognition uses a third-party model.
     #[prost(fixed32, tag = "1")]
@@ -4156,118 +4144,101 @@ pub struct AimotData {
     #[prost(message, repeated, tag = "6")]
     pub ai_mot_obj_data: ::prost::alloc::vec::Vec<ObjGroup2DBoxWithDistance>,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct EbikeGps {
     #[prost(message, optional, tag = "1")]
     pub gps_basic: ::core::option::Option<GpsBasic>,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct EbikeAcc {
     #[prost(message, optional, tag = "1")]
     pub ebike_acc: ::core::option::Option<Accelerometer>,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct EbikeTiltAngle {
     /// float   | tilt (unit：°)
     #[prost(float, tag = "1")]
     pub tilt_angle: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct EbikeMotorPower {
     /// motor power(unit：W)
     #[prost(uint32, tag = "1")]
     pub power: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct EbikePedalingPower {
     /// pedaling power(unit：W)
     #[prost(uint32, tag = "1")]
     pub power: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct EbikeCadence {
     /// cadence(unit：Rpm)
     #[prost(uint32, tag = "1")]
     pub cadence: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct EbikeMotorTorque {
     /// motor torque(unit：N·m)
     #[prost(uint32, tag = "1")]
     pub torque: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct EbikePedalingTorque {
     /// pedaling torque(unit：N·m)
     #[prost(uint32, tag = "1")]
     pub torque: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct EbikeSpeed {
     /// speed(unit：km/h)
     #[prost(float, tag = "1")]
     pub speed: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct EbikeMileage {
     /// mileage(unit：km)
     #[prost(float, tag = "1")]
     pub mileage: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
 pub struct EbikeSlope {
     /// slope(unit：°)
     #[prost(float, tag = "1")]
     pub slope: f32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct HeartRate {
     /// heart beat(unit：Bpm)
     #[prost(uint32, tag = "1")]
     pub heartrate: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct EbikePressure {
     /// air pressure(unit：hPa)
     #[prost(uint32, tag = "1")]
     pub pressure: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct EbikeCalories {
     /// calories (unit：kcal)
     #[prost(uint32, tag = "1")]
     pub calories: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct YltmEnable {
     /// yltm enable
     #[prost(uint32, tag = "1")]
     pub enable: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ExtriLensMode {
     #[prost(enumeration = "extri_lens_mode::ExtriLensModeType", tag = "1")]
     pub mode: i32,
 }
 /// Nested message and enum types in `ExtriLensMode`.
 pub mod extri_lens_mode {
-    #[derive(::serde::Serialize)]
     #[derive(
         Clone,
         Copy,
@@ -4312,16 +4283,93 @@ pub mod extri_lens_mode {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ShadingCalibModeNum {
+    #[prost(uint32, tag = "1")]
+    pub num: u32,
+}
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct AnyAspectRatioExport {
     #[prost(uint32, tag = "1")]
     pub support: u32,
     #[prost(uint32, tag = "2")]
     pub has_black_corner: u32,
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StyleFilterMode {
+    #[prost(uint32, tag = "1")]
+    pub mode: u32,
+}
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BeautyParams {
+    #[prost(uint32, tag = "1")]
+    pub enable: u32,
+    #[prost(uint32, tag = "2")]
+    pub face_temperature: u32,
+    #[prost(uint32, tag = "3")]
+    pub face_whiten: u32,
+    #[prost(uint32, tag = "4")]
+    pub face_smooth: u32,
+}
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct VideoType {
+    #[prost(enumeration = "video_type::VideoTypes", tag = "1")]
+    pub r#type: i32,
+}
+/// Nested message and enum types in `VideoType`.
+pub mod video_type {
+    #[derive(
+        Clone,
+        Copy,
+        Debug,
+        PartialEq,
+        Eq,
+        Hash,
+        PartialOrd,
+        Ord,
+        ::prost::Enumeration
+    )]
+    #[repr(i32)]
+    pub enum VideoTypes {
+        VideoTypeNone = 0,
+        VideoTypeBokerh = 1,
+        VideoTypeBokerhOriginal = 2,
+    }
+    impl VideoTypes {
+        /// String value of the enum field names used in the ProtoBuf definition.
+        ///
+        /// The values are not transformed in any way and thus are considered stable
+        /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+        pub fn as_str_name(&self) -> &'static str {
+            match self {
+                Self::VideoTypeNone => "VIDEO_TYPE_NONE",
+                Self::VideoTypeBokerh => "VIDEO_TYPE_BOKERH",
+                Self::VideoTypeBokerhOriginal => "VIDEO_TYPE_BOKERH_ORIGINAL",
+            }
+        }
+        /// Creates an enum from field names used in the ProtoBuf definition.
+        pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+            match value {
+                "VIDEO_TYPE_NONE" => Some(Self::VideoTypeNone),
+                "VIDEO_TYPE_BOKERH" => Some(Self::VideoTypeBokerh),
+                "VIDEO_TYPE_BOKERH_ORIGINAL" => Some(Self::VideoTypeBokerhOriginal),
+                _ => None,
+            }
+        }
+    }
+}
+#[derive(serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
+pub struct FlightPoseNavi {
+    #[prost(uint32, tag = "1")]
+    pub imu_flag: u32,
+    #[prost(message, optional, tag = "2")]
+    pub position: ::core::option::Option<Position>,
+    #[prost(message, optional, tag = "3")]
+    pub velocity: ::core::option::Option<Velocity>,
+    #[prost(message, optional, tag = "4")]
+    pub quaternion: ::core::option::Option<Quaternion>,
+}
+#[derive(serde::Serialize, Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum FcmLevel {
     SemiAutoFcm = 0,
@@ -4347,8 +4395,7 @@ impl FcmLevel {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[derive(serde::Serialize, Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum AeMode {
     Off = 0,
@@ -4374,8 +4421,7 @@ impl AeMode {
         }
     }
 }
-#[derive(::serde::Serialize)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[derive(serde::Serialize, Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum AiMotObjState {
     Invalid = 0,
@@ -4401,10 +4447,9 @@ impl AiMotObjState {
         }
     }
 }
-/// *
-/// Represents the proto entry when we do the encoding or decoding.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+
+// This file is @generated by prost-build.
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct ProductMeta {
     #[prost(message, optional, tag = "1")]
     pub clip_meta: ::core::option::Option<ClipMeta>,
@@ -4413,17 +4458,16 @@ pub struct ProductMeta {
     #[prost(message, optional, tag = "3")]
     pub frame_meta: ::core::option::Option<FrameMeta>,
 }
-/// *
-/// Represents the metadata about video clip.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct ClipMeta {
     #[prost(message, optional, tag = "1")]
     pub clip_meta_header: ::core::option::Option<ClipMetaHeader>,
     #[prost(message, optional, tag = "2")]
     pub clip_streams_meta: ::core::option::Option<ClipStreamsMeta>,
     #[prost(message, optional, tag = "3")]
-    pub distortion_coefficients: ::core::option::Option<LensDistortionCoefficients>,
+    pub distortion_coefficients: ::core::option::Option<
+        LensDistortionCoefficients,
+    >,
     #[prost(message, optional, tag = "4")]
     pub sensor_readout_time: ::core::option::Option<SensorFrameReadOutTime>,
     #[prost(message, optional, tag = "5")]
@@ -4436,11 +4480,20 @@ pub struct ClipMeta {
     pub imu_sampling_rate: ::core::option::Option<ImuSamplingRate>,
     #[prost(message, optional, tag = "11")]
     pub sensor_fps: ::core::option::Option<SensorFrameRate>,
+    #[prost(message, optional, tag = "12")]
+    pub itd_value: ::core::option::Option<ItdValue>,
+    #[prost(message, optional, tag = "13")]
+    pub lro_value: ::core::option::Option<LroValue>,
+    #[prost(message, optional, tag = "14")]
+    pub sensor_res: ::core::option::Option<SensorRes>,
+    #[prost(message, optional, tag = "15")]
+    pub f_number: ::core::option::Option<FNumber>,
+    #[prost(message, optional, tag = "16")]
+    pub style_filter_mode: ::core::option::Option<StyleFilterMode>,
+    #[prost(message, optional, tag = "17")]
+    pub yltm_enable: ::core::option::Option<YltmEnable>,
 }
-/// *
-/// Represents the metadata about video stream.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct StreamMeta {
     #[prost(message, optional, tag = "1")]
     pub stream_meta_header: ::core::option::Option<StreamMetaHeader>,
@@ -4448,13 +4501,16 @@ pub struct StreamMeta {
     pub video_stream_meta: ::core::option::Option<VideoStreamMeta>,
     #[prost(message, optional, tag = "4")]
     pub color_mode: ::core::option::Option<ColorMode>,
+    #[prost(message, optional, tag = "5")]
+    pub fov_type: ::core::option::Option<FovType>,
     #[prost(message, optional, tag = "6")]
     pub pano_dewarp_params: ::core::option::Option<PanoDewarpParams>,
+    #[prost(message, optional, tag = "7")]
+    pub extri_lens_mode: ::core::option::Option<ExtriLensMode>,
+    #[prost(message, optional, tag = "8")]
+    pub shading_calib_mode_num: ::core::option::Option<ShadingCalibModeNum>,
 }
-/// *
-/// Represents the metadata about video frame.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct FrameMeta {
     #[prost(message, optional, tag = "1")]
     pub frame_meta_header: ::core::option::Option<FrameMetaHeader>,
@@ -4462,11 +4518,12 @@ pub struct FrameMeta {
     pub camera_frame_meta: ::core::option::Option<FrameMetaOfCamera>,
     #[prost(message, optional, tag = "3")]
     pub imu_frame_meta: ::core::option::Option<FrameMetaOfImu>,
+    #[prost(message, optional, tag = "4")]
+    pub gimbal_frame_meta: ::core::option::Option<FrameMetaOfGimbal>,
+    #[prost(message, optional, tag = "5")]
+    pub ebike_frame_meta: ::core::option::Option<FrameMetaOfEbike>,
 }
-/// *
-/// Represents the frame metadata of camera device.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct FrameMetaOfCamera {
     #[prost(message, optional, tag = "1")]
     pub camera_dev_header: ::core::option::Option<MetaHeaderOfDevice>,
@@ -4482,14 +4539,75 @@ pub struct FrameMetaOfCamera {
     pub white_balance_cct: ::core::option::Option<WhiteBalanceCct>,
     #[prost(message, optional, tag = "7")]
     pub orientation: ::core::option::Option<Orientation>,
+    #[prost(message, optional, tag = "8")]
+    pub current_underwater_confidence: ::core::option::Option<
+        CurrentUnderwaterConfidence,
+    >,
+    #[prost(message, optional, tag = "9")]
+    pub camera_attitude: ::core::option::Option<Quaternion>,
+    #[prost(message, optional, tag = "10")]
+    pub camera_acc: ::core::option::Option<Accelerometer>,
+    #[prost(message, optional, tag = "11")]
+    pub sharpness: ::core::option::Option<Sharpness>,
+    #[prost(message, optional, tag = "12")]
+    pub denoising: ::core::option::Option<NoiseReductionApplied>,
+    #[prost(message, optional, tag = "14")]
+    pub track_ret: ::core::option::Option<TrackResultBox>,
+    #[prost(message, optional, tag = "15")]
+    pub aec_ae: ::core::option::Option<AecAe>,
+    #[prost(message, optional, tag = "16")]
+    pub sensor_temperature: ::core::option::Option<SensorTemperature>,
+    #[prost(message, optional, tag = "17")]
+    pub equivalent_focal_length: ::core::option::Option<EquivalentFocalLength>,
 }
-/// *
-/// Represents the frame metadata of IMU device.
-#[derive(::serde::Serialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct FrameMetaOfImu {
     #[prost(message, optional, tag = "1")]
     pub imu_dev_header: ::core::option::Option<MetaHeaderOfDevice>,
     #[prost(message, optional, tag = "2")]
     pub imu_attitude_after_fusion: ::core::option::Option<DeviceMultiAttitude>,
+    #[prost(message, optional, tag = "3")]
+    pub imu_vsync_pos: ::core::option::Option<ImuVsyncPos>,
+}
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
+pub struct FrameMetaOfGimbal {
+    #[prost(message, optional, tag = "1")]
+    pub gimbal_dev_header: ::core::option::Option<MetaHeaderOfDevice>,
+    #[prost(message, optional, tag = "2")]
+    pub gps_basic: ::core::option::Option<GpsBasic>,
+    #[prost(message, optional, tag = "3")]
+    pub velocity: ::core::option::Option<Velocity>,
+}
+#[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
+pub struct FrameMetaOfEbike {
+    #[prost(message, optional, tag = "1")]
+    pub ebike_dev_header: ::core::option::Option<MetaHeaderOfDevice>,
+    #[prost(message, optional, tag = "2")]
+    pub ebike_gps: ::core::option::Option<EbikeGps>,
+    #[prost(message, optional, tag = "3")]
+    pub ebike_acc: ::core::option::Option<EbikeAcc>,
+    #[prost(message, optional, tag = "4")]
+    pub tilt_angle: ::core::option::Option<EbikeTiltAngle>,
+    #[prost(message, optional, tag = "5")]
+    pub motor_power: ::core::option::Option<EbikeMotorPower>,
+    #[prost(message, optional, tag = "6")]
+    pub pedaling_power: ::core::option::Option<EbikePedalingPower>,
+    #[prost(message, optional, tag = "7")]
+    pub cadence: ::core::option::Option<EbikeCadence>,
+    #[prost(message, optional, tag = "8")]
+    pub motor_torque: ::core::option::Option<EbikeMotorTorque>,
+    #[prost(message, optional, tag = "9")]
+    pub pedaling_torque: ::core::option::Option<EbikePedalingTorque>,
+    #[prost(message, optional, tag = "10")]
+    pub slope: ::core::option::Option<EbikeSlope>,
+    #[prost(message, optional, tag = "11")]
+    pub mileage: ::core::option::Option<EbikeMileage>,
+    #[prost(message, optional, tag = "12")]
+    pub speed: ::core::option::Option<EbikeSpeed>,
+    #[prost(message, optional, tag = "13")]
+    pub heart_rate: ::core::option::Option<HeartRate>,
+    #[prost(message, optional, tag = "14")]
+    pub pressure: ::core::option::Option<EbikePressure>,
+    #[prost(message, optional, tag = "15")]
+    pub calories: ::core::option::Option<EbikeCalories>,
 }
