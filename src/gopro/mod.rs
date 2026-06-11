@@ -3,6 +3,8 @@
 
 pub mod klv;
 
+mod lens_profile;
+
 use std::io::*;
 use std::sync::{ Arc, atomic::AtomicBool };
 use byteorder::{ ReadBytesExt, BigEndian };
@@ -185,6 +187,9 @@ impl GoPro {
                 }
             }
         }
+
+        // Build a native lens profile from the in-camera POLY calibration, if present.
+        lens_profile::insert_lens_profile(&mut samples, self.model.as_deref(), &options);
 
         Ok(samples)
     }

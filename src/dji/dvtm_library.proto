@@ -330,6 +330,8 @@ message FOVType {
         FOV_TYPE_WIDE = 3;                              /** The user-specified FOV is wide. */
         FOV_TYPE_SNARROW = 4;                           /** The user-specified FOV is snarrow. */
         FOV_TYPE_NATURAL_WIDE = 5;                      /** The user-specified FOV is natural wide. */
+        FOV_TYPE_EXTREME_WIDE = 6;                      /** The user-specified FOV is extreme wide. */
+        FOV_TYPE_FLAT = 7;                              /** The user-specified FOV is flat. */
     }
     FOVType fov_type = 1;                               /** The user-specified FOV (Field of View), which is the maximum
                                                             area of a sample that the camera can image. */
@@ -700,6 +702,7 @@ message ColorMode {
         COLOR_MODE_DLOG_M = 19;                        /** The color mode is DLog-M. */
         COLOR_MODE_LASER_FILL_LIGHT = 20;               /** The color mode is Laser Fill Light. */
         COLOR_MODE_SPOT_LIGHT = 21;                     /** The color mode is Spot Light. */
+        COLOR_MODE_DLOG2 = 22;                          /** The color mode is D-Log2. */
     }
     ColorModeType color_mode = 1;                       /** The user-specified color profile for video recording. */
 }
@@ -1002,6 +1005,20 @@ message SensorActiveSize {
     uint32 sensor_active_physical_height_um = 2;        /** The physical height for current sensor mode. uint: um */
 }
 
+message ImuRawData {
+    float gyro_x = 1;
+    float gyro_y = 2;
+    float gyro_z = 3;
+    float acc_x = 4;
+    float acc_y = 5;
+    float acc_z = 6;
+}
+
+message DeviceRawAttitude {
+    uint64 timestamp = 1;
+    repeated ImuRawData imu_raw_data = 2;
+}
+
 /* Attitude of a specific device */
 message DeviceAttitude {
     uint32   timestamp = 1;     /* timestamp of the first sample in the attidue array. */
@@ -1099,7 +1116,7 @@ message UavToTargetPos {
     }
     TargetType     target_type = 5;
     Quaternion     q_target2navi = 6;             /** The target's rotation relative to the navigation, quaternion wxyz. */
-    bool           is_target_coord_valid = 7;     /** Target 3D position validity flag. true or false*/ 
+    bool           is_target_coord_valid = 7;     /** Target 3D position validity flag. true or false*/
     repeated float target_coord_navi = 8;         /** The target's coordinates in the navigation frame. */
 }
 
@@ -1114,6 +1131,11 @@ message LROValue {
 message SensorRes {
     uint32 sensor_width = 1;         /** The sensor width for current sensor mode. */
     uint32 sensor_height = 2;        /** The sensor height for current sensor mode. */
+}
+
+message FlatRes {
+    uint32 flat_width = 1;
+    uint32 flat_height = 2;
 }
 
 message ImuVsyncPos {
@@ -1166,6 +1188,8 @@ message EisStatus {
         EIS_HORIZON_BALANCING = 5;
         EIS_DEEPSPACE = 6;
         EIS_OFF_WITH_CROP = 7;
+        EIS_HORIZON_CORRECTION = 8;
+        EIS_RS_AUTO = 9;
     }
     EisStatusType status = 1;
 }
@@ -1313,6 +1337,16 @@ message EquivalentFocalLength {
                                                             	[35000, 1000]. Unit: milli-meter. */
 }
 
+message Effective35mmEqFocalLen {
+    repeated int32 equivalent_focal_length = 1;
+}
+
+message GimbalSelfCailParams {
+    uint32 flag = 1;
+    uint32 gimbal_yaw_h1 = 2;
+    uint32 gimbal_yaw_h2 = 3;
+}
+
 message DewarpParams {
     float   fx     = 1;
     float   fy     = 2;
@@ -1347,6 +1381,7 @@ message DewarpParams {
     float temp_compen_k              = 31;
     float gimbal_yaw_h1              = 32;
     float gimbal_yaw_h2              = 33;
+    GimbalSelfCailParams gimbal_self_cail_param = 34;
 }
 
 message PanoDewarpParams {
@@ -1390,6 +1425,38 @@ message AecAe {
     float adrc_gain             = 6;
     float dark_boost_gain       = 7;
     AeMode ae_mode              = 8;
+    uint32 yltm_enable_flag     = 9;
+}
+
+message AtomicGainInfo {
+    uint32 sensor_again = 1;
+    uint32 sensor_dgain = 2;
+    uint32 isp_dgain = 3;
+    uint32 cg_ratio = 4;
+    uint32 sensor_again_s = 5;
+    uint32 isp_dgain_s = 6;
+}
+
+message GacGainInfo {
+    bool gac_enable = 1;
+    float isp_dgain = 2;
+    float gamma_dgain = 3;
+    float ccm_dgain = 4;
+    float drc_gtm_dgain = 5;
+    float drc_in_dgain = 6;
+    float drc_gamma_dgain = 7;
+    float gamma_knee_dgain = 8;
+    float dsp_dgain = 9;
+}
+
+message AecEagle {
+    int32 lv = 1;
+    AtomicGainInfo atomic_gain_info = 2;
+    GacGainInfo gac_gain_info = 3;
+}
+
+message ExpoBalanceMode {
+    uint32 mode = 1;
 }
 
 message Coordinate {
@@ -1402,6 +1469,33 @@ message TrackResultBox {
     Coordinate vertex_top_right      = 2;
     Coordinate vertex_bottom_left    = 3;
     Coordinate vertex_bottom_right   = 4;
+}
+
+message Coordinate3D {
+    float x = 1;
+    float y = 2;
+    float z = 3;
+}
+
+message TrackResultBox3D {
+    Coordinate3D vertex_top_left = 1;
+    Coordinate3D vertex_top_right = 2;
+    Coordinate3D vertex_bottom_left = 3;
+    Coordinate3D vertex_bottom_right = 4;
+}
+
+message TrackRoiBox {
+    uint32 roi_id = 1;
+    TrackResultBox3D roi_box = 2;
+}
+
+message TrackRoiBoxListSurround {
+    bool is_check_valid = 1;
+    uint32 roi_frame_id = 2;
+    uint32 real_frame_id = 3;
+    uint32 main_roi_id = 4;
+    repeated TrackRoiBox roi_box_face_list = 5;
+    repeated TrackRoiBox roi_box_body_list = 6;
 }
 
 message AIMOTDataVersion {
@@ -1502,7 +1596,38 @@ message ExtriLensMode {
     ExtriLensModeType mode = 1;
 }
 
+message ShadingCalibModeNum {
+    uint32 num = 1;
+}
+
 message AnyAspectRatioExport {
     uint32 support = 1;
     uint32 has_black_corner = 2;
+}
+
+message StyleFilterMode {
+    uint32 mode = 1;
+}
+
+message BeautyParams {
+    uint32 enable = 1;
+    uint32 face_temperature = 2;
+    uint32 face_whiten = 3;
+    uint32 face_smooth = 4;
+}
+
+message VideoType {
+    enum VideoTypes {
+        VIDEO_TYPE_NONE = 0;
+        VIDEO_TYPE_BOKERH = 1;
+        VIDEO_TYPE_BOKERH_ORIGINAL = 2;
+    }
+    VideoTypes type = 1;
+}
+
+message FlightPoseNavi {
+    uint32 imu_flag = 1;
+    Position position = 2;
+    Velocity velocity = 3;
+    Quaternion quaternion = 4;
 }
