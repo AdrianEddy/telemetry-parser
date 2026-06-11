@@ -63,6 +63,7 @@ declare_ids! {
     CaptureTimestamp,
     FirstFrameTimestamp,
     FrameReadoutTime,
+    FrameReadoutDirection,
     ExposureTime,
     TimeOffset,
     SensorSizePixels,

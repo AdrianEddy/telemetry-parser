@@ -3,7 +3,7 @@
 
 mod sony;
 mod gopro;
-mod gyroflow;
+pub mod gyroflow;
 mod insta360;
 mod blackbox;
 mod runcam;
@@ -123,6 +123,11 @@ macro_rules! impl_formats {
                     }
                 }
                 return Err(Error::new(ErrorKind::Other, "Unsupported file format"));
+            }
+            pub fn parser_name(&self) -> &'static str {
+                match &self.inner {
+                    $(SupportedFormats::$name(_) => stringify!($name),)*
+                }
             }
             pub fn camera_type(&self) -> String {
                 match &self.inner {

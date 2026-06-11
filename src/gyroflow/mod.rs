@@ -1,5 +1,5 @@
 
-mod gyroflow_proto;
+pub mod gyroflow_proto;
 mod gcsv;
 mod binary;
 
