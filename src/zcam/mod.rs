@@ -83,7 +83,15 @@ impl Zcam {
     }
 
     pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P, _options: &crate::InputOptions) -> Option<Self> {
-        if memmem::find(buffer, b"imvt_cam.proto").is_some()  || memmem::find(buffer, b"imvt_lib.proto").is_some() || memmem::find(buffer, b"imvtmeta").is_some() {
+        // Some Z CAM MOV/MP4 files store the proto name just outside the small
+        // header probe window, while the footer still contains the metadata
+        // track handler/sample description in the moov box.
+        if memmem::find(buffer, b"imvt_cam.proto").is_some()
+            || memmem::find(buffer, b"imvt_lib.proto").is_some()
+            || memmem::find(buffer, b"imvtmeta").is_some()
+            || memmem::find(buffer, b"IMVT meta").is_some()
+            || memmem::find(buffer, b"zcmd").is_some()
+        {
             Some(Self::default())
         } else {
             None
