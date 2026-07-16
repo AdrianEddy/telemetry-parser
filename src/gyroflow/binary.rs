@@ -15,6 +15,7 @@ use crate::*;
 use crate::util::insert_tag;
 
 use super::gyroflow_proto;
+use super::gyroflow_proto_old;
 use super::gyroflow_proto::lens_data::Distortion;
 use super::gyroflow_proto::eis_data::Data as EisDataInner;
 use super::gyroflow_proto::gps_data::FixType as GpsFixType;
@@ -35,11 +36,15 @@ pub struct GyroflowProtobuf {
     // (q' = R · q · R⁻¹). Stored as (w, x, y, z); None = identity.
     quats_rotation: Option<(f64, f64, f64, f64)>,
 
+    is_gpmd_passthrough: bool, // non-spec conformant format written by HOVERAIR
+
     // Parsed proto header (set on the first sample that carries one).
     // Plain header fields are read through `camera()` / `clip()` helpers
     // below — only state that requires decoding (enum, sign-packing) or
     // is refined per-frame gets its own dedicated field.
     header: Option<gyroflow_proto::Header>,
+
+    use_legacy_schema: bool,
 
     readout_direction: ReadoutDirection,
     // Mirrors clip.frame_readout_time_us but is refined from per-frame
@@ -61,6 +66,10 @@ pub struct GyroflowProtobuf {
     // (≈ J_0) without a matching shift in the lookup, producing a constant
     // ~frame-jitter (tens of ms) misalignment.
     first_start_ts_us: Option<f64>,
+
+    // Clock skew (µs) between frame.start_timestamp_us and the IMU sample clock,
+    // measured and applied ONLY for GPMD passthrough (is_gpmd_passthrough).
+    ts_clock_skew_us: f64,
 }
 
 // Hamilton quaternion vector rotation: v' = q · v · q⁻¹ for unit q.
@@ -135,7 +144,7 @@ impl GyroflowProtobuf {
         self.vendor.clone()
     }
     pub fn has_accurate_timestamps(&self) -> bool {
-        true
+        !self.is_gpmd_passthrough
     }
     pub fn possible_extensions() -> Vec<&'static str> {
         vec!["mp4", "mov"]
@@ -178,12 +187,31 @@ impl GyroflowProtobuf {
                 log::warn!("Unexpected data: {}", pretty_hex::pretty_hex(&data));
             }
 
-            let parsed = match gyroflow_proto::Main::decode(data) {
-                Ok(p) => p,
-                Err(e) => {
-                    log::error!("Failed to parse protobuf: {e:?}");
-                    log::error!("Data: {}", pretty_hex::pretty_hex(&data));
-                    return;
+            let parsed = if self.use_legacy_schema {
+                match gyroflow_proto_old::Main::decode(data) {
+                    Ok(old) => old.into(),
+                    Err(e) => {
+                        log::error!("Failed to parse legacy protobuf: {e:?}");
+                        log::error!("Data: {}", pretty_hex::pretty_hex(&data));
+                        return;
+                    }
+                }
+            } else {
+                match gyroflow_proto::Main::decode(data) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        match gyroflow_proto_old::Main::decode(data) {
+                            Ok(old) => {
+                                self.use_legacy_schema = true;
+                                old.into()
+                            }
+                            Err(_) => {
+                                log::error!("Failed to parse protobuf: {e:?}");
+                                log::error!("Data: {}", pretty_hex::pretty_hex(&data));
+                                return;
+                            }
+                        }
+                    }
                 }
             };
 
@@ -200,29 +228,38 @@ impl GyroflowProtobuf {
                 self.process_frame(frame, &info, &mut tag_map, &options);
             }
 
-            // Lens profile JSON is emitted once, after we have both header and
-            // the first frame (we need the per-frame distortion variant to set
-            // the right `distortion_model` on the lens profile).
-            if !self.lens_profile_emitted && self.distortion_model_name.is_some() && self.camera().is_some_and(|c| !c.camera_brand.is_empty()) && self.clip().is_some() {
-                if let Some(profile_json) = self.build_lens_profile_json() {
-                    insert_tag(&mut tag_map,
-                        tag!(parsed GroupId::Lens, TagId::Data, "Lens profile", Json,
-                             |v| serde_json::to_string(v).unwrap_or_default(),
-                             profile_json, vec![]),
-                        &options);
-                    self.lens_profile_emitted = true;
+            if !self.lens_profile_emitted {
+                let lens_profile_field = self.camera().and_then(|c| c.lens_profile.clone());
+                if let Some(pref) = lens_profile_field.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+                    if pref.starts_with('{') {
+                        match serde_json::from_str::<serde_json::Value>(pref) {
+                            Ok(mut profile_json) if profile_json.is_object() => {
+                                if self.is_gpmd_passthrough {
+                                    if profile_json["sync_settings"].is_object() {
+                                        profile_json["sync_settings"]["do_autosync"] = serde_json::Value::Bool(true);
+                                    } else {
+                                        profile_json["sync_settings"] = Self::gpmd_autosync_settings();
+                                    }
+                                }
+                                insert_tag(&mut tag_map, tag!(parsed GroupId::Lens, TagId::Data, "Lens profile", Json, |v| serde_json::to_string(v).unwrap_or_default(), profile_json, vec![]), &options);
+                                self.lens_profile_emitted = true;
+                            }
+                            Ok(_) => log::warn!("Embedded lens_profile is JSON but not an object; ignoring"),
+                            Err(e) => log::warn!("Failed to parse embedded lens_profile JSON: {e}"),
+                        }
+                    } else {
+                        insert_tag(&mut tag_map, tag!(parsed GroupId::Lens, TagId::Name, "Lens profile name", String, |v| v.to_string(), pref.to_string(), vec![]), &options);
+                        self.lens_profile_emitted = true;
+                    }
                 }
             }
 
-            // Optional preference-only lens identifier from header.lens_profile.
-            // Use TagId::Name when it isn't a JSON document so the existing
-            // gyro_source/mod.rs Lens.Name path picks it up as a profile string.
-            if let Some(pref) = self.camera().and_then(|c| c.lens_profile.as_deref()) {
-                if !pref.is_empty() && !pref.starts_with('{') {
-                    insert_tag(&mut tag_map,
-                        tag!(parsed GroupId::Lens, TagId::Name, "Lens profile name", String,
-                             |v| v.to_string(), pref.to_string(), vec![]),
-                        &options);
+            // Synthesized fallback: only when the header didn't supply a profile,
+            // and once we've seen the first frame's distortion variant.
+            if !self.lens_profile_emitted && self.distortion_model_name.is_some() && self.camera().is_some_and(|c| !c.camera_brand.is_empty()) && self.clip().is_some() {
+                if let Some(profile_json) = self.build_lens_profile_json() {
+                    insert_tag(&mut tag_map, tag!(parsed GroupId::Lens, TagId::Data, "Lens profile", Json, |v| serde_json::to_string(v).unwrap_or_default(), profile_json, vec![]), &options);
+                    self.lens_profile_emitted = true;
                 }
             }
 
@@ -261,18 +298,15 @@ impl GyroflowProtobuf {
             }
             self.model = if cam.camera_model.is_empty() { None } else { Some(cam.camera_model.clone()) };
 
-            insert_tag(tag_map,
-                tag!(parsed GroupId::Default, TagId::SerialNumber, "Camera serial number", String,
-                     |v| v.to_string(), cam.camera_serial_number.clone().unwrap_or_default(), vec![]),
-                options);
+            insert_tag(tag_map, tag!(parsed GroupId::Default, TagId::SerialNumber, "Camera serial number", String, |v| v.to_string(), cam.camera_serial_number.clone().unwrap_or_default(), vec![]), options);
 
             if let Some(ref add) = cam.additional_data {
                 if add.starts_with('{') {
                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(add) {
-                        insert_tag(tag_map,
-                            tag!(parsed GroupId::Default, TagId::Metadata, "Additional metadata", Json,
-                                 |v| v.to_string(), json, vec![]),
-                            options);
+                        if json.as_object().is_some_and(|obj| obj.values().any(|v| v.get("format").and_then(|f| f.as_str()) == Some("gyroflow_protobuf_gpmd"))) {
+                            self.is_gpmd_passthrough = true;
+                        }
+                        insert_tag(tag_map, tag!(parsed GroupId::Default, TagId::Metadata, "Additional metadata", Json, |v| v.to_string(), json, vec![]), options);
                     }
                 }
             }
@@ -286,16 +320,10 @@ impl GyroflowProtobuf {
             self.readout_direction = ReadoutDirection::try_from(clip.frame_readout_direction).unwrap_or(ReadoutDirection::TopToBottom);
             self.frame_readout_time = Some(pack_readout_time_ms(clip.frame_readout_time_us, self.readout_direction));
 
-            insert_tag(tag_map,
-                tag!(parsed GroupId::Default, TagId::FrameRate, "Frame rate", f64,
-                     |v| format!("{:.3}fps", v), clip.record_frame_rate as f64, vec![]),
-                options);
+            insert_tag(tag_map, tag!(parsed GroupId::Default, TagId::FrameRate, "Frame rate", f64, |v| format!("{:.3}fps", v), clip.record_frame_rate as f64, vec![]), options);
 
             if let Some(ref cp) = clip.color_profile {
-                insert_tag(tag_map,
-                    tag!(parsed GroupId::Colors, TagId::CaptureGammaEquation, "Color profile", String,
-                         |v| v.to_string(), cp.clone(), vec![]),
-                    options);
+                insert_tag(tag_map, tag!(parsed GroupId::Colors, TagId::CaptureGammaEquation, "Color profile", String, |v| v.to_string(), cp.clone(), vec![]), options);
             }
         }
     }
@@ -324,25 +352,20 @@ impl GyroflowProtobuf {
         );
 
         if pixel_pitch_x_nm > 0 && pixel_pitch_y_nm > 0 {
-            insert_tag(tag_map,
-                tag!(parsed GroupId::Imager, TagId::PixelPitch, "Pixel pitch", u32x2,
-                     |v| format!("{:?}", v), (pixel_pitch_x_nm, pixel_pitch_y_nm), vec![]),
-                options);
+            insert_tag(tag_map, tag!(parsed GroupId::Imager, TagId::PixelPitch, "Pixel pitch", u32x2, |v| format!("{:?}", v), (pixel_pitch_x_nm, pixel_pitch_y_nm), vec![]), options);
         }
         if sensor_w > 0 && sensor_h > 0 {
-            insert_tag(tag_map,
-                tag!(parsed GroupId::Imager, TagId::SensorSizePixels, "Sensor pixel size", u32x2,
-                     |v| format!("{:?}", v), (sensor_w, sensor_h), vec![]),
-                options);
+            insert_tag(tag_map, tag!(parsed GroupId::Imager, TagId::SensorSizePixels, "Sensor pixel size", u32x2, |v| format!("{:?}", v), (sensor_w, sensor_h), vec![]), options);
         }
-        insert_tag(tag_map,
-            tag!(parsed GroupId::Imager, TagId::CaptureAreaOrigin, "Sensor crop origin", f32x2,
-                 |v| format!("{:?}", v), crop_origin, vec![]),
-            options);
-        insert_tag(tag_map,
-            tag!(parsed GroupId::Imager, TagId::CaptureAreaSize, "Sensor crop size", f32x2,
-                 |v| format!("{:?}", v), crop_size, vec![]),
-            options);
+        insert_tag(tag_map, tag!(parsed GroupId::Imager, TagId::CaptureAreaOrigin, "Sensor crop origin", f32x2, |v| format!("{:?}", v), crop_origin, vec![]), options);
+        insert_tag(tag_map, tag!(parsed GroupId::Imager, TagId::CaptureAreaSize, "Sensor crop size", f32x2, |v| format!("{:?}", v), crop_size, vec![]), options);
+
+        if self.is_gpmd_passthrough && self.first_start_ts_us == Some(frame.start_timestamp_us) {
+            if let Some(first_imu_ts) = frame.imu.iter().find_map(|s| s.sample_timestamp_us) {
+                self.ts_clock_skew_us = frame.start_timestamp_us - first_imu_ts;
+            }
+        }
+        let frame_start_gyro_us = frame.start_timestamp_us - self.ts_clock_skew_us;
 
         // ---- Per-frame timing (see file-header rationale) ----
         // Recover Sony's RTMD per-frame jitter J_i = (camera-clock start_ts) - (video PTS).
@@ -352,15 +375,12 @@ impl GyroflowProtobuf {
         // first_frame_ts straight into stab_calc_splines' top_offset for IBIS / OIS
         // spline timing — a J_0 offset there picks DIFFERENT IBIS samples than native
         // by exactly J_0 µs and degrades rolling-shutter / IBIS stability.
-        let first_frame_ts_ms = frame.start_timestamp_us / 1000.0 - info.timestamp_ms;
+        let first_frame_ts_ms = frame_start_gyro_us / 1000.0 - info.timestamp_ms;
         insert_tag(tag_map, tag!(parsed GroupId::Imager, TagId::FirstFrameTimestamp, "First frame timestamp", f64, |v| format!("{:.4} ms", v), first_frame_ts_ms, vec![]), options);
 
         // Effective exposure time (apply EXPOSURE PRECEDENCE from the proto).
         let exposure_time_us = self.resolve_exposure_us(frame);
-        insert_tag(tag_map,
-            tag!(parsed GroupId::Imager, TagId::ExposureTime, "Exposure time", f64,
-                 |v| format!("{:.4} ms", v), exposure_time_us / 1000.0, vec![]),
-            options);
+        insert_tag(tag_map, tag!(parsed GroupId::Imager, TagId::ExposureTime, "Exposure time", f64, |v| format!("{:.4} ms", v), exposure_time_us / 1000.0, vec![]), options);
 
         // Per-frame readout time: per the proto, `end_timestamp_us - start_timestamp_us`
         // is AUTHORITATIVE for per-row interpolation. clip.frame_readout_time_us is a
@@ -374,10 +394,7 @@ impl GyroflowProtobuf {
         } else {
             self.frame_readout_time_us
         };
-        insert_tag(tag_map,
-            tag!(parsed GroupId::Imager, TagId::FrameReadoutTime, "Frame readout time", f64,
-                 |v| format!("{:.4} ms", v), frame_readout_us_unsigned / 1000.0, vec![]),
-            options);
+        insert_tag(tag_map, tag!(parsed GroupId::Imager, TagId::FrameReadoutTime, "Frame readout time", f64, |v| format!("{:.4} ms", v), frame_readout_us_unsigned / 1000.0, vec![]), options);
 
         // Promote the authoritative per-frame readout to the clip-level
         // self.frame_readout_time on the very first frame (which then surfaces via
@@ -396,36 +413,21 @@ impl GyroflowProtobuf {
 
         // ---- Per-frame Exposure / Lens scalars ----
         if let Some(iso) = frame.iso {
-            insert_tag(tag_map,
-                tag!(parsed GroupId::Exposure, TagId::ISOValue, "ISO Sensitivity", u16,
-                     |v| format!("{}", v), iso.min(u16::MAX as u32) as u16, vec![]),
-                options);
+            insert_tag(tag_map, tag!(parsed GroupId::Exposure, TagId::ISOValue, "ISO Sensitivity", u16, |v| format!("{}", v), iso.min(u16::MAX as u32) as u16, vec![]), options);
         }
         if let (Some(num), Some(den)) = (frame.shutter_speed_numerator, frame.shutter_speed_denominator) {
             if num != 0 && den != 0 {
-                insert_tag(tag_map,
-                    tag!(parsed GroupId::Exposure, TagId::ShutterSpeed, "Shutter speed", u32x2,
-                         |v| format!("{}/{}s", v.0, v.1), (num.unsigned_abs(), den.unsigned_abs()), vec![]),
-                    options);
+                insert_tag(tag_map, tag!(parsed GroupId::Exposure, TagId::ShutterSpeed, "Shutter speed", u32x2, |v| format!("{}/{}s", v.0, v.1), (num.unsigned_abs(), den.unsigned_abs()), vec![]), options);
             }
         }
         if let Some(angle) = frame.shutter_angle_degrees {
-            insert_tag(tag_map,
-                tag!(parsed GroupId::Exposure, TagId::ShutterAngle, "Shutter angle", f32,
-                     |v| format!("{:.1}°", v), angle, vec![]),
-                options);
+            insert_tag(tag_map, tag!(parsed GroupId::Exposure, TagId::ShutterAngle, "Shutter angle", f32, |v| format!("{:.1}°", v), angle, vec![]), options);
         }
         if let Some(wbk) = frame.white_balance_kelvin {
-            insert_tag(tag_map,
-                tag!(parsed GroupId::Colors, TagId::WhiteBalance, "White balance", u16,
-                     |v| format!("{}K", v), wbk.min(u16::MAX as u32) as u16, vec![]),
-                options);
+            insert_tag(tag_map, tag!(parsed GroupId::Colors, TagId::WhiteBalance, "White balance", u16, |v| format!("{}K", v), wbk.min(u16::MAX as u32) as u16, vec![]), options);
         }
         if let Some(tint) = frame.white_balance_tint {
-            insert_tag(tag_map,
-                tag!(parsed GroupId::Colors, TagId::Unknown(0x57425254/*WBRT*/), "White balance tint", f32,
-                     |v| format!("{:.2}", v), tint, vec![]),
-                options);
+            insert_tag(tag_map, tag!(parsed GroupId::Colors, TagId::Unknown(0x57425254/*WBRT*/), "White balance tint", f32, |v| format!("{:.2}", v), tint, vec![]), options);
         }
         if let Some(zoom) = frame.digital_zoom_ratio {
             // gyro_source/mod.rs:268-274 reads DJI-native DZST/DZMX tags to
@@ -437,14 +439,8 @@ impl GyroflowProtobuf {
             // formula gives 1 + 1*(ratio − 1) = ratio. When zoom == 1.0 we
             // omit the tags so the consumer treats it as "no digital zoom".
             if zoom > 1.000001 {
-                insert_tag(tag_map,
-                    tag!(parsed GroupId::Default, TagId::Unknown(0x445a5354/*DZST*/), "Digital zoom state", u32,
-                         |v| format!("{}", v), 100u32, vec![]),
-                    options);
-                insert_tag(tag_map,
-                    tag!(parsed GroupId::Default, TagId::Unknown(0x445a4d58/*DZMX*/), "Digital zoom max", f32,
-                         |v| format!("{:.4}", v), zoom, vec![]),
-                    options);
+                insert_tag(tag_map, tag!(parsed GroupId::Default, TagId::Unknown(0x445a5354/*DZST*/), "Digital zoom state", u32, |v| format!("{}", v), 100u32, vec![]), options);
+                insert_tag(tag_map, tag!(parsed GroupId::Default, TagId::Unknown(0x445a4d58/*DZMX*/), "Digital zoom max", f32, |v| format!("{:.4}", v), zoom, vec![]), options);
             }
         }
 
@@ -464,16 +460,10 @@ impl GyroflowProtobuf {
         }
         if let Some(lens) = frame.lens.first() {
             if let Some(fl_mm) = lens.focal_length_mm {
-                insert_tag(tag_map,
-                    tag!(parsed GroupId::Lens, TagId::FocalLength, "Focal length", f32,
-                         |v| format!("{:.2} mm", v), fl_mm, vec![]),
-                    options);
+                insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::FocalLength, "Focal length", f32, |v| format!("{:.2} mm", v), fl_mm, vec![]), options);
             }
             if let Some(fnum) = lens.f_number {
-                insert_tag(tag_map,
-                    tag!(parsed GroupId::Lens, TagId::IrisFStop, "Iris F-stop", f32,
-                         |v| format!("f/{:.1}", v), fnum, vec![]),
-                    options);
+                insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::IrisFStop, "Iris F-stop", f32, |v| format!("f/{:.1}", v), fnum, vec![]), options);
             }
             if let Some(fd) = lens.focus_distance_mm {
                 // Sony's native RTMD parser emits Lens.FocusDistance in METERS
@@ -483,10 +473,7 @@ impl GyroflowProtobuf {
                 // field is millimeters per gyroflow.proto, so divide by 1000
                 // here to match Sony's native unit and keep lens_info.focus_distance
                 // consistent across the native and proto-roundtrip paths.
-                insert_tag(tag_map,
-                    tag!(parsed GroupId::Lens, TagId::FocusDistance, "Focus distance", f32,
-                         |v| format!("{:.2} m", v), fd / 1000.0, vec![]),
-                    options);
+                insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::FocusDistance, "Focus distance", f32, |v| format!("{:.2} m", v), fd / 1000.0, vec![]), options);
             }
 
             // Pixel focal length AND principal point come straight from the
@@ -503,10 +490,7 @@ impl GyroflowProtobuf {
                 let c_x = lens.camera_intrinsic_matrix[2];
                 let c_y = lens.camera_intrinsic_matrix[5];
                 if f_x > 0.0 && f_y > 0.0 {
-                    insert_tag(tag_map,
-                        tag!(parsed GroupId::Lens, TagId::PixelFocalLength, "Pixel focal length", f32x2,
-                             |v| format!("({:.2}, {:.2}) px", v.0, v.1), (f_x, f_y), vec![]),
-                        options);
+                    insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::PixelFocalLength, "Pixel focal length", f32x2, |v| format!("({:.2}, {:.2}) px", v.0, v.1), (f_x, f_y), vec![]), options);
                 }
                 // Only emit the principal point when it carries information
                 // (i.e. it's not the trivial centered default). The decoder
@@ -515,10 +499,7 @@ impl GyroflowProtobuf {
                 let centered_cx = frame_w as f32 / 2.0;
                 let centered_cy = frame_h as f32 / 2.0;
                 if (c_x - centered_cx).abs() > 0.5 || (c_y - centered_cy).abs() > 0.5 {
-                    insert_tag(tag_map,
-                        tag!(parsed GroupId::Lens, TagId::PrincipalPoint, "Principal point", f32x2,
-                             |v| format!("({:.2}, {:.2}) px", v.0, v.1), (c_x, c_y), vec![]),
-                        options);
+                    insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::PrincipalPoint, "Principal point", f32x2, |v| format!("({:.2}, {:.2}) px", v.0, v.1), (c_x, c_y), vec![]), options);
                 }
             } else if let Some(fl_mm) = lens.focal_length_mm {
                 // Derive pixel focal length from physical mm + sensor geometry
@@ -534,10 +515,7 @@ impl GyroflowProtobuf {
                     if sensor_w_mm > 0.0 && sensor_h_mm > 0.0 {
                         let f_x = (fl_mm as f64 / sensor_w_mm) * frame_w as f64;
                         let f_y = (fl_mm as f64 / sensor_h_mm) * frame_h as f64;
-                        insert_tag(tag_map,
-                            tag!(parsed GroupId::Lens, TagId::PixelFocalLength, "Pixel focal length", f32x2,
-                                 |v| format!("({:.2}, {:.2}) px", v.0, v.1), (f_x as f32, f_y as f32), vec![]),
-                            options);
+                        insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::PixelFocalLength, "Pixel focal length", f32x2, |v| format!("({:.2}, {:.2}) px", v.0, v.1), (f_x as f32, f_y as f32), vec![]), options);
                     }
                 }
                 // No PrincipalPoint emitted in this branch — without an
@@ -545,10 +523,7 @@ impl GyroflowProtobuf {
             }
 
             if !lens_model_str.is_empty() {
-                insert_tag(tag_map,
-                    tag!(parsed GroupId::Lens, TagId::DisplayName, "Lens name", String,
-                         |v| v.to_string(), lens_model_str.clone(), vec![]),
-                    options);
+                insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::DisplayName, "Lens name", String, |v| v.to_string(), lens_model_str.clone(), vec![]), options);
             }
 
             // Distortion coefficients + model-name tag for downstream pickup.
@@ -557,16 +532,10 @@ impl GyroflowProtobuf {
                 if self.distortion_model_name.is_none() {
                     self.distortion_model_name = Some(name.clone());
                 }
-                insert_tag(tag_map,
-                    tag!(parsed GroupId::Lens, TagId::DistortionModel, "Distortion model", String,
-                         |v| v.to_string(), name, vec![]),
-                    options);
+                insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::DistortionModel, "Distortion model", String, |v| v.to_string(), name, vec![]), options);
             }
             if !coeffs.is_empty() {
-                insert_tag(tag_map,
-                    tag!(parsed GroupId::Lens, TagId::DistortionCoefficients, "Distortion coefficients", Vec_f64,
-                         |v| format!("{:?}", v), coeffs, vec![]),
-                    options);
+                insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::DistortionCoefficients, "Distortion coefficients", Vec_f64, |v| format!("{:?}", v), coeffs, vec![]), options);
             }
         }
 
@@ -582,8 +551,12 @@ impl GyroflowProtobuf {
         // clock; rebasing them to file-relative would shift the keys by
         // start_timestamp_us[0] (≈ J_0) with no matching shift in the lookup — a
         // constant ~frame-jitter (tens of ms) misalignment. See util.rs:544-560
-        // (Vec_TimeVector3_f64 branch keys gyro_map by us = (t * 1000).round()
-        // verbatim, since has_accurate_timestamps() is true).
+        // (Vec_TimeVector3_f64 branch keys gyro_map by us = (t * 1000).round()).
+        // For contract-compliant files has_accurate_timestamps() is true and the
+        // keys are used verbatim; for GPMD passthrough it's false, so util.rs
+        // rebases by the first gyro timestamp — but that is already 0 there (IMU is
+        // 0-based / video-aligned), making the rebase a no-op, and autosync then
+        // corrects the producer's ~0.5% timestamp drift.
         let mut gyro: Vec<TimeVector3<f64>> = Vec::with_capacity(frame.imu.len());
         let mut acc:  Vec<TimeVector3<f64>> = Vec::with_capacity(frame.imu.len());
         let mut mag:  Vec<TimeVector3<f64>> = Vec::new();
@@ -607,7 +580,7 @@ impl GyroflowProtobuf {
             // Per the proto, sample_timestamp_us is required for multi-sample entries.
             // When omitted we fall back to start_timestamp_us so a degenerate
             // single-sample-per-frame stream still places the sample at frame start.
-            let t_abs_us = imu.sample_timestamp_us.unwrap_or(frame.start_timestamp_us);
+            let t_abs_us = imu.sample_timestamp_us.unwrap_or(frame_start_gyro_us);
             let t_seconds = t_abs_us / 1.0e6;
 
             let (mut gx, mut gy, mut gz) = (imu.gyroscope_x as f64, imu.gyroscope_y as f64, imu.gyroscope_z as f64);
@@ -636,8 +609,11 @@ impl GyroflowProtobuf {
         }
 
         if !gyro.is_empty() {
+            // Unit is deg/s per the proto contract, except for GPMD-passthrough
+            // producers that keep GoPro's native rad/s (see is_gpmd_passthrough).
+            let gyro_unit = if self.is_gpmd_passthrough { "rad/s" } else { "deg/s" };
             insert_tag(tag_map, tag!(parsed GroupId::Gyroscope,     TagId::Data,        "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]), options);
-            insert_tag(tag_map, tag!(parsed GroupId::Gyroscope,     TagId::Unit,        "Gyroscope unit",     String,              |v| v.to_string(),     "deg/s".into(), vec![]), options);
+            insert_tag(tag_map, tag!(parsed GroupId::Gyroscope,     TagId::Unit,        "Gyroscope unit",     String,              |v| v.to_string(),     gyro_unit.into(), vec![]), options);
             insert_tag(tag_map, tag!(parsed GroupId::Gyroscope,     TagId::Orientation, "IMU orientation",    String,              |v| v.to_string(),     emit_orientation.clone(), vec![]), options);
             // Frequency = gyro sample rate (Hz). Still required by gyroflow's
             // sony::stab_collect (it reads Gyroscope.Frequency for the IBIS/OIS
@@ -657,10 +633,7 @@ impl GyroflowProtobuf {
             insert_tag(tag_map, tag!(parsed GroupId::Accelerometer, TagId::Unit,        "Accelerometer unit", String,              |v| v.to_string(),     "m/s²".into(), vec![]), options);
             insert_tag(tag_map, tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation",    String,              |v| v.to_string(),     emit_orientation.clone(), vec![]), options);
             if imu_sample_rate > 0 {
-                insert_tag(tag_map,
-                    tag!(parsed GroupId::Accelerometer, TagId::Frequency, "Accelerometer frequency", i32,
-                         |v| format!("{} Hz", v), imu_sample_rate as i32, vec![]),
-                    options);
+                insert_tag(tag_map, tag!(parsed GroupId::Accelerometer, TagId::Frequency, "Accelerometer frequency", i32, |v| format!("{} Hz", v), imu_sample_rate as i32, vec![]), options);
             }
         }
         if !mag.is_empty() {
@@ -677,7 +650,7 @@ impl GyroflowProtobuf {
         if !frame.quaternions.is_empty() {
             let quats: Vec<TimeQuaternion<f64>> = frame.quaternions.iter().filter_map(|q| {
                 let qu = q.quat.as_ref()?;
-                let t_abs_us = q.sample_timestamp_us.unwrap_or(frame.start_timestamp_us);
+                let t_abs_us = q.sample_timestamp_us.unwrap_or(frame_start_gyro_us);
                 let t_ms = t_abs_us / 1000.0;
                 let mut q_tuple = (qu.w as f64, qu.x as f64, qu.y as f64, qu.z as f64);
                 // quats_rotation: per the proto spec, applied to each fused-orientation
@@ -693,10 +666,7 @@ impl GyroflowProtobuf {
                 })
             }).collect();
             if !quats.is_empty() {
-                insert_tag(tag_map,
-                    tag!(parsed GroupId::Quaternion, TagId::Data, "Quaternion data", Vec_TimeQuaternion_f64,
-                         |v| format!("{:?}", v), quats, vec![]),
-                    options);
+                insert_tag(tag_map, tag!(parsed GroupId::Quaternion, TagId::Data, "Quaternion data", Vec_TimeQuaternion_f64, |v| format!("{:?}", v), quats, vec![]), options);
             }
         }
 
@@ -725,11 +695,11 @@ impl GyroflowProtobuf {
             let mut shifts:  Vec<TimeVector3<i32>> = Vec::with_capacity(frame.ibis.len());
             let mut angles:  Vec<TimeVector3<i32>> = Vec::with_capacity(frame.ibis.len());
             let mut combined: Vec<(f64, &gyroflow_proto::IbisData)> = frame.ibis.iter()
-                .map(|s| (s.sample_timestamp_us.unwrap_or(frame.start_timestamp_us), s))
+                .map(|s| (s.sample_timestamp_us.unwrap_or(frame_start_gyro_us), s))
                 .collect();
             combined.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
             for (t_abs_us, s) in combined {
-                let dt = t_abs_us - frame.start_timestamp_us;
+                let dt = t_abs_us - frame_start_gyro_us;
                 if dt < 0.0 || dt >= frame_interval_us { continue; }
                 let t_rel_us = dt.round() as i32;
                 // SIGN FLIP: the proto's UNIFIED STABILIZER SIGN CONVENTION reports IBIS
@@ -752,14 +722,8 @@ impl GyroflowProtobuf {
                 });
             }
             if !shifts.is_empty() {
-                insert_tag(tag_map,
-                    tag!(parsed GroupId::IBIS, TagId::Data, "IBIS shift table", Vec_TimeVector3_i32,
-                         |v| format!("{:?}", v), shifts, vec![]),
-                    options);
-                insert_tag(tag_map,
-                    tag!(parsed GroupId::IBIS, TagId::Data2, "IBIS angle table", Vec_TimeVector3_i32,
-                         |v| format!("{:?}", v), angles, vec![]),
-                    options);
+                insert_tag(tag_map, tag!(parsed GroupId::IBIS, TagId::Data, "IBIS shift table", Vec_TimeVector3_i32, |v| format!("{:?}", v), shifts, vec![]), options);
+                insert_tag(tag_map, tag!(parsed GroupId::IBIS, TagId::Data2, "IBIS angle table", Vec_TimeVector3_i32, |v| format!("{:?}", v), angles, vec![]), options);
             }
         }
 
@@ -770,11 +734,11 @@ impl GyroflowProtobuf {
         // The proto's signs already match (+X right / +Y down).
         if !frame.ois.is_empty() {
             let mut combined: Vec<(f64, &gyroflow_proto::LensOisData)> = frame.ois.iter()
-                .map(|s| (s.sample_timestamp_us.unwrap_or(frame.start_timestamp_us), s))
+                .map(|s| (s.sample_timestamp_us.unwrap_or(frame_start_gyro_us), s))
                 .collect();
             combined.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
             let shifts: Vec<TimeVector3<i32>> = combined.into_iter().filter_map(|(t_abs_us, s)| {
-                let dt = t_abs_us - frame.start_timestamp_us;
+                let dt = t_abs_us - frame_start_gyro_us;
                 if dt < 0.0 || dt >= frame_interval_us { return None; }
                 Some(TimeVector3 {
                     t: dt.round() as i32,
@@ -784,10 +748,7 @@ impl GyroflowProtobuf {
                 })
             }).collect();
             if !shifts.is_empty() {
-                insert_tag(tag_map,
-                    tag!(parsed GroupId::LensOSS, TagId::Data, "Lens OSS shift table", Vec_TimeVector3_i32,
-                         |v| format!("{:?}", v), shifts, vec![]),
-                    options);
+                insert_tag(tag_map, tag!(parsed GroupId::LensOSS, TagId::Data, "Lens OSS shift table", Vec_TimeVector3_i32, |v| format!("{:?}", v), shifts, vec![]), options);
             }
         }
 
@@ -813,14 +774,8 @@ impl GyroflowProtobuf {
             match eis.data.as_ref() {
                 Some(EisDataInner::MeshWarp(mesh)) => {
                     if let Some(json) = self.build_mesh_correction_json(mesh) {
-                        insert_tag(tag_map,
-                            tag!(parsed GroupId::Custom("MeshCorrection".into()), TagId::Enabled, "MeshCorrection enabled", bool,
-                                 |v| format!("{}", v), true, vec![]),
-                            options);
-                        insert_tag(tag_map,
-                            tag!(parsed GroupId::Custom("MeshCorrection".into()), TagId::Data, "MeshCorrection mesh", Json,
-                                 |v| v.to_string(), json, vec![]),
-                            options);
+                        insert_tag(tag_map, tag!(parsed GroupId::Custom("MeshCorrection".into()), TagId::Enabled, "MeshCorrection enabled", bool, |v| format!("{}", v), true, vec![]), options);
+                        insert_tag(tag_map, tag!(parsed GroupId::Custom("MeshCorrection".into()), TagId::Data, "MeshCorrection mesh", Json, |v| v.to_string(), json, vec![]), options);
                     }
                 }
                 Some(EisDataInner::Quaternion(q)) => {
@@ -843,14 +798,8 @@ impl GyroflowProtobuf {
             }
         }
         if !eis_quat_i16.is_empty() {
-            insert_tag(tag_map,
-                tag!(parsed GroupId::ImageOrientation, TagId::Data, "Image orientation", Vec_Quaternioni16,
-                     |v| format!("{:?}", v), eis_quat_i16, vec![]),
-                options);
-            insert_tag(tag_map,
-                tag!(parsed GroupId::ImageOrientation, TagId::Scale, "Image orientation scale", i16,
-                     |v| format!("{}", v), 32767i16, vec![]),
-                options);
+            insert_tag(tag_map, tag!(parsed GroupId::ImageOrientation, TagId::Data, "Image orientation", Vec_Quaternioni16, |v| format!("{:?}", v), eis_quat_i16, vec![]), options);
+            insert_tag(tag_map, tag!(parsed GroupId::ImageOrientation, TagId::Scale, "Image orientation scale", i16, |v| format!("{}", v), 32767i16, vec![]), options);
         }
 
         // ---- GPS / GNSS samples ----
@@ -1006,6 +955,25 @@ impl GyroflowProtobuf {
         }
     }
 
+    /// Lens-profile `sync_settings` that auto-run optical-flow autosync (the
+    /// standard gyroflow defaults, with do_autosync on). Used for GPMD-passthrough
+    /// files, whose synthetic IMU timestamps drift ~0.5% vs the video, so exact-
+    /// timestamp alignment can't be trusted (has_accurate_timestamps() is false);
+    /// autosync fits per-point offsets and corrects the drift.
+    fn gpmd_autosync_settings() -> serde_json::Value {
+        serde_json::json!({
+            "initial_offset": 0,
+            "initial_offset_inv": false,
+            // Wider search (1 s vs the usual 0.3 s): these files drift and can be
+            // hundreds of ms off, so autosync needs a larger window to lock on.
+            "search_size": 1.0,
+            "max_sync_points": 5,
+            "every_nth_frame": 1,
+            "time_per_syncpoint": 0.5,
+            "do_autosync": true
+        })
+    }
+
     /// Builds the lens_profile JSON consumed by gyro_source/mod.rs:209-213
     /// (Lens.Data → file_metadata.lens_profile). Carries enough info that
     /// `LensProfile::from_value` can hydrate a usable profile; per-frame
@@ -1063,14 +1031,20 @@ impl GyroflowProtobuf {
             "fps": if clip.record_frame_rate > 0.0 { clip.record_frame_rate } else { clip.sensor_frame_rate },
             "input_horizontal_stretch": if clip.pixel_aspect_ratio > 0.0 { clip.pixel_aspect_ratio as f64 } else { 1.0 },
             "input_vertical_stretch":   1.0,
-            "sync_settings": {
-                "initial_offset": 0,
-                "initial_offset_inv": false,
-                "search_size": 0.3,
-                "max_sync_points": 5,
-                "every_nth_frame": 1,
-                "time_per_syncpoint": 0.5,
-                "do_autosync": false
+            // Autosync on for GPMD passthrough (drifting synthetic timestamps),
+            // off otherwise.
+            "sync_settings": if self.is_gpmd_passthrough {
+                Self::gpmd_autosync_settings()
+            } else {
+                serde_json::json!({
+                    "initial_offset": 0,
+                    "initial_offset_inv": false,
+                    "search_size": 0.3,
+                    "max_sync_points": 5,
+                    "every_nth_frame": 1,
+                    "time_per_syncpoint": 0.5,
+                    "do_autosync": false
+                })
             },
             "calibrator_version": "---"
         });
