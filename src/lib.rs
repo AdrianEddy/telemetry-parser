@@ -107,7 +107,10 @@ macro_rules! impl_formats {
                 if !options.dont_look_for_sidecar_files {
                     if let Some(path) = filepath.as_ref().to_str() {
                         if ext.as_deref() == Some("mp4") || ext.as_deref() == Some("mov") || ext.as_deref() == Some("mkv") {
-                            for try_ext in ["gcsv", "bbl", "bfl", "csv", "GCSV", "BBL", "BFL", "CSV"] {
+                            // jsonl first: it carries the full per-frame protobuf telemetry
+                            // (lens profile, timing, IBIS/OIS), so when a clip has both it is
+                            // the one the user meant.
+                            for try_ext in ["jsonl", "gcsv", "bbl", "bfl", "csv", "JSONL", "GCSV", "BBL", "BFL", "CSV"] {
                                 if let Some(gyro_path) = filesystem::file_with_extension(path, try_ext) {
                                     if let Ok(mut f) = filesystem::open_file(&gyro_path) {
                                         return Self::from_stream(&mut f.file, f.size, &gyro_path, progress_cb, cancel_flag);
