@@ -2,7 +2,8 @@
 /// Main entry point of the data
 /// The first message will contain the Header with CameraMetadata and ClipMetadata
 /// All subsequent per-frame samples will contain the FrameMetadata, without Header
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
+#[serde(default)]
 pub struct Main {
     /// Magic string useful for format detection in binary data. Always "GyroflowProtobuf"
     #[prost(string, tag = "1")]
@@ -16,7 +17,8 @@ pub struct Main {
     pub frame: ::core::option::Option<FrameMetadata>,
 }
 /// One-time metadata containing information about the camera, lens and this particular video clip
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
+#[serde(default)]
 pub struct Header {
     #[prost(message, optional, tag = "1")]
     pub camera: ::core::option::Option<header::CameraMetadata>,
@@ -25,7 +27,8 @@ pub struct Header {
 }
 /// Nested message and enum types in `Header`.
 pub mod header {
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
+    #[serde(default)]
     pub struct CameraMetadata {
         /// Camera manufacturer
         #[prost(string, tag = "1")]
@@ -96,7 +99,8 @@ pub mod header {
         #[prost(string, optional, tag = "16")]
         pub additional_data: ::core::option::Option<::prost::alloc::string::String>,
     }
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
+    #[serde(default)]
     pub struct ClipMetadata {
         /// Video frame width in pixels
         #[prost(uint32, tag = "1")]
@@ -145,6 +149,7 @@ pub mod header {
     /// Nested message and enum types in `ClipMetadata`.
     pub mod clip_metadata {
         #[derive(
+            ::serde::Serialize, ::serde::Deserialize,
             Clone,
             Copy,
             Debug,
@@ -192,7 +197,8 @@ pub mod header {
         }
     }
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
+#[serde(default)]
 pub struct FrameMetadata {
     /// Time, in microseconds on the camera's internal clock, at the READOUT INSTANT
     /// of the FIRST-read sensor row — i.e. the moment that row finished integrating
@@ -358,7 +364,8 @@ pub struct FrameMetadata {
 ///    by timestamp using the same row-midpoint convention used for ois / ibis.
 ///    When only one entry exists, the lens parameters apply uniformly to the whole
 ///    frame and the timestamp may be omitted.
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
+#[serde(default)]
 pub struct LensData {
     /// Sample timestamp on the same camera clock as FrameMetadata.start_timestamp_us.
     /// Unit: microseconds. Optional; when omitted (single-entry case), the entry
@@ -404,7 +411,7 @@ pub struct LensData {
 /// Nested message and enum types in `LensData`.
 pub mod lens_data {
     /// The distortion model. Exactly one variant is present.
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    #[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Oneof)]
     pub enum Distortion {
         #[prost(message, tag = "5")]
         NoDistortion(super::NoDistortion),
@@ -433,7 +440,8 @@ pub mod lens_data {
 /// For producers that apply PARTIAL in-camera correction (residual barrel /
 /// pincushion remains in the encoded image), use GenericPolynomial refit
 /// against the post-correction projection instead.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[serde(default)]
 pub struct NoDistortion {}
 /// OpenCV's fisheye distortion model.
 /// Reference: <https://docs.opencv.org/4.x/db/d58/group__calib3d__fisheye.html>
@@ -444,7 +452,8 @@ pub struct NoDistortion {}
 ///    r_pixels = θ_d · f_px        (f_px from camera_intrinsic_matrix)
 ///
 /// Coefficients: \[k₁, k₂, k₃, k₄\] — exactly 4 floats.
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
+#[serde(default)]
 pub struct OpenCvFisheye {
     #[prost(float, repeated, tag = "1")]
     pub coefficients: ::prost::alloc::vec::Vec<f32>,
@@ -458,7 +467,8 @@ pub struct OpenCvFisheye {
 ///    8 elements:  \[k₁, k₂, p₁, p₂, k₃, k₄, k₅, k₆\]
 ///    12 elements: \[k₁..k₆, p₁, p₂, s₁..s₄\]                  (rational+thin-prism)
 ///    14 elements: \[k₁..k₆, p₁, p₂, s₁..s₄, τ_x, τ_y\]        (tilt)
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
+#[serde(default)]
 pub struct OpenCvStandard {
     #[prost(float, repeated, tag = "1")]
     pub coefficients: ::prost::alloc::vec::Vec<f32>,
@@ -467,7 +477,8 @@ pub struct OpenCvStandard {
 /// Reference: <https://lensfun.github.io/manual/latest/group__Lens.html#gaa505e04666a189274ba66316697e308e>
 ///    r_d = r · (1 + k₁ · r²)
 /// Coefficients: \[k₁\] — 1 float.
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
+#[serde(default)]
 pub struct LensFunPoly3 {
     #[prost(float, repeated, tag = "1")]
     pub coefficients: ::prost::alloc::vec::Vec<f32>,
@@ -475,7 +486,8 @@ pub struct LensFunPoly3 {
 /// LensFun's Poly5 radial distortion model.
 ///    r_d = r · (1 + k₁·r² + k₂·r⁴)
 /// Coefficients: \[k₁, k₂\] — 2 floats.
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
+#[serde(default)]
 pub struct LensFunPoly5 {
     #[prost(float, repeated, tag = "1")]
     pub coefficients: ::prost::alloc::vec::Vec<f32>,
@@ -483,7 +495,8 @@ pub struct LensFunPoly5 {
 /// LensFun's PTLens distortion model.
 ///    r_d = r · (a·r³ + b·r² + c·r + 1)
 /// Coefficients: \[a, b, c\] — 3 floats.
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
+#[serde(default)]
 pub struct LensFunPtLens {
     #[prost(float, repeated, tag = "1")]
     pub coefficients: ::prost::alloc::vec::Vec<f32>,
@@ -577,12 +590,14 @@ pub struct LensFunPtLens {
 ///    Inverse (r_normalized → θ) requires numerical iteration; Newton's
 ///    method on the polynomial converges in <10 iterations for any
 ///    physically reasonable lens.
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
+#[serde(default)]
 pub struct GenericPolynomial {
     #[prost(float, repeated, tag = "1")]
     pub coefficients: ::prost::alloc::vec::Vec<f32>,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, Copy, PartialEq, ::prost::Message)]
+#[serde(default)]
 pub struct ImuData {
     /// Sample timestamp on the same camera clock as FrameMetadata.start_timestamp_us.
     /// Unit: microseconds. Optional; when omitted (single-entry case), the sample
@@ -628,7 +643,8 @@ pub struct ImuData {
 ///      precision); consumers MAY renormalize on read.
 ///    - Storage order is (w, x, y, z) as the four float fields below; this is
 ///      independent of the multiplication convention but listed for clarity.
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, Copy, PartialEq, ::prost::Message)]
+#[serde(default)]
 pub struct Quaternion {
     /// Quaternion component W (real / scalar part)
     #[prost(float, tag = "1")]
@@ -660,7 +676,8 @@ pub struct Quaternion {
 ///
 /// Sample cadence: typically denser than one per frame (commonly one quaternion per
 /// gyro sample, ~200 Hz). The consumer interpolates between samples by timestamp.
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, Copy, PartialEq, ::prost::Message)]
+#[serde(default)]
 pub struct QuaternionData {
     /// Sample timestamp on the same camera clock as FrameMetadata.start_timestamp_us.
     /// Unit: microseconds. Optional; when omitted (single-entry case), the sample
@@ -671,7 +688,8 @@ pub struct QuaternionData {
     #[prost(message, optional, tag = "2")]
     pub quat: ::core::option::Option<Quaternion>,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, Copy, PartialEq, ::prost::Message)]
+#[serde(default)]
 pub struct LensOisData {
     /// Sample timestamp on the same camera clock as FrameMetadata.start_timestamp_us.
     /// Unit: microseconds. Optional; when omitted (single-entry case), the sample
@@ -687,7 +705,8 @@ pub struct LensOisData {
     #[prost(float, tag = "3")]
     pub shift_y_nm: f32,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, Copy, PartialEq, ::prost::Message)]
+#[serde(default)]
 pub struct IbisData {
     /// Sample timestamp on the same camera clock as FrameMetadata.start_timestamp_us.
     /// Unit: microseconds. Optional; when omitted (single-entry case), the sample
@@ -765,7 +784,8 @@ pub struct IbisData {
 ///    per-sample timing (aligned with the row-midpoint timeline for rolling shutter).
 ///    When only one entry exists, the transform applies uniformly to the whole frame
 ///    and the timestamp may be omitted.
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
+#[serde(default)]
 pub struct EisData {
     /// Sample timestamp on the same camera clock as FrameMetadata.start_timestamp_us.
     /// Unit: microseconds. Optional; when omitted (single-entry case), the transform
@@ -781,7 +801,7 @@ pub struct EisData {
 pub mod eis_data {
     /// Exactly one variant is present. Each describes a different kind of in-camera
     /// applied transform.
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    #[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Oneof)]
     pub enum Data {
         /// Rotation the camera applied to the captured pixels before encoding.
         /// Consumer applies the inverse to undo it.
@@ -797,7 +817,8 @@ pub mod eis_data {
     }
 }
 /// 4×4 affine transform. Row-major: values\[0..4\] = first row, etc.
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
+#[serde(default)]
 pub struct Matrix4x4 {
     /// 16 floats, row-major
     #[prost(float, repeated, tag = "1")]
@@ -836,7 +857,8 @@ pub struct Matrix4x4 {
 ///    Between grid anchors, the consumer interpolates the warped positions. Cubic
 ///    spline (Catmull-Rom or natural cubic) is recommended for smoothness; bilinear
 ///    is acceptable for low-precision use cases.
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
+#[serde(default)]
 pub struct MeshWarpData {
     /// Grid resolution. Typically 9 × 9.
     #[prost(uint32, tag = "1")]
@@ -890,7 +912,8 @@ pub struct MeshWarpData {
 ///      fixed multiple of σ). Producers SHOULD omit these unless their hardware
 ///      provides them; setting them to zero would be misinterpreted as "perfect
 ///      accuracy" rather than "unknown accuracy".
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(::serde::Serialize, ::serde::Deserialize, Clone, Copy, PartialEq, ::prost::Message)]
+#[serde(default)]
 pub struct GpsData {
     /// Sample timestamp on the same camera clock as FrameMetadata.start_timestamp_us.
     /// Unit: microseconds. Optional; when omitted (single-entry case), the sample
@@ -959,6 +982,7 @@ pub struct GpsData {
 /// Nested message and enum types in `GPSData`.
 pub mod gps_data {
     #[derive(
+        ::serde::Serialize, ::serde::Deserialize,
         Clone,
         Copy,
         Debug,

@@ -16,6 +16,7 @@ use crate::util::insert_tag;
 
 use super::gyroflow_proto;
 use super::gyroflow_proto_old;
+use super::proto_json;
 use super::gyroflow_proto::lens_data::Distortion;
 use super::gyroflow_proto::eis_data::Data as EisDataInner;
 use super::gyroflow_proto::gps_data::FixType as GpsFixType;
@@ -70,6 +71,64 @@ pub struct GyroflowProtobuf {
     // Clock skew (µs) between frame.start_timestamp_us and the IMU sample clock,
     // measured and applied ONLY for GPMD passthrough (is_gpmd_passthrough).
     ts_clock_skew_us: f64,
+
+    // Set when the input is the JSONL encoding of this same message stream
+    // rather than an MP4 metadata track. See proto_json.rs.
+    is_jsonl: bool,
+}
+
+/// Frame rate of the encoded file — the cadence `SampleInfo::timestamp_ms` runs
+/// at, and the one a muxer needs for its packet timestamps. `file_frame_rate` is
+/// the muxed rate and differs from the others in VFR / high-frame-rate modes;
+/// the rest are fallbacks for producers that only fill one of the three.
+///
+/// Public because anything that turns these messages back into a timed stream —
+/// the JSONL reader below, `gyroflow_proto_inject` — has to pick the same one.
+pub fn file_frame_rate(clip: Option<&gyroflow_proto::header::ClipMetadata>) -> f64 {
+    match clip {
+        Some(c) if c.file_frame_rate   > 0.0 => c.file_frame_rate   as f64,
+        Some(c) if c.record_frame_rate > 0.0 => c.record_frame_rate as f64,
+        Some(c) if c.sensor_frame_rate > 0.0 => c.sensor_frame_rate as f64,
+        _ => 0.0,
+    }
+}
+
+/// Maps each `FrameMetadata` onto its zero-based position in the stream — what
+/// the presentation time of the encoded video is reconstructed from, both when
+/// reading JSONL and when muxing the messages into an MP4.
+///
+/// `frame_number` is the authority when the stream numbers its frames (the proto
+/// says the first frame is 1), but proto3 gives `uint32` no presence, so a `0` is
+/// indistinguishable from "not set". Which source to trust is therefore decided
+/// ONCE, from the first frame, and held for the whole stream: deciding per frame
+/// lets a producer numbering from 0 fall back to the running count for its frame
+/// 0 and then anchor `first_frame_number` on its frame 1, handing both the same
+/// index. Positions are additionally forced to increase, since two frames at the
+/// same presentation time read as duplicate samples here and are rejected as
+/// non-monotonic DTS by a muxer.
+#[derive(Default)]
+pub struct FrameIndex {
+    first_frame_number: Option<u32>,
+    count: u32,
+    last: Option<u32>,
+}
+impl FrameIndex {
+    pub fn index_of(&mut self, frame: &gyroflow_proto::FrameMetadata) -> u32 {
+        if self.count == 0 && frame.frame_number > 0 {
+            self.first_frame_number = Some(frame.frame_number);
+        }
+        let index = match self.first_frame_number {
+            Some(first) if frame.frame_number > 0 => frame.frame_number.saturating_sub(first),
+            _ => self.count,
+        };
+        let index = match self.last {
+            Some(last) if index <= last => last + 1,
+            _ => index,
+        };
+        self.last = Some(index);
+        self.count += 1;
+        index
+    }
 }
 
 // Hamilton quaternion vector rotation: v' = q · v · q⁻¹ for unit q.
@@ -147,7 +206,7 @@ impl GyroflowProtobuf {
         !self.is_gpmd_passthrough
     }
     pub fn possible_extensions() -> Vec<&'static str> {
-        vec!["mp4", "mov"]
+        vec!["mp4", "mov", "jsonl"]
     }
     pub fn frame_readout_time(&self) -> Option<f64> {
         self.frame_readout_time
@@ -163,7 +222,19 @@ impl GyroflowProtobuf {
         self.header.as_ref()?.clip.as_ref()
     }
 
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P, _options: &crate::InputOptions) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P, _options: &crate::InputOptions) -> Option<Self> {
+        let path = filepath.as_ref().to_str().unwrap_or_default();
+        let ext = crate::filesystem::get_extension(path);
+        if ext == "jsonl" {
+            if !Self::is_jsonl_stream(buffer) { return None; }
+            return Some(Self {
+                vendor: "Gyroflow".into(),
+                imu_orientation: "XYZ".into(),
+                is_jsonl: true,
+                ..Default::default()
+            });
+        }
+
         if memmem::find(buffer, b"GyroflowProtobuf").is_some() {
             Some(Self {
                 vendor: "Gyroflow".into(),
@@ -175,7 +246,31 @@ impl GyroflowProtobuf {
         }
     }
 
+    /// Cheap textual probe: the buffer must open a JSON object — JSONL records
+    /// are objects, so a top-level array is some other format — and mention at
+    /// least one field that only this schema has, spelled either the canonical
+    /// lowerCamelCase way or with the original proto name. Deliberately avoids
+    /// generic names (`camera_brand`, `imu_orientation`) which also occur in
+    /// gyroflow lens profiles and project files.
+    fn is_jsonl_stream(buffer: &[u8]) -> bool {
+        let buffer = buffer.strip_prefix(&proto_json::UTF8_BOM).unwrap_or(buffer);
+        if buffer.iter().find(|c| !c.is_ascii_whitespace()) != Some(&b'{') { return false; }
+        const MARKERS: &[&[u8]] = &[
+            b"GyroflowProtobuf",
+            b"startTimestampUs", b"start_timestamp_us",
+            b"protocolVersion",  b"protocol_version",
+            b"magicString",      b"magic_string",
+            b"frameNumber",      b"frame_number",
+        ];
+        let probe = &buffer[..buffer.len().min(4 * 1024 * 1024)];
+        MARKERS.iter().any(|m| memmem::find(probe, m).is_some())
+    }
+
     pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+        if self.is_jsonl {
+            return self.parse_jsonl(stream, progress_cb, cancel_flag, options);
+        }
+
         let mut samples = Vec::new();
 
         let cancel_flag2 = cancel_flag.clone();
@@ -228,40 +323,7 @@ impl GyroflowProtobuf {
                 self.process_frame(frame, &info, &mut tag_map, &options);
             }
 
-            if !self.lens_profile_emitted {
-                let lens_profile_field = self.camera().and_then(|c| c.lens_profile.clone());
-                if let Some(pref) = lens_profile_field.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-                    if pref.starts_with('{') {
-                        match serde_json::from_str::<serde_json::Value>(pref) {
-                            Ok(mut profile_json) if profile_json.is_object() => {
-                                if self.is_gpmd_passthrough {
-                                    if profile_json["sync_settings"].is_object() {
-                                        profile_json["sync_settings"]["do_autosync"] = serde_json::Value::Bool(true);
-                                    } else {
-                                        profile_json["sync_settings"] = Self::gpmd_autosync_settings();
-                                    }
-                                }
-                                insert_tag(&mut tag_map, tag!(parsed GroupId::Lens, TagId::Data, "Lens profile", Json, |v| serde_json::to_string(v).unwrap_or_default(), profile_json, vec![]), &options);
-                                self.lens_profile_emitted = true;
-                            }
-                            Ok(_) => log::warn!("Embedded lens_profile is JSON but not an object; ignoring"),
-                            Err(e) => log::warn!("Failed to parse embedded lens_profile JSON: {e}"),
-                        }
-                    } else {
-                        insert_tag(&mut tag_map, tag!(parsed GroupId::Lens, TagId::Name, "Lens profile name", String, |v| v.to_string(), pref.to_string(), vec![]), &options);
-                        self.lens_profile_emitted = true;
-                    }
-                }
-            }
-
-            // Synthesized fallback: only when the header didn't supply a profile,
-            // and once we've seen the first frame's distortion variant.
-            if !self.lens_profile_emitted && self.distortion_model_name.is_some() && self.camera().is_some_and(|c| !c.camera_brand.is_empty()) && self.clip().is_some() {
-                if let Some(profile_json) = self.build_lens_profile_json() {
-                    insert_tag(&mut tag_map, tag!(parsed GroupId::Lens, TagId::Data, "Lens profile", Json, |v| serde_json::to_string(v).unwrap_or_default(), profile_json, vec![]), &options);
-                    self.lens_profile_emitted = true;
-                }
-            }
+            self.emit_lens_profile(&mut tag_map, &options);
 
             info.tag_map = Some(tag_map);
             samples.push(info);
@@ -272,6 +334,141 @@ impl GyroflowProtobuf {
         }, cancel_flag)?;
 
         Ok(samples)
+    }
+
+    /// Reads the same message stream from its JSONL encoding (see proto_json.rs)
+    /// instead of from an MP4 metadata track. Everything downstream of the
+    /// decoded `Main` — header, per-frame tags, lens profile — is the shared
+    /// code path; only the source of the messages and of `SampleInfo` differs.
+    fn parse_jsonl<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+        stream.seek(SeekFrom::Start(0))?;
+
+        let mut samples = Vec::new();
+        // A message that carries only the header — the natural first line of the
+        // stream — has no frame to hang its tags on, so they ride along on the
+        // next frame instead, exactly where the binary stream puts them.
+        let mut pending_tag_map: Option<GroupedTagMap> = None;
+        let mut frame_index = FrameIndex::default();
+
+        for parsed in proto_json::MessageReader::new(BufReader::with_capacity(256 * 1024, stream)) {
+            if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) { break; }
+
+            let mut tag_map = pending_tag_map.take().unwrap_or_default();
+
+            if let Some(ref header) = parsed.header {
+                self.process_header(header, &mut tag_map, &options);
+            }
+
+            let Some(ref frame) = parsed.frame else {
+                pending_tag_map = Some(tag_map);
+                continue;
+            };
+            if self.first_start_ts_us.is_none() {
+                self.first_start_ts_us = Some(frame.start_timestamp_us);
+            }
+
+            // There is no container to take the presentation time from, so
+            // reconstruct the one the encoded video will have: frame index over
+            // the file frame rate. process_frame turns the difference against
+            // start_timestamp_us into FirstFrameTimestamp, and gyroflow adds
+            // that back onto the video timestamp to land on the camera clock —
+            // so reconstructing the *ideal* PTS keeps each frame's own clock
+            // jitter intact instead of averaging it away. Without a frame rate
+            // in the header, fall back to the camera clock rebased to zero,
+            // which stays self-consistent but assumes the clip is CFR.
+            let fps = file_frame_rate(self.clip());
+            let index = frame_index.index_of(frame);
+            let timestamp_ms = if fps > 0.0 {
+                index as f64 * 1000.0 / fps
+            } else {
+                (frame.start_timestamp_us - self.first_start_ts_us.unwrap_or_default()) / 1000.0
+            };
+
+            let mut info = SampleInfo {
+                sample_index: samples.len() as u64,
+                track_index: 0,
+                timestamp_ms,
+                duration_ms: if fps > 0.0 { 1000.0 / fps } else { 0.0 },
+                video_rotation: self.clip().map(|c| c.rotation_degrees),
+                tag_map: None,
+            };
+
+            self.process_frame(frame, &info, &mut tag_map, &options);
+            self.emit_lens_profile(&mut tag_map, &options);
+
+            info.tag_map = Some(tag_map);
+            samples.push(info);
+
+            if options.probe_only { break; }
+
+            // Nothing here knows the byte position, so drive progress off the
+            // frame count the header advertises.
+            let expected = self.clip().map_or(0.0, |c| c.duration_us / 1_000_000.0 * fps);
+            if expected > 0.0 { progress_cb((samples.len() as f64 / expected).min(0.99)); }
+        }
+        progress_cb(1.0);
+
+        // A header that arrived after the last frame — or a stream that is
+        // nothing but a header — never got a frame to ride along on. Fold its
+        // tags into the last sample, or emit them on their own if there is no
+        // sample at all, so a probe still sees the camera and lens.
+        if let Some(pending) = pending_tag_map.take().filter(|m| !m.is_empty()) {
+            match samples.last_mut() {
+                Some(last) => {
+                    let map = last.tag_map.get_or_insert_with(GroupedTagMap::default);
+                    for (group, tags) in pending {
+                        map.entry(group).or_default().extend(tags);
+                    }
+                }
+                None => samples.push(SampleInfo { tag_map: Some(pending), ..Default::default() }),
+            }
+        }
+
+        if samples.is_empty() {
+            log::error!("No Gyroflow protobuf frames in the JSONL stream. The file must hold one complete JSON message per line — pretty-printed JSON spanning multiple lines is not JSONL.");
+        }
+
+        Ok(samples)
+    }
+
+    /// Emits the lens profile once per clip: the header's `lens_profile` field
+    /// when it has one (a gyroflow lens id, a path, or the profile JSON inline),
+    /// otherwise one synthesized from the camera and clip metadata.
+    fn emit_lens_profile(&mut self, tag_map: &mut GroupedTagMap, options: &crate::InputOptions) {
+        if !self.lens_profile_emitted {
+            let lens_profile_field = self.camera().and_then(|c| c.lens_profile.clone());
+            if let Some(pref) = lens_profile_field.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+                if pref.starts_with('{') {
+                    match serde_json::from_str::<serde_json::Value>(pref) {
+                        Ok(mut profile_json) if profile_json.is_object() => {
+                            if self.is_gpmd_passthrough {
+                                if profile_json["sync_settings"].is_object() {
+                                    profile_json["sync_settings"]["do_autosync"] = serde_json::Value::Bool(true);
+                                } else {
+                                    profile_json["sync_settings"] = Self::gpmd_autosync_settings();
+                                }
+                            }
+                            insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::Data, "Lens profile", Json, |v| serde_json::to_string(v).unwrap_or_default(), profile_json, vec![]), options);
+                            self.lens_profile_emitted = true;
+                        }
+                        Ok(_) => log::warn!("Embedded lens_profile is JSON but not an object; ignoring"),
+                        Err(e) => log::warn!("Failed to parse embedded lens_profile JSON: {e}"),
+                    }
+                } else {
+                    insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::Name, "Lens profile name", String, |v| v.to_string(), pref.to_string(), vec![]), options);
+                    self.lens_profile_emitted = true;
+                }
+            }
+        }
+
+        // Synthesized fallback: only when the header didn't supply a profile,
+        // and once we've seen the first frame's distortion variant.
+        if !self.lens_profile_emitted && self.distortion_model_name.is_some() && self.camera().is_some_and(|c| !c.camera_brand.is_empty()) && self.clip().is_some() {
+            if let Some(profile_json) = self.build_lens_profile_json() {
+                insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::Data, "Lens profile", Json, |v| serde_json::to_string(v).unwrap_or_default(), profile_json, vec![]), options);
+                self.lens_profile_emitted = true;
+            }
+        }
     }
 
     fn process_header(&mut self, header: &gyroflow_proto::Header, tag_map: &mut GroupedTagMap, options: &crate::InputOptions) {

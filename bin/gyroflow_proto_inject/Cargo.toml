@@ -1,0 +1,21 @@
+[package]
+name = "gyroflow_proto_inject"
+version = "0.1.0"
+authors = ["Adrian <adrian.eddy@gmail.com>"]
+edition = "2024"
+
+[[bin]]
+name = "gyroflow_proto_inject"
+path = "main.rs"
+
+[dependencies]
+argh = "0.1"
+telemetry-parser = { path = "../../" }
+prost = "0.14"
+log = "0.4.25"
+simplelog = "0.12"
+# Programmatic muxing — needed because ffmpeg's CLI concat demuxer can't
+# read raw protobuf payloads (it requires a recognized container format).
+# Going through libavformat directly lets us add a `data` stream and write
+# per-frame packets with explicit PTS/DTS/duration in a single pass.
+ffmpeg-next = { version = "8.1.0", default-features = false, features = ["codec", "format"] }
