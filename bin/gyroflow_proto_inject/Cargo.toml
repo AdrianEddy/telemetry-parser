@@ -18,4 +18,4 @@ simplelog = "0.12"
 # read raw protobuf payloads (it requires a recognized container format).
 # Going through libavformat directly lets us add a `data` stream and write
 # per-frame packets with explicit PTS/DTS/duration in a single pass.
-ffmpeg-next = { version = "8.1.0", default-features = false, features = ["codec", "format"] }
+ffmpeg-next = { version = "9.0.0", default-features = false, features = ["codec", "format"] }

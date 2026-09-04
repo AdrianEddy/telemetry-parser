@@ -371,16 +371,16 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
 
         // Possible values: zFar, zNear, aspect, temporal_position, temporal_rotation
         ////////////////////////////////////////// ImagerControlInformation (IBIS) //////////////////////////////////////////
-        0xe400 => tag!(IBIS, Unknown(tag as u32), "IBIS position/rotation 3xi32", Vector3_i32, "{:?}", |d| {
+        0xe400 => tag!(IBIS, Unknown(tag as u32), "Imager position (x, y, z) [nm]", Vector3_i32, "{:?}", |d| {
             let x = d.read_i32::<BigEndian>()?;
             let y = d.read_i32::<BigEndian>()?;
             let z = d.read_i32::<BigEndian>()?;
             Ok(Vector3 { x, y, z })
         }, tag_data),
-        0xe401 => tag!(IBIS, Unknown(tag as u32), "IBIS position/rotation u8", u8, "{}", |d| d.read_u8(), tag_data),
-        0xe402 => tag!(IBIS, Unknown(tag as u32), "IBIS position/rotation i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
-        0xe403 => tag!(IBIS, Unknown(tag as u32), "IBIS position/rotation u8", u8, "{}", |d| d.read_u8(), tag_data),
-        0xe404 => tag!(IBIS, Unknown(tag as u32), "IBIS position/rotation 3xi16", Vector3_i16, "{:?}", |d| {
+        0xe401 => tag!(IBIS, Unknown(tag as u32), "Imager rotation angle unit (0 = degrees, 1 = radians; also the unit of the IBIS roll angle 0xe450.z)", u8, "{}", |d| d.read_u8(), tag_data),
+        0xe402 => tag!(IBIS, Unknown(tag as u32), "Imager rotation scale (IBIS roll angle = e450.z / scale; defaults to 1000)", f32, "{}", |d| d.read_f32::<BigEndian>(), tag_data),
+        0xe403 => tag!(IBIS, Unknown(tag as u32), "Imager rotation flags", u8, "{}", |d| d.read_u8(), tag_data),
+        0xe404 => tag!(IBIS, Unknown(tag as u32), "Imager rotation (x, y, z)", Vector3_i16, "{:?}", |d| {
             let x = d.read_i16::<BigEndian>()?;
             let y = d.read_i16::<BigEndian>()?;
             let z = d.read_i16::<BigEndian>()?;
@@ -391,13 +391,13 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             let height = d.read_u16::<BigEndian>()? as u32;
             Ok((width, height))
         }, tag_data),
-        0xe406 => tag!(Imager, Unknown(tag as u32), "Imager i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
+        0xe406 => tag!(Imager, Unknown(tag as u32), "Pixel pitch unit: e407 is in 1/e406 m (defaults to 1e9 = nm)", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
         0xe407 => tag!(Imager, PixelPitch, "Pixel pitch", u32x2, "{:?}", |d| {
             let x = d.read_i16::<BigEndian>()? as u32;
             let y = d.read_i16::<BigEndian>()? as u32;
             Ok((x, y))
         }, tag_data),
-        0xe408 => tag!(Imager, Unknown(tag as u32), "Crop scaler", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
+        0xe408 => tag!(Imager, Unknown(tag as u32), "Capture area unit: e409/e40a are in 1/e408 px", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
         0xe409 => tag!(Imager, CaptureAreaOrigin, "Sensor crop origin", f32x2, "{:?}", |d| {
             let x = d.read_u32::<BigEndian>()? as f32;
             let y = d.read_u32::<BigEndian>()? as f32;
@@ -408,7 +408,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             let height = d.read_u32::<BigEndian>()? as f32;
             Ok((width, height))
         }, tag_data),
-        0xe40b => tag!(Imager, Unknown(tag as u32), "Imager i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
+        0xe40b => tag!(Imager, Unknown(tag as u32), "IBIS timestamp unit [ticks/s] for e40f/e450 (t_us = t * 1e6 / e40b; defaults to 1e6)", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
         0xe40c => tag!(Imager, FirstFrameTimestamp, "First frame timestamp", f64, "{:.4} ms", |d| d.read_i32::<BigEndian>().map(|x| x as f64 / 1000.0), tag_data),
         0xe40d => tag!(Imager, ExposureTime,        "Exposure time", f64, "{:.4} ms", |d| d.read_i32::<BigEndian>().map(|x| x as f64 / 1000.0), tag_data),
         0xe40e => tag!(Imager, FrameReadoutTime,    "Frame readout time", f64, "{:.4} ms", |d| d.read_i32::<BigEndian>().map(|x| x as f64 / 1000.0), tag_data),
@@ -459,22 +459,22 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         ////////////////////////////////////////// ImagerControlInformation (IBIS) //////////////////////////////////////////
 
         ////////////////////////////////////////// LensControlInformation (Lens OSS) //////////////////////////////////////////
-        0xe410 => tag!(LensOSS, Unknown(tag as u32), "Lens OSS position/rotation 3xi32", String, |v| v.to_string(), |d| {
+        0xe410 => tag!(LensOSS, Unknown(tag as u32), "Lens position (x, y, z) [nm]; z = focal length, the pinhole fallback when e421 is missing", Vector3_i32, "{:?}", |d| {
             let x = d.read_i32::<BigEndian>()?;
             let y = d.read_i32::<BigEndian>()?;
             let z = d.read_i32::<BigEndian>()?;
-            Ok(format!("{} {} {}", x, y, z))
+            Ok(Vector3 { x, y, z })
         }, tag_data),
-        0xe411 => tag!(LensOSS, Unknown(tag as u32), "Lens OSS position/rotation u8", u8, "{}", |d| d.read_u8(), tag_data),
-        0xe412 => tag!(LensOSS, Unknown(tag as u32), "Lens OSS position/rotation i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
-        0xe413 => tag!(LensOSS, Unknown(tag as u32), "Lens OSS position/rotation u8", u8, "{}", |d| d.read_u8(), tag_data),
-        0xe414 => tag!(LensOSS, Unknown(tag as u32), "Lens OSS position/rotation 3xi16", String, |v| v.to_string(), |d| {
+        0xe411 => tag!(LensOSS, Unknown(tag as u32), "Lens rotation angle unit (0 = degrees, 1 = radians)", u8, "{}", |d| d.read_u8(), tag_data),
+        0xe412 => tag!(LensOSS, Unknown(tag as u32), "Lens rotation scale", f32, "{}", |d| d.read_f32::<BigEndian>(), tag_data),
+        0xe413 => tag!(LensOSS, Unknown(tag as u32), "Lens rotation flags", u8, "{}", |d| d.read_u8(), tag_data),
+        0xe414 => tag!(LensOSS, Unknown(tag as u32), "Lens rotation (x, y, z)", Vector3_i16, "{:?}", |d| {
             let x = d.read_i16::<BigEndian>()?;
             let y = d.read_i16::<BigEndian>()?;
             let z = d.read_i16::<BigEndian>()?;
-            Ok(format!("{} {} {}", x, y, z))
+            Ok(Vector3 { x, y, z })
         }, tag_data),
-        0xe415 => tag!(LensOSS, Unknown(tag as u32), "Lens OSS i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
+        0xe415 => tag!(LensOSS, Unknown(tag as u32), "Lens OSS timestamp unit [ticks/s] for e416 (t_us = t * 1e6 / e415; defaults to 1e6)", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
         0xe416 => tag!(LensOSS, Data, "Lens OSS TimeOffset table", Vec_TimeVector3_i32, "{:?}", |d| {
             // same format as 0xe40f
             let count  = d.read_i32::<BigEndian>()?;
@@ -549,7 +549,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             }))
         }, tag_data),
         0xe424 => tag!(GroupId::Custom("MeshCorrection".into()), Enabled, "MeshCorrection::Mesh bool", bool, "{}", |d| Ok(d.read_u8()? != 0), tag_data),
-        0xe425 => tag!(GroupId::Custom("MeshCorrection".into()), TagId::Unknown(tag as u32), "MeshCorrection::Mesh i16", i16, "{}", |d| d.read_i16::<BigEndian>(), tag_data),
+        0xe425 => tag!(GroupId::Custom("MeshCorrection".into()), TagId::Unknown(tag as u32), "Base FOV reference height [sensor lines] (-1 = use the crop height)", i16, "{}", |d| d.read_i16::<BigEndian>(), tag_data),
         0xe42f => tag!(GroupId::Custom("MeshCorrection".into()), Data,    "MeshCorrection::Mesh", Json, |v| v.to_string(), |x| {
             let unk1 = x.read_i16::<BigEndian>()?;
 
@@ -595,17 +595,17 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
 
         ////////////////////////////////////////// Gyroscope //////////////////////////////////////////
         // Position/rotation tags
-        0xe430 => tag!(Gyroscope, Unknown(tag as u32), "Gyro position/rotation 3xi32", Vector3_i32, |v| format!("{} {} {}", v.x, v.y, v.z), |d| {
+        0xe430 => tag!(Gyroscope, Unknown(tag as u32), "Gyroscope position (x, y, z) [nm]", Vector3_i32, |v| format!("{} {} {}", v.x, v.y, v.z), |d| {
             Ok(Vector3 {
                 x: d.read_i32::<BigEndian>()?,
                 y: d.read_i32::<BigEndian>()?,
                 z: d.read_i32::<BigEndian>()?
             })
         }, tag_data),
-        0xe431 => tag!(Gyroscope, Unknown(tag as u32), "Gyro position/rotation u8", u8, "{}", |d| d.read_u8(), tag_data),
-        0xe432 => tag!(Gyroscope, Unknown(tag as u32), "Gyro position/rotation i32", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
-        0xe433 => tag!(Gyroscope, Unknown(tag as u32), "Gyro position/rotation u8", u8, "{}", |d| d.read_u8(), tag_data),
-        0xe434 => tag!(Gyroscope, Unknown(tag as u32), "Gyro position/rotation 3xi16", Vector3_i16, |v| format!("{} {} {}", v.x, v.y, v.z), |d| {
+        0xe431 => tag!(Gyroscope, Unknown(tag as u32), "Gyroscope rotation angle unit (0 = degrees, 1 = radians)", u8, "{}", |d| d.read_u8(), tag_data),
+        0xe432 => tag!(Gyroscope, Unknown(tag as u32), "Gyroscope rotation scale", f32, "{}", |d| d.read_f32::<BigEndian>(), tag_data),
+        0xe433 => tag!(Gyroscope, Unknown(tag as u32), "Gyroscope rotation flags", u8, "{}", |d| d.read_u8(), tag_data),
+        0xe434 => tag!(Gyroscope, Unknown(tag as u32), "Gyroscope rotation (x, y, z)", Vector3_i16, |v| format!("{} {} {}", v.x, v.y, v.z), |d| {
             Ok(Vector3 {
                 x: d.read_i16::<BigEndian>()?,
                 y: d.read_i16::<BigEndian>()?,
@@ -614,11 +614,19 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
         }, tag_data),
         // IMU tags
         0xe435 => tag!(Gyroscope, Frequency,       "Gyroscope frequency", i32, "{} Hz", |d| d.read_i32::<BigEndian>(), tag_data),
-        0xe436 => tag!(Gyroscope, Unknown(0xe436), "Sampling scaler (1000000)", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
+        0xe436 => tag!(Gyroscope, Unknown(0xe436), "Time offset unit [ticks/s]: e437 is in 1/e436 s (defaults to 1e6 = us)", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
         0xe437 => tag!(Gyroscope, TimeOffset,      "Gyroscope offset", f64, "{:.4} ms", |d| d.read_i32::<BigEndian>().map(|x| x as f64 / 1000.0), tag_data),
-        0xe438 => tag!(Gyroscope, Unknown(0xe438), "Gyroscope is radians", bool, "{}", |d| d.read_u8().map(|x| x != 0), tag_data),
+        0xe438 => tag!(Gyroscope, Unknown(0xe438), "Gyroscope scale unit (false = deg/s, true = rad/s; e439 is LSB per unit)", bool, "{}", |d| d.read_u8().map(|x| x != 0), tag_data),
         0xe439 => tag!(Gyroscope, Scale,           "Gyroscope scale", f32, "{}", |d| d.read_f32::<BigEndian>(), tag_data),
         0xe43a => tag!(Gyroscope, Orientation,     "Gyroscope orientation", String, "{}", read_orientation, tag_data),
+        0xe43c => tag!(Gyroscope, Unknown(tag as u32), "Gyroscope ID string", String, "{}", |d| read_utf8(d), tag_data),
+        0xe43d => tag!(Gyroscope, Unknown(tag as u32), "Gyroscope zero-rate offset (x, y, z); subtracted from e43b when e43e bit 15 is set", Vector3_i16, "{:?}", |d| {
+            let x = d.read_i16::<BigEndian>()?;
+            let y = d.read_i16::<BigEndian>()?;
+            let z = d.read_i16::<BigEndian>()?;
+            Ok(Vector3 { x, y, z })
+        }, tag_data),
+        0xe43e => tag!(Gyroscope, Unknown(tag as u32), "Gyroscope offset info: bit 15 = e43d valid, bits 14-10/9-5/4-0 = per-axis 5-bit values (bias 16) whose max selects the horizon-lock averaging method", u16, "{:#06x}", |d| d.read_u16::<BigEndian>(), tag_data),
         0xe43b => tag!(Gyroscope, Data,            "Gyroscope data", Vec_Vector3_i16, "{:?}", |d| {
             let count = d.read_i32::<BigEndian>()?;
             let length = d.read_i32::<BigEndian>()?;
@@ -640,19 +648,58 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             }
         }, tag_data),
         ////////////////////////////////////////// Gyroscope //////////////////////////////////////////
+        ////////////////////////////////////////// Lens breathing  //////////////////////////////////////////
+        0xe500 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Time unit [ticks/s] for e501", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
+        0xe501 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Frame period", f64, "{:.4} ms", |d| d.read_i32::<BigEndian>().map(|x| x as f64 / 1000.0), tag_data),
+        0xe502 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Lens id (matches the lens profile)", u16, "{}", |d| d.read_u16::<BigEndian>(), tag_data),
+        0xe503 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Camera system flags 1", u8, "{}", |d| d.read_u8(), tag_data),
+        0xe504 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Camera system flags 2 (bit 0 = focus position valid)", u8, "{}", |d| d.read_u8(), tag_data),
+        0xe510 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Time unit [ticks/s] for e516-e518", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
+        0xe511 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Frame counter (high byte), sample phase numerator (low byte)", u16, "{}", |d| d.read_u16::<BigEndian>(), tag_data),
+        0xe512 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Focus/zoom samples span [frame periods] before the frame", u8, "{}", |d| d.read_u8(), tag_data),
+        0xe513 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Focus/zoom samples span [frame periods] after the frame", u8, "{}", |d| d.read_u8(), tag_data),
+        0xe514 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Sample phase denominator", u8, "{}", |d| d.read_u8(), tag_data),
+        0xe515 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Sample phase mode", u8, "{}", |d| d.read_u8(), tag_data),
+        0xe516 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Exposure time", f64, "{:.4} ms", |d| d.read_i32::<BigEndian>().map(|x| x as f64 / 1000.0), tag_data),
+        0xe517 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Exposure offset", f64, "{:.4} ms", |d| d.read_i32::<BigEndian>().map(|x| x as f64 / 1000.0), tag_data),
+        0xe518 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Frame readout time", f64, "{:.4} ms", |d| d.read_i32::<BigEndian>().map(|x| x as f64 / 1000.0), tag_data),
+        0xe519 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Sensor size [px]", u32x2, "{:?}", |d| Ok((d.read_u16::<BigEndian>()? as u32, d.read_u16::<BigEndian>()? as u32)), tag_data),
+        0xe51a => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Capture area origin [px]", u32x2, "{:?}", |d| Ok((d.read_u16::<BigEndian>()? as u32, d.read_u16::<BigEndian>()? as u32)), tag_data),
+        0xe51b => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Capture area size [px]", u32x2, "{:?}", |d| Ok((d.read_u16::<BigEndian>()? as u32, d.read_u16::<BigEndian>()? as u32)), tag_data),
+        0xe51c => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Pixel pitch [nm]", u32x2, "{:?}", |d| Ok((d.read_u16::<BigEndian>()? as u32, d.read_u16::<BigEndian>()? as u32)), tag_data),
+        0xe51d | 0xe51e | 0xe51f | 0xe522 | 0xe529 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Unknown", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
+        0xe520 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Unknown", u16, "{}", |d| d.read_u16::<BigEndian>(), tag_data),
+        0xe521 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Focal length", f32, "{:.1} mm", |d| d.read_i32::<BigEndian>().map(|x| x as f32 / 10.0), tag_data),
+        0xe523 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Zoom position samples (index = v >> 7, fraction = v & 127)", Vec_u16, "{:?}", read_u16_array, tag_data),
+        0xe524 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Focus position samples", Vec_u16, "{:?}", read_u16_array, tag_data),
+        0xe525 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Focus position samples of the frame e526 later", Vec_u16, "{:?}", read_u16_array, tag_data),
+        0xe526 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Delay of the e525 samples [frames]", u8, "{}", |d| d.read_u8(), tag_data),
+        0xe527 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "High-rate zoom position samples", Vec_u16, "{:?}", read_u16_array, tag_data),
+        0xe528 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "High-rate focus position samples", Vec_u16, "{:?}", read_u16_array, tag_data),
+        0xe52a => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Restart the activation counter", u8, "{}", |d| d.read_u8(), tag_data),
+        0xe530 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "In-camera breathing compensation enabled", bool, "{}", |d| d.read_u8().map(|x| x != 0), tag_data),
+        0xe531 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "In-camera breathing compensation applied", bool, "{}", |d| d.read_u8().map(|x| x != 0), tag_data),
+        0xe532 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Magnification scale (no stabilization)", f32, "{:.4}", |d| d.read_u32::<BigEndian>().map(|x| x as f32 / 65536.0), tag_data),
+        0xe533 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Magnification scale (stabilization)", f32, "{:.4}", |d| d.read_u32::<BigEndian>().map(|x| x as f32 / 65536.0), tag_data),
+        0xe534 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Minimum breathing magnification", f32, "{:.4}", |d| d.read_u16::<BigEndian>().map(|x| x as f32 / 4096.0), tag_data),
+        0xe535 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Maximum breathing magnification", f32, "{:.4}", |d| d.read_u16::<BigEndian>().map(|x| x as f32 / 4096.0), tag_data),
+        0xe536 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Breathing magnification of the frame", f32, "{:.4}", |d| d.read_u16::<BigEndian>().map(|x| x as f32 / 4096.0), tag_data),
+        0xe537 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Magnification applied in-camera", f32, "{:.4}", |d| d.read_u16::<BigEndian>().map(|x| x as f32 / 4096.0), tag_data),
+        0xe538 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Magnification applied in-camera (copy)", f32, "{:.4}", |d| d.read_u16::<BigEndian>().map(|x| x as f32 / 4096.0), tag_data),
+        0xe539 => tag!(GroupId::LensBreathing, Unknown(tag as u32), "Reference magnification ratio", f32, "{:.4}", |d| d.read_u16::<BigEndian>().map(|x| x as f32 / 4096.0), tag_data),
         ////////////////////////////////////////// Accelerometer //////////////////////////////////////////
         // Position/rotation tags
-        0xe440 => tag!(Accelerometer, Unknown(0xe440), "Accelerometer position/rotation 3xi32", Vector3_i32, |v| format!("{} {} {}", v.x, v.y, v.z), |d| {
+        0xe440 => tag!(Accelerometer, Unknown(0xe440), "Accelerometer position (x, y, z) [nm]", Vector3_i32, |v| format!("{} {} {}", v.x, v.y, v.z), |d| {
             Ok(Vector3 {
                 x: d.read_i32::<BigEndian>()?,
                 y: d.read_i32::<BigEndian>()?,
                 z: d.read_i32::<BigEndian>()?
             })
         }, tag_data),
-        0xe441 => tag!(Accelerometer, Unknown(0xe441), "Accelerometer position/rotation u8",    u8, "{}", |d| d.read_u8(), tag_data),
-        0xe442 => tag!(Accelerometer, Unknown(0xe442), "Accelerometer position/rotation i32",   i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
-        0xe443 => tag!(Accelerometer, Unknown(0xe443), "Accelerometer position/rotation u8",    u8, "{}", |d| d.read_u8(), tag_data),
-        0xe444 => tag!(Accelerometer, Unknown(0xe444), "Accelerometer position/rotation 3xi16", Vector3_i16, |v| format!("{} {} {}", v.x, v.y, v.z), |d| {
+        0xe441 => tag!(Accelerometer, Unknown(0xe441), "Accelerometer rotation angle unit (0 = degrees, 1 = radians)", u8, "{}", |d| d.read_u8(), tag_data),
+        0xe442 => tag!(Accelerometer, Unknown(0xe442), "Accelerometer rotation scale", f32, "{}", |d| d.read_f32::<BigEndian>(), tag_data),
+        0xe443 => tag!(Accelerometer, Unknown(0xe443), "Accelerometer rotation flags", u8, "{}", |d| d.read_u8(), tag_data),
+        0xe444 => tag!(Accelerometer, Unknown(0xe444), "Accelerometer rotation (x, y, z)", Vector3_i16, |v| format!("{} {} {}", v.x, v.y, v.z), |d| {
             Ok(Vector3 {
                 x: d.read_i16::<BigEndian>()?,
                 y: d.read_i16::<BigEndian>()?,
@@ -662,11 +709,19 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
 
         // IMU tags
         0xe445 => tag!(Accelerometer, Frequency,       "Accelerometer frequency", i32, "{} Hz", |d| d.read_i32::<BigEndian>(), tag_data),
-        0xe446 => tag!(Accelerometer, Unknown(0xe446), "Sampling scaler (1000000)", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
+        0xe446 => tag!(Accelerometer, Unknown(0xe446), "Time offset unit [ticks/s]: e447 is in 1/e446 s (defaults to 1e6 = us)", i32, "{}", |d| d.read_i32::<BigEndian>(), tag_data),
         0xe447 => tag!(Accelerometer, TimeOffset,      "Accelerometer offset", f64, "{:.4} ms", |d| d.read_i32::<BigEndian>().map(|x| x as f64 / 1000.0), tag_data),
-        0xe448 => tag!(Accelerometer, Unknown(0xe448), "Accelerometer is m/s²", bool, "{}", |d| d.read_u8().map(|x| x != 0), tag_data),
+        0xe448 => tag!(Accelerometer, Unknown(0xe448), "Accelerometer scale unit (false = g, true = m/s²)", bool, "{}", |d| d.read_u8().map(|x| x != 0), tag_data),
         0xe449 => tag!(Accelerometer, Scale,           "Accelerometer scale", f32, "{}", |d| d.read_f32::<BigEndian>(), tag_data),
         0xe44a => tag!(Accelerometer, Orientation,     "Accelerometer orientation", String, "{}", read_orientation, tag_data),
+        0xe44c => tag!(Accelerometer, Unknown(0xe44c), "Accelerometer ID string", String, "{}", |d| read_utf8(d), tag_data),
+        0xe44d => tag!(Accelerometer, Unknown(0xe44d), "Accelerometer zero-rate offset (x, y, z); subtracted from e44b when e44e bit 15 is set", Vector3_i16, "{:?}", |d| {
+            let x = d.read_i16::<BigEndian>()?;
+            let y = d.read_i16::<BigEndian>()?;
+            let z = d.read_i16::<BigEndian>()?;
+            Ok(Vector3 { x, y, z })
+        }, tag_data),
+        0xe44e => tag!(Accelerometer, Unknown(0xe44e), "Accelerometer offset info: bit 15 = e44d valid, bits 14-10/9-5/4-0 = per-axis 5-bit values (bias 16)", u16, "{:#06x}", |d| d.read_u16::<BigEndian>(), tag_data),
         0xe44b => tag!(Accelerometer, Data,            "Accelerometer data", Vec_Vector3_i16, "{:?}", |d| {
             let count  = d.read_i32::<BigEndian>()?;
             let length = d.read_i32::<BigEndian>()?;
@@ -767,6 +822,12 @@ fn read_f16_corrected(d: &mut Cursor::<&[u8]>) -> Result<f32> {
     let ret = ((mant / 8388608.0 + 1.0) * 2f64.powf(exp as f64)) as f32; // (1 + mantissa) * 2^exponent
 
     Ok(if sign { -ret } else { ret })
+}
+
+fn read_u16_array(d: &mut Cursor::<&[u8]>) -> Result<Vec<u16>> {
+    let count = d.read_u32::<BigEndian>()?;
+    let _bits = d.read_u32::<BigEndian>()?;
+    (0..if count == 0xffffffff { 0 } else { count }).map(|_| d.read_u16::<BigEndian>()).collect()
 }
 
 fn read_utf8(d: &mut Cursor::<&[u8]>) -> Result<String> {

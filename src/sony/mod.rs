@@ -3,6 +3,7 @@
 
 pub mod rtmd_tags;
 pub mod mxf;
+pub mod lens_profile;
 
 #[cfg(feature="sony-xml")]
 pub mod xml_metadata;
@@ -95,6 +96,11 @@ impl Sony {
                     }
                 }
             }, cancel_flag)?;
+            if let Some(profile) = lens_profile::read(stream, size) {
+                if let Some(map) = samples.first_mut().and_then(|x| x.tag_map.as_mut()) {
+                    util::insert_tag(map, tag!(parsed GroupId::LensBreathing, TagId::Data, "Lens breathing profile", Json, |v| v.to_string(), profile, Vec::new()), &options);
+                }
+            }
             samples
         };
 
