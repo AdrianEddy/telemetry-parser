@@ -9,79 +9,77 @@ env:
 
 jobs:
   macos:
-    runs-on: macos-latest
+    runs-on: macos-15-intel
+    strategy:
+      matrix:
+        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v6
         with:
-          python-version: 3.7
-      - uses: actions/setup-python@v4
-        with:
-          python-version: 3.8
-      - uses: actions/setup-python@v4
-        with:
-          python-version: 3.9
-      - uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
-      - uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-      - uses: actions/setup-python@v4
-        with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-
-      - name: Build wheels - x86_64
-        uses: messense/maturin-action@v1
         with:
+          workspaces: bin/python-module
+
+      - name: Build wheel - x86_64
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: v1.9.6
           target: x86_64
           command: build
-          args: -m bin/python-module/Cargo.toml --release --find-interpreter
+          args: -m bin/python-module/Cargo.toml --release --out dist -i python
 
-      - name: Build wheels - universal2
-        uses: messense/maturin-action@v1
+      - name: Build wheel - universal2
+        uses: PyO3/maturin-action@v1
         with:
+          maturin-version: v1.9.6
           command: build
-          args: -m bin/python-module/Cargo.toml --release --universal2 --find-interpreter
+          args: -m bin/python-module/Cargo.toml --release --out dist --universal2 -i python
 
       - name: Save Wheels
         uses: actions/upload-artifact@v4
         with:
-          name: wheels
-          path: bin/python-module/target/wheels/*.whl
+          name: wheels-macos-${{ matrix.python-version }}
+          path: dist/*.whl
+          if-no-files-found: error
 
   windows:
     runs-on: windows-latest
     strategy:
       matrix:
         target: [x64, x86]
+        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           architecture: ${{ matrix.target }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-
-      - name: Build wheels
-        uses: messense/maturin-action@v1
         with:
+          workspaces: bin/python-module
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: v1.9.6
           target: ${{ matrix.target }}
           command: build
-          args: -m bin/python-module/Cargo.toml --release --find-interpreter
+          args: -m bin/python-module/Cargo.toml --release --out dist -i python
 
       - name: Save Wheels
         uses: actions/upload-artifact@v4
         with:
-          name: wheels
-          path: bin/python-module/target/wheels/*.whl
+          name: wheels-windows-${{ matrix.target }}-${{ matrix.python-version }}
+          path: dist/*.whl
+          if-no-files-found: error
 
   linux:
     runs-on: ubuntu-latest
@@ -89,68 +87,76 @@ jobs:
       matrix:
         target: [i686, x86_64]
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v4
-      with:
-        python-version: "3.11"
+      - uses: actions/checkout@v4
 
-    - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
-    - uses: Swatinem/rust-cache@v2
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: bin/python-module
 
-    - name: Build Wheels
-      uses: messense/maturin-action@v1
-      with:
-        target: ${{ matrix.target }}
-        manylinux: auto
-        command: build
-        args: -m bin/python-module/Cargo.toml --release --find-interpreter
+      # This retained cibuildwheel image includes Python 3.7 and 3.8, which
+      # current manylinux images no longer provide.
+      - name: Build wheels - Python 3.7 and 3.8
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: v1.9.6
+          target: ${{ matrix.target }}
+          manylinux: auto
+          container: quay.io/pypa/manylinux2014_${{ matrix.target }}:2024.10.07-1
+          command: build
+          args: -m bin/python-module/Cargo.toml --release --out dist -i python3.7 python3.8
 
-    - name: Save Wheels
-      uses: actions/upload-artifact@v4
-      with:
-        name: wheels
-        path: bin/python-module/target/wheels/*
+      - name: Build wheels - Python 3.9 through 3.14
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: v1.9.6
+          target: ${{ matrix.target }}
+          manylinux: auto
+          command: build
+          args: >-
+            -m bin/python-module/Cargo.toml --release --out dist
+            -i python3.9 python3.10 python3.11 python3.12 python3.13 python3.14
+
+      - name: Save Wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux-${{ matrix.target }}
+          path: dist/*.whl
+          if-no-files-found: error
 
   linux-cross:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         target: [aarch64, armv7]
-        python-config: [
-          { version: 3.7, lib: "cp37-cp37m" },
-          { version: 3.8, lib: "cp38-cp38" },
-          { version: 3.9, lib: "cp39-cp39" },
-          { version: "3.10", lib: "cp310-cp310" },
-          { version: "3.11", lib: "cp311-cp311" },
-          { version: "3.12", lib: "cp312-cp312" }
-        ]
+        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-config.version }}
+      - uses: actions/checkout@v4
 
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-    - uses: Swatinem/rust-cache@v2
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: bin/python-module
 
-    - name: Build Wheels
-      uses: messense/maturin-action@v1
-      env:
-        PYO3_CROSS_PYTHON_VERSION: ${{ matrix.python-config.version }}
-        PYO3_CROSS_LIB_DIR: '/opt/python/${{ matrix.python-config.lib }}/lib'
-      with:
-        target: ${{ matrix.target }}
-        manylinux: auto
-        command: build
-        args: -m bin/python-module/Cargo.toml --release -i python${{ matrix.python-config.version }}
+      # Maturin supplies the CPython configuration for cross builds, so these
+      # versions do not need to be installed in the cross-compilation image.
+      - name: Build Wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: v1.9.6
+          target: ${{ matrix.target }}
+          manylinux: auto
+          command: build
+          args: -m bin/python-module/Cargo.toml --release --out dist -i python${{ matrix.python-version }}
 
-    - name: Save Wheels
-      uses: actions/upload-artifact@v4
-      with:
-        name: wheels
-        path: bin/python-module/target/wheels/*.whl
+      - name: Save Wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux-cross-${{ matrix.target }}-${{ matrix.python-version }}
+          path: dist/*.whl
+          if-no-files-found: error
 
   release:
     name: Release
@@ -159,8 +165,10 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: wheels
-      - uses: actions/setup-python@v4
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Publish to PyPi
@@ -168,5 +176,5 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
         run: |
-          pip install --upgrade twine
-          twine upload --skip-existing *
+          python -m pip install --upgrade twine
+          python -m twine upload --skip-existing dist/*.whl

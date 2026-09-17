@@ -2,9 +2,10 @@
 // Copyright © 2021 Adrian <adrian.eddy at gmail>
 
 use pyo3::prelude::*;
+use pyo3::sync::MutexExt;
 use std::collections::BTreeMap;
 use pythonize::pythonize;
-use std::sync::{ Arc, atomic::AtomicBool };
+use std::sync::{ Arc, Mutex, atomic::AtomicBool };
 
 use ::telemetry_parser::*;
 
@@ -14,7 +15,8 @@ struct Parser {
     camera: Option<String>,
     #[pyo3(get, set)]
     model: Option<String>,
-    input: Input
+    // Input contains OnceCell values initialized by read methods.
+    input: Mutex<Input>
 }
 
 #[pymethods]
@@ -29,14 +31,16 @@ impl Parser {
         Ok(Self {
             camera: Some(input.camera_type()),
             model: input.camera_model().map(String::clone),
-            input: input,
+            input: Mutex::new(input),
         })
     }
 
-    fn telemetry(&self, human_readable: Option<bool>) -> PyResult<Py<PyAny>> {
-        if self.input.samples.is_none() { return Err(pyo3::exceptions::PyValueError::new_err("No metadata")); }
+    #[pyo3(signature = (human_readable=None))]
+    fn telemetry(&self, py: Python<'_>, human_readable: Option<bool>) -> PyResult<Py<PyAny>> {
+        let input = self.input.lock_py_attached(py).map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Parser lock was poisoned"))?;
+        if input.samples.is_none() { return Err(pyo3::exceptions::PyValueError::new_err("No metadata")); }
 
-        let samples = self.input.samples.as_ref().unwrap();
+        let samples = input.samples.as_ref().unwrap();
         let mut output = Vec::with_capacity(samples.len());
 
         for info in samples {
@@ -60,19 +64,17 @@ impl Parser {
             output.push(groups);
         }
 
-        Python::with_gil(|py| {
-            Ok(pythonize(py, &output)?)
-        })
+        Ok(pythonize(py, &output)?.unbind())
     }
 
-    fn normalized_imu(&self, orientation: Option<String>) -> PyResult<Py<PyAny>> {
-        if self.input.samples.is_none() { return Err(pyo3::exceptions::PyValueError::new_err("No metadata")); }
+    #[pyo3(signature = (orientation=None))]
+    fn normalized_imu(&self, py: Python<'_>, orientation: Option<String>) -> PyResult<Py<PyAny>> {
+        let input = self.input.lock_py_attached(py).map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Parser lock was poisoned"))?;
+        if input.samples.is_none() { return Err(pyo3::exceptions::PyValueError::new_err("No metadata")); }
 
-        let imu_data = util::normalized_imu(&self.input, orientation)?;
+        let imu_data = util::normalized_imu(&input, orientation)?;
 
-        Python::with_gil(|py| {
-            Ok(pythonize(py, &imu_data)?)
-        })
+        Ok(pythonize(py, &imu_data)?.unbind())
     }
 }
 
