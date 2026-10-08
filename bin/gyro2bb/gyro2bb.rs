@@ -32,25 +32,12 @@ fn main() {
     let opts: Opts = argh::from_env();
     let _time = Instant::now();
 
-    use simplelog::*;
-   let _a = TermLogger::init(
-        LevelFilter::Info ,
-        Config::default(),
-        TerminalMode::Mixed,
-        ColorChoice::Auto
-    );
-
     let mut stream = std::fs::File::open(&opts.input).unwrap();
     let filesize = stream.metadata().unwrap().len() as usize;
     //dbg!(telemetry_parser::util::get_video_metadata(&mut stream, filesize));
     //return;
 
-    let tpoptions = InputOptions {
-        probe_only: false,
-        dont_look_for_sidecar_files: true,
-        ..Default::default()
-    };
-    let input = Input::from_stream_with_options(&mut stream, filesize, &opts.input, |_|(), Arc::new(AtomicBool::new(false)), tpoptions).unwrap();
+    let input = Input::from_stream(&mut stream, filesize, &opts.input, |_|(), Arc::new(AtomicBool::new(false))).unwrap();
 
     let mut i = 0;
     println!("Detected camera: {} {}", input.camera_type(), input.camera_model().unwrap_or(&"".into()));
