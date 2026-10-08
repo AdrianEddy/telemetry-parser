@@ -9,6 +9,7 @@ Library to parse real-time metadata embedded in video files or telemetry from ot
 - [x] XTRA (Edge, Edge Pro)
 - [x] Blackmagic RAW (*.braw)
 - [x] RED RAW (V-Raptor, KOMODO) (*.r3d)
+- [x] MotionCam Pro RAW video (*.mcraw)
 - [x] Canon (C50, C80, C400, R6 Mk3, R5 Mk2) (*.mp4, *.mov, *.mxf, *.crm)
 - [x] Freefly (Ember)
 - [x] Betaflight blackbox (*.bfl, *.bbl, *.csv)

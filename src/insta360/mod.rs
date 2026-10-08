@@ -3,6 +3,10 @@
 
 pub mod extra_info;
 pub mod record;
+pub(crate) mod rig;
+mod rig_body_masks;
+mod rig_mask_coefficients;
+pub use rig_body_masks::Insta360MaskProfile;
 
 use std::io::*;
 use std::sync::{ Arc, atomic::AtomicBool, atomic::Ordering::Relaxed };
@@ -26,6 +30,17 @@ pub struct Insta360 {
     pub frame_readout_time: Option<f64>,
     pub first_frame_timestamp: Option<f64>,
     pub gyro_timestamp: Option<f64>,
+    /// Every generation of the `offset` calibration string the clip carries.
+    offsets: rig::Offsets,
+    /// `ExtraMetadata.stream_type` — which video track holds which lens.
+    stream_type: i32,
+    bullet_time: bool,
+    /// The other file of a two-file body, when the clip declares a pair.
+    sibling: Option<crate::rig::SiblingHint>,
+    /// The coded size of one video track.
+    dimension: Option<(u32, u32)>,
+    /// The vendor's window crop, `(src, dst)`.
+    window_crop: Option<((u32, u32), (u32, u32))>,
 }
 
 impl Insta360 {
@@ -82,23 +97,41 @@ impl Insta360 {
                 self.parse_record(first_id, 0, version, &buf, Some(&mut offsets), options)?;
 
                 if !offsets.is_empty() {
-                    for (id, (offset, record_size)) in &offsets {
+                    // The table is the index, and the ONLY index. Two layouts
+                    // carry one:
+                    //
+                    //  * an X4 / X5 packs its records back to back and also
+                    //    closes each with the same six-byte descriptor the
+                    //    table-less layout below walks, so the descriptor
+                    //    after a record restates the table's entry;
+                    //  * an Antigravity A1 places each record at the start of
+                    //    a 256 KiB slot and writes NO descriptors at all —
+                    //    the bytes after a record are the next slot's, and a
+                    //    reader that insists on a descriptor there rejects
+                    //    every record and sees an empty file.
+                    //
+                    // So a table entry is trusted on its own terms — it names
+                    // where the record is, how long it is and what format it
+                    // is in — and checked only against the trailer it lives
+                    // in. The descriptor, where one exists, says nothing the
+                    // table did not.
+                    for (id, (offset, record_size, format)) in &offsets {
                         if cancel_flag.load(Relaxed) { break; }
                         if size > 0 {
                             progress_cb(stream.stream_position()? as f64 / size as f64);
+                        }
+                        let end = *offset as u64 + *record_size as u64;
+                        if end > extra_size as u64 {
+                            log::warn!("Insta360 record {id} runs past the trailer ({end} of {extra_size} bytes); skipped");
+                            continue;
                         }
 
                         stream.seek(SeekFrom::Start(extra_start as u64 + *offset as u64))?;
                         buf.resize(*record_size as usize, 0);
                         stream.read_exact(&mut buf)?;
 
-                        let format = stream.read_u8()?;
-                        let id2    = stream.read_u8()?;
-                        let size2 = stream.read_u32::<LittleEndian>()?;
-                        if size2 == *record_size && *id == id2 && id2 > 0 {
-                            for (g, v) in self.parse_record(id2, format, version, &buf, None, options)? {
-                                map.entry(g).or_insert_with(TagMap::new).extend(v);
-                            }
+                        for (g, v) in self.parse_record(*id, *format, version, &buf, None, options)? {
+                            map.entry(g).or_insert_with(TagMap::new).extend(v);
                         }
                     }
                     return Ok(map);
@@ -176,21 +209,26 @@ impl Insta360 {
             x.insert(Orientation, tag!(parsed Accelerometer, Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.to_string(), Vec::new()));
         }
 
-        crate::try_block!({
-            let md = (tag_map.get(&GroupId::Default)?.get_t(TagId::Metadata) as Option<&serde_json::Value>)?.as_object()?;
-            match (md.get("dimension").and_then(|x| x.as_object()), md.get("window_crop_info").and_then(|x| x.as_object()), md.get("offset_v3").and_then(|x| x.as_array())) {
-                (Some(dim), Some(crop_info), Some(offset_v3)) if offset_v3.len() >= 20 => {
-                    let (w, h) = (dim.get("x")?.as_i64()? as u32, dim.get("y")?.as_i64()? as u32);
-                    let sw = crop_info.get("src_width") ?.as_i64()? as u32;
-                    let sh = crop_info.get("src_height")?.as_i64()? as u32;
-                    let dw = crop_info.get("dst_width") ?.as_i64()? as u32;
-                    let dh = crop_info.get("dst_height")?.as_i64()? as u32;
-
-                    self.insert_lens_profile(tag_map, (w, h), (sw, sh), (dw, dh), &offset_v3.into_iter().filter_map(|x| x.as_f64()).collect::<Vec<f64>>(), options);
-                },
-                _ => { }
+        if let Some(dimension) = self.dimension {
+            if let Some((_src, dst)) = self.window_crop {
+                self.insert_lens_profile(tag_map, dimension, dst, options);
             }
-        });
+            // The rig goes at its own tag and never at `Lens/Data`: that one is
+            // the single-lens JSON profile above, tags are last-wins per (group,
+            // id), and a rig-shaped object there would deserialise into an empty
+            // lens profile downstream and then suppress the lens-database lookup.
+            if let Some(camera_rig) = rig::camera_rig(
+                self.model.as_deref().unwrap_or_default(),
+                &self.offsets,
+                rig::StreamLayout::from_stream_type(self.stream_type),
+                self.sibling.clone(),
+                dimension,
+                self.bullet_time,
+                crate::rig::readout(self.frame_readout_time),
+            ) {
+                insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::Rig, "Camera rig", CameraRig, |v: &crate::rig::CameraRig| serde_json::to_string(v).unwrap_or_default(), camera_rig, vec![]), options);
+            }
+        }
 
         {
             let fft = self.first_frame_timestamp.unwrap_or_default() / 1000.0;
@@ -230,20 +268,22 @@ impl Insta360 {
         }
     }
 
-    fn insert_lens_profile(&self, tag_map: &mut GroupedTagMap, size: (u32, u32), _src: (u32, u32), dst: (u32, u32), offset_v3: &[f64], options: &crate::InputOptions) {
+    /// The single-lens JSON profile a lens database deserialises, built from
+    /// lens 0 of the `offset_v3` string.
+    ///
+    /// **Not** from the newest string the clip carries: the profile names the
+    /// `insta360` distortion model, which is the v3 Brown block, and a v6 or
+    /// v2 coefficient list under that name is a different lens.
+    fn insert_lens_profile(&self, tag_map: &mut GroupedTagMap, size: (u32, u32), dst: (u32, u32), options: &crate::InputOptions) {
         let model = self.model.clone().unwrap_or_default().replace("Insta360 ", "");
+        let Some(offset) = self.offsets.v3.as_ref() else { return };
+        let Some(lens) = offset.lenses.first() else { return };
+        let (Some(&[k1, k2, k3]), Some(&[p1, p2])) = (lens.coeffs.get(..3), lens.coeffs.get(3..5)) else { return };
+        let (xi, [fx, fy], [cx, cy]) = (lens.xi, lens.focal, lens.centre);
 
-        // offset_v3: num_xi_fx_fy_cx_cy_yaw_pitch_roll_tx_ty_tz_k1_k2_k3_p1_p2_width_height_lensType_flag
-
-        let (_num, xi, fx, fy, cx, cy, yaw, pitch, roll, _tx, _ty, _tz, k1, k2, k3, p1, p2, lens_width, lens_height, _lens_type, _flag) =
-            (offset_v3[0], offset_v3[1], offset_v3[2], offset_v3[3], offset_v3[4], offset_v3[5], offset_v3[6], offset_v3[7],
-            offset_v3[8], offset_v3[9], offset_v3[10], offset_v3[11], offset_v3[12], offset_v3[13], offset_v3[14], offset_v3[15],
-            offset_v3[16], offset_v3[17], offset_v3[18], offset_v3[19], offset_v3[20]);
-        
-        let cx_fix = if model == "X4" || model == "X5" { 2.0 } else { 1.0 };  // X4: cx = 3987.5, w = 1920, lens_width = 16000.0, cy = 3012.7, h = 1920, lens_height = 6000.0
         let c_ratio = (
-            size.0 as f64 / lens_width * cx_fix,
-            size.1 as f64 / lens_height
+            size.0 as f64 / (lens.width / offset.lenses.len() as f64),
+            size.1 as f64 / lens.height
         );
         let f_ratio = (
             dst.0 as f64 / size.0 as f64,
@@ -284,44 +324,6 @@ impl Insta360 {
         });
 
         insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::Data, "Lens profile", Json, |v| serde_json::to_string(v).unwrap(), profile, vec![]), options);
-
-        if pitch.abs() > 0.0 || roll.abs() > 0.0 || yaw.abs() > 0.0 {
-            const DEG2RAD: f64 = std::f64::consts::PI / 180.0;
-            let yaw = yaw * DEG2RAD;
-            let pitch = pitch * DEG2RAD;
-            let roll = roll * DEG2RAD;
-            let (sr, cr) = (yaw.sin(), yaw.cos());
-            let (sp, cp) = (pitch.sin(), pitch.cos());
-            let (sy, cy) = (roll.sin(), roll.cos());
-            let mat = [
-                [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
-                [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
-                [-sp,     cp * sr,                cp * cr],
-            ];
-            let rotate = |vec: &mut TimeVector3<f64>| {
-                let mut rotated = [0.0f64; 3];
-                for i in 0..3 {
-                    rotated[i] += mat[i][0] * vec.x;
-                    rotated[i] += mat[i][1] * vec.y;
-                    rotated[i] += mat[i][2] * vec.z;
-                }
-                vec.x = rotated[0];
-                vec.y = rotated[1];
-                vec.z = rotated[2];
-            };
-
-            for group in [GroupId::Gyroscope, GroupId::Accelerometer] {
-                if let Some(x) = tag_map.get_mut(&group) {
-                    if let Some(xx) = x.get_mut(&TagId::Data) {
-                        if let TagValue::Vec_TimeVector3_f64(arr) = &mut xx.value {
-                            for v in arr.get_mut().iter_mut() {
-                                rotate(v);
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 
     fn get_output_size(width: u32, height: u32) -> (u32, u32) {

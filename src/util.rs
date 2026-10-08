@@ -174,6 +174,7 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
                 }
             }
             patch_mdhd_timescale(&mut all);
+            crate::zcam::deobfuscate_zraw_chunk_offsets(&mut all);
 
             return mp4parse::read_mp4(&mut std::io::Cursor::new(&all), mp4parse::ParseStrictness::Permissive);
         }
@@ -293,6 +294,12 @@ pub struct IMUData {
     pub magn: Option<[f64; 3]>
 }
 
+
+pub fn camera_rig(input: &crate::Input) -> Option<crate::rig::CameraRig> {
+    input.samples.as_ref()?.iter()
+        .filter_map(|sample| sample.tag_map.as_ref()?.get(&GroupId::Lens))
+        .find_map(|map| (map.get_t(TagId::Rig) as Option<&crate::rig::CameraRig>).cloned())
+}
 
 pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Result<Vec<IMUData>> {
     let mut timestamp = 0f64;
@@ -416,7 +423,9 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
 
     let accurate_ts = input.has_accurate_timestamps();
 
-    let mut timestamp = (0.0, 0.0, 0.0);
+    let mut timestamp = if input.camera_type() == "GoPro" {
+        crate::gopro::GoPro::imu_start_times_ms(input.samples.as_deref().unwrap_or_default())
+    } else { (0.0, 0.0, 0.0) };
 
     let mut gyro_map = BTreeMap::new();
     let mut accl_map = BTreeMap::new();
@@ -734,7 +743,7 @@ pub fn get_video_metadata_from_track(track: &mp4parse::Track) -> Result<VideoMet
 }
 
 pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Result<VideoMetadata> { // -> (width, height, fps, duration_s, rotation)
-    let mut header = [0u8; 4];
+    let mut header = [0u8; 8];
     let mut last16kb = vec![0u8; 16384];
     stream.read_exact(&mut header)?;
     if filesize > 16384 {
@@ -743,9 +752,62 @@ pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Re
     }
     stream.seek(SeekFrom::Start(0))?;
 
-    if header == [0x06, 0x0E, 0x2B, 0x34] { // MXF header
+    if header[0..4] == [0x06, 0x0E, 0x2B, 0x34] { // MXF header
         let mut md = VideoMetadata::default();
         crate::sony::mxf::parse(stream, filesize, |_|(), Arc::new(AtomicBool::new(false)), Some(&mut md), &crate::InputOptions::default(), crate::sony::Sony::parse_metadata)?;
+        return Ok(md);
+    }
+
+    if header[4..8] == *b"RED2" { // RED
+        let md = VideoMetadata::default();
+
+        let mut map = GroupedTagMap::new();
+
+        let mut data4096 = vec![0u8; 4096];
+
+            let mut red = crate::red::RedR3d::default();
+
+            while let Ok(size) = stream.read_u32::<BigEndian>() {
+                let mut name = [0u8; 4];
+                stream.read_exact(&mut name)?;
+                let aligned_size = ((size as f64 / 4096.0).ceil() * 4096.0) as usize;
+                // log::debug!("Name: {}{}{}{}, size: {}", name[0] as char, name[1] as char, name[2] as char, name[3] as char, aligned_size);
+                if &name == b"RDX\x01" || &name == b"RDX\x02" {
+                    let mut data = Vec::with_capacity(aligned_size);
+                    data.resize(aligned_size, 0);
+                    stream.seek(SeekFrom::Current(-8))?;
+                    stream.read_exact(&mut data)?;
+                } else if &name == b"RED2" {
+                    let mut data = Vec::with_capacity(aligned_size);
+                    data.resize(aligned_size, 0);
+                    stream.seek(SeekFrom::Current(-8))?;
+                    stream.read_exact(&mut data)?;
+                    if data.len() > 126 {
+                        if let Some(offs) = memchr::memmem::find(&data, b"rdx\x02\x00\x00\x00\x00\x00\x00\x00\x01RED ")
+                                .or_else(|| memchr::memmem::find(&data, b"rdx\x01\x00\x00\x00\x00\x00\x00\x00\x05REDT")) {
+                            if let Ok(size) = (&data[offs + 16..]).read_u16::<BigEndian>() {
+                                let _ = red.parse_meta(&data[offs + 16 + 2..offs + 16 + 2 + size as usize], &mut map, &crate::InputOptions::default());
+                                dbg!(&map);
+                            }
+                        }
+                    }
+                } else if &name == b"RDI\x01" {
+                    if aligned_size >= 4096 {
+                        stream.read_exact(&mut data4096)?;
+                        stream.seek(SeekFrom::Current(aligned_size as i64 - 8 - 4096))?;
+                        if let Ok(size) = (&data4096[86..]).read_u16::<BigEndian>() {
+                            let mut per_frame_map = GroupedTagMap::new();
+                            let _ = red.parse_meta(&data4096[88..88 + size as usize], &mut per_frame_map, &crate::InputOptions::default());
+                            dbg!(&per_frame_map);
+                            break;
+                        }
+                    } else {
+                        stream.seek(SeekFrom::Current(aligned_size as i64 - 8))?;
+                    }
+                } else {
+                    stream.seek(SeekFrom::Current(aligned_size as i64 - 8))?;
+                }
+            }
         return Ok(md);
     }
 

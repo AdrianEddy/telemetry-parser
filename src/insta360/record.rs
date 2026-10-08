@@ -24,15 +24,19 @@ pub mod RecordType {
     pub const Gps                : u8 = 7;
     pub const StarNum            : u8 = 8;
     pub const AAAData            : u8 = 9;
-    pub const Anchors            : u8 = 10; // Highlights?
+    pub const Anchors            : u8 = 10; // Highlights
     pub const AAASimulation      : u8 = 11;
-    pub const ExposureSecondary  : u8 = 12;
+    /// The secondary stream's exposure times, same layout as [`Exposure`].
+    pub const ExposureTimeVin1   : u8 = 12;
     pub const Magnetic           : u8 = 13;
     pub const Euler              : u8 = 14;
     pub const SecGyro            : u8 = 15;
     pub const Speed              : u8 = 16;
     pub const TBox               : u8 = 17;
-    pub const Quaternions        : u8 = 18;
+    pub const Editor             : u8 = 18;
+    pub const TimelapseQuat      : u8 = 24;
+    pub const Quaternion         : u8 = 25;
+    pub const OnlineQuaternion   : u8 = 51;
     pub const TimeMap            : u8 = 128;
 }
 
@@ -44,7 +48,7 @@ mod RecordFormat {
 }
 
 impl super::Insta360 {
-    pub fn parse_record(&mut self, id: u8, format: u8, _version: u32, data: &[u8], mut offsets: Option<&mut BTreeMap<u8, (u32, u32)>>, options: &crate::InputOptions) -> Result<GroupedTagMap> {
+    pub fn parse_record(&mut self, id: u8, format: u8, _version: u32, data: &[u8], mut offsets: Option<&mut BTreeMap<u8, (u32, u32, u8)>>, options: &crate::InputOptions) -> Result<GroupedTagMap> {
         let mut map = GroupedTagMap::new();
 
         let mut d = Cursor::new(data);
@@ -52,14 +56,18 @@ impl super::Insta360 {
 
         match id {
             RecordType::Offsets => {
+                // One ten-byte entry per record type, indexed by id — a slot
+                // whose id is zero is a type this clip did not write. The
+                // format is carried, because on a slotted trailer (below) the
+                // table is the only place it is stated.
                 while d.position() < len as u64 {
-                    let id      = d.read_u8()?;
-                    let _format = d.read_u8()?;
+                    let id     = d.read_u8()?;
+                    let format = d.read_u8()?;
                     let size   = d.read_u32::<LittleEndian>()?;
                     let offset = d.read_u32::<LittleEndian>()?;
                     if id > 0 {
                         if let Some(offsets) = offsets.as_mut() {
-                            offsets.insert(id, (offset, size));
+                            offsets.insert(id, (offset, size, format));
                         }
                     }
                 }
@@ -100,6 +108,24 @@ impl super::Insta360 {
                     self.gyro_range = Some(gyro_info.gyro_range as f64);
                     self.acc_range  = Some(gyro_info.acc_range as f64);
                 }
+
+                // The calibration strings, kept as the parsed structures rather
+                // than re-read out of the JSON below: the JSON is a flat array
+                // of every token, which cannot say which lens a number belongs
+                // to and is the shape the old single-lens reader mis-indexed.
+                self.stream_type = info.stream_type;
+                self.bullet_time = info.file_group_info.as_ref().is_some_and(|g| g.r#type == 1);
+                for text in [&info.offset, &info.offset_v2, &info.offset_v3, &info.offset_v6] {
+                    if let Some(offset) = super::rig::parse(text) {
+                        self.offsets.set(offset);
+                    }
+                }
+                self.sibling = info.file_group_info.as_ref()
+                    .and_then(|g| super::rig::sibling_hint(g.index, g.total, &g.identify));
+                self.dimension = info.dimension.as_ref()
+                    .and_then(|d| Some((u32::try_from(d.x).ok()?, u32::try_from(d.y).ok()?)));
+                self.window_crop = info.window_crop_info.as_ref()
+                    .map(|c| ((c.src_width, c.src_height), (c.dst_width, c.dst_height)));
                 let mut v = serde_json::to_value(&info).map_err(|_| Error::new(ErrorKind::Other, "Serialize error"));
                 if let Ok(vv) = &mut v {
                     if let Some(obj) = vv.as_object_mut() {
@@ -111,6 +137,8 @@ impl super::Insta360 {
                         if let Ok(x) = extra_info::parse_offset    (&info.original_offset)    { obj["original_offset"   ] = x; }
                         if let Ok(x) = extra_info::parse_offset    (&info.original_offset_v2) { obj["original_offset_v2"] = x; }
                         if let Ok(x) = extra_info::parse_offset    (&info.original_offset_v3) { obj["original_offset_v3"] = x; }
+                        if let Ok(x) = extra_info::parse_offset    (&info.offset_v6)          { obj["offset_v6"         ] = x; }
+                        if let Ok(x) = extra_info::parse_offset    (&info.original_offset_v6) { obj["original_offset_v6"] = x; }
 
                         self.gyro_timestamp = if info.is_has_gyro_timestamp { Some(info.gyro_timestamp) } else { None };
                         self.first_frame_timestamp = Some(info.first_frame_timestamp as f64);
@@ -179,7 +207,7 @@ impl super::Insta360 {
 
                 insert_tag(&mut map, tag!(parsed Accelerometer, Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(),  Vec::new()), options);
             },
-            RecordType::Exposure | RecordType::ExposureSecondary => {
+            RecordType::Exposure | RecordType::ExposureTimeVin1 => {
                 insert_tag(&mut map, tag!(Exposure, Data, "Shutter speed", Vec_TimeScalar_f64, |v| format!("{:?}", v), |d| {
                     let len = d.get_ref().len();
                     let mut exp = Vec::with_capacity(len as usize / (8+8));
@@ -301,7 +329,10 @@ impl super::Insta360 {
             RecordType::SecGyro | // Unknown format
             RecordType::Speed | // Unknown format
             RecordType::TBox | // Unknown format
-            RecordType::Quaternions | // Unknown format
+            RecordType::Editor | // Editing project state, not telemetry
+            RecordType::TimelapseQuat | // Unknown format
+            RecordType::Quaternion | // Unknown format
+            RecordType::OnlineQuaternion | // Unknown format
             _ => {
                 log::warn!("Unknown Insta360 record: {}, size: {}, format: {}, {}", id, data.len(), format, pretty_hex::pretty_hex(&&data[0..data.len().min(256)]));
             }

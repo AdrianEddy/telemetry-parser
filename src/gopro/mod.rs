@@ -3,7 +3,10 @@
 
 pub mod klv;
 
+mod eac;
+mod fusion;
 mod lens_profile;
+mod udta;
 
 use std::io::*;
 use std::sync::{ Arc, atomic::AtomicBool };
@@ -18,9 +21,30 @@ use memchr::memmem;
 pub struct GoPro {
     pub model: Option<String>,
     extra_gpmf: Option<GroupedTagMap>,
+    /// The `moov/udta` `GPMF` box, verbatim. Kept beside the flattened
+    /// [`extra_gpmf`](Self::extra_gpmf) because the 360 bodies write the same
+    /// keys under several `DEVC`s and flattening keeps only the last of each.
+    udta_gpmf: Option<Vec<u8>>,
+    /// The clip's own path. A Fusion half says which lens it holds in its NAME
+    /// and nowhere in its bytes, so the detector has to keep it.
+    path: Option<std::path::PathBuf>,
     frame_readout_time: Option<f64>,
     has_cori: bool,
     is_raw_gpmf: bool,
+}
+
+/// The `DEVC` stream of the `moov/udta` `GPMF` box whose fourcc sits at
+/// `key_pos`, i.e. the box less its `[size][GPMF]` header.
+///
+/// `None` for a size field that does not describe a box inside the buffer,
+/// which is what a truncated file hands over — and what used to be an
+/// out-of-range slice.
+fn udta_gpmf(buffer: &[u8], key_pos: usize) -> Option<&[u8]> {
+    let start = key_pos.checked_sub(4)?;
+    let len = (&buffer[start..]).read_u32::<BigEndian>().ok()? as usize;
+    // Eight for the box header and eight more for the `DEVC` KLV the caller is
+    // guaranteed by having matched on it.
+    (len >= 16).then(|| buffer.get(start + 8..start.checked_add(len)?))?
 }
 
 impl GoPro {
@@ -40,7 +64,7 @@ impl GoPro {
         v
     }
 
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P, options: &crate::InputOptions) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P, options: &crate::InputOptions) -> Option<Self> {
         let mut ret = None;
 
         if buffer.len() > 8 && &buffer[0..4] == b"DEVC" {
@@ -61,13 +85,15 @@ impl GoPro {
             }
         }
 
-        if let Some(pos) = memmem::find(buffer, b"GPMFDEVC") {
+        if let Some(devices) = memmem::find(buffer, b"GPMFDEVC").and_then(|pos| udta_gpmf(buffer, pos)) {
             let mut obj = Self::default();
-            let mut buf = &buffer[pos-4..];
-            let len = buf.read_u32::<BigEndian>().unwrap() as usize;
-            let gpmf_box = &buf[..len];
 
-            if let Ok(map) = Self::parse_metadata(&gpmf_box[8+8..], GroupId::Default, true, &crate::InputOptions::default()) {
+            // Past the first `DEVC`'s own KLV header, so the walk starts on its
+            // children and every later `DEVC` arrives as a container. Four bytes
+            // further in used to be enough, because a KLV walk that starts
+            // inside a header resynchronises on the next one — at the cost of
+            // the `DVID` it stepped over.
+            if let Ok(map) = Self::parse_metadata(&devices[8..], GroupId::Default, true, &crate::InputOptions::default()) {
                 for v in map.values() {
                     if let Some(v) = v.get_t(TagId::Unknown(0x4D494E46/*MINF*/)) as Option<&String> {
                         obj.model = Some(v.clone());
@@ -79,6 +105,8 @@ impl GoPro {
                 }
                 obj.extra_gpmf = Some(map);
             }
+            // …and the same bytes kept unflattened, for the geometry walk.
+            obj.udta_gpmf = Some(devices.to_vec());
             ret = Some(obj);
         } else if memmem::find(buffer, b"GoPro MET").is_some() {
             ret = Some(Self::default());
@@ -96,6 +124,9 @@ impl GoPro {
                 }
             }
         }
+        if let Some(obj) = &mut ret {
+            obj.path = Some(filepath.as_ref().to_owned());
+        }
         ret
     }
 
@@ -106,6 +137,7 @@ impl GoPro {
         }
 
         let mut fps = None;
+        let mut video_dim = None;
 
         if self.is_raw_gpmf {
             let mut data = Vec::with_capacity(size);
@@ -144,6 +176,14 @@ impl GoPro {
             if !ctx.tracks.is_empty() {
                 fps = util::get_fps_from_track(&ctx.tracks[0]);
             }
+            // The FIRST video track's coded size. Both strips of a `.360` are
+            // the same size and a Fusion half has one track, so one answer
+            // serves every 360 body.
+            video_dim = ctx.tracks.iter()
+                .filter(|x| x.track_type == mp4parse::TrackType::Video)
+                .filter_map(|x| x.tkhd.as_ref())
+                .map(|tkhd| (tkhd.width >> 16, tkhd.height >> 16))
+                .find(|(w, h)| *w > 0 && *h > 0);
         }
         self.process_samples(&mut samples, fps, &options);
 
@@ -190,6 +230,33 @@ impl GoPro {
 
         // Build a native lens profile from the in-camera POLY calibration, if present.
         lens_profile::insert_lens_profile(&mut samples, self.model.as_deref(), &options);
+
+        // The camera's own 360 geometry, out of the `udta` box read one device
+        // at a time. It goes at its own tag and never at `Lens/Data`: that one
+        // is the single-lens JSON profile above, tags are last-wins per (group,
+        // id), and a rig-shaped object there would deserialise into an empty
+        // lens profile downstream and then suppress the lens-database lookup.
+        if let (Some(gpmf), Some(dim)) = (self.udta_gpmf.as_deref(), video_dim) {
+            let devices = udta::devices(gpmf, &options);
+            let rig = eac::camera_rig(&devices, dim)
+                .or_else(|| {
+                    fusion::camera_rig(
+                        &devices,
+                        self.model.as_deref(),
+                        self.path.as_deref(),
+                        dim,
+                        crate::rig::readout(self.frame_readout_time),
+                    )
+                });
+            if let Some(camera_rig) = rig {
+                if samples.is_empty() {
+                    samples.push(SampleInfo { tag_map: Some(GroupedTagMap::default()), ..Default::default() });
+                }
+                if let Some(map) = samples[0].tag_map.as_mut() {
+                    util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::Rig, "Camera rig", CameraRig, |v: &crate::rig::CameraRig| serde_json::to_string(v).unwrap_or_default(), camera_rig, vec![]), &options);
+                }
+            }
+        }
 
         Ok(samples)
     }
@@ -370,6 +437,25 @@ impl GoPro {
             }
         }
     }
+    /// Preserve the relative start of each sensor on the shared GPMF clock.
+    /// GoPro's GPMF_utils uses a video-associated timestamp when available,
+    /// otherwise the earliest STMP in the first payload as its clock origin.
+    /// Starting gyro and acceleration independently at zero loses tens of ms
+    /// on Fusion (and aligns measurements from different instants).
+    pub(crate) fn imu_start_times_ms(samples: &[SampleInfo]) -> (f64, f64, f64) {
+        let first = samples.iter().filter_map(|s| s.tag_map.as_ref().map(|m| (s, m)))
+            .find(|(_, m)| m.contains_key(&GroupId::Gyroscope));
+        let Some((packet, tags)) = first else { return (0.0, 0.0, 0.0) };
+        let stamp = |g: &TagMap| (g.get_t(TagId::TimestampUs) as Option<&u64>).copied().filter(|v| *v > 0);
+        let video = tags.iter().filter(|(g, _)| matches!(g, GroupId::Exposure)
+            || matches!(g, GroupId::Custom(k) if k == "ISOE" || k == "SHUT"))
+            .find_map(|(_, g)| stamp(g));
+        let Some(base) = video.or_else(|| tags.values().filter_map(stamp).min()) else { return (0.0, 0.0, 0.0) };
+        let offset = |group: GroupId| samples.iter().filter_map(|s| s.tag_map.as_ref()?.get(&group))
+            .find_map(stamp).map_or(0.0, |t| packet.timestamp_ms + (t as f64 - base as f64) / 1000.0);
+        (offset(GroupId::Gyroscope), offset(GroupId::Accelerometer), offset(GroupId::Magnetometer))
+    }
+
     pub fn get_avg_sample_duration(samples: &Vec<SampleInfo>, group_id: &GroupId) -> Option<f64> {
         let mut total_duration_ms = 0.0;
 
@@ -393,6 +479,11 @@ impl GoPro {
                         last_tsus = Some((*t as i64) * 1000);
                     }
                     if let Some(t) = map.get_t(TagId::Data) as Option<&Vec<Vector3<i16>>> {
+                        count += t.len();
+                        last_len = t.len();
+                    } else if let Some(t) = map.get_t(TagId::Data) as Option<&Vec<Vector3<f32>>> {
+                        // Fusion stores floating-point IMU readings. Their clock
+                        // uses the same STMP/TICK and sample-count rule as i16.
                         count += t.len();
                         last_len = t.len();
                     } else if let Some(t) = map.get_t(TagId::Data) as Option<&Vec<Quaternion<i16>>> {

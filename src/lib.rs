@@ -24,7 +24,9 @@ mod freefly;
 mod canon;
 mod nikon;
 mod zcam;
+mod motioncam;
 
+pub mod rig;
 pub mod tags_impl;
 pub mod util;
 pub mod filesystem;
@@ -174,6 +176,7 @@ impl_formats! {
     BlackBox  => blackbox::BlackBox,
     BlackmagicBraw => blackmagic::BlackmagicBraw,
     RedR3d    => red::RedR3d,
+    MotionCam => motioncam::MotionCam,
     Runcam    => runcam::Runcam,
     WitMotion => witmotion::WitMotion,
     PhoneApps => phone_apps::PhoneApps,

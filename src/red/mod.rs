@@ -99,6 +99,7 @@ impl RedR3d {
         let mut accl = Vec::new();
         let mut first_timestamp = None;
         let mut last_frame_timestamp = None;
+        let mut frame_index = 0u64;
         let mut map = GroupedTagMap::new();
         let mut samples = Vec::new();
 
@@ -190,7 +191,11 @@ impl RedR3d {
                             let mut per_frame_map = GroupedTagMap::new();
                             util::insert_tag(&mut per_frame_map, tag!(parsed GroupId::Default, TagId::TimestampUs, "Frame timestamp", u64, |v| v.to_string(), frame_timestamp, vec![]), &options);
                             let _ = self.parse_meta(&data4096[88..88 + size as usize], &mut per_frame_map, &options);
-                            samples.push(SampleInfo { tag_map: Some(per_frame_map), ..Default::default() });
+                            // The per-frame metadata (lens focal length, exposure) is keyed by the frame time relative to the
+                            // first frame, the same time base the IMU samples above use, so a zoom lens is seen frame by frame
+                            let timestamp_ms = (frame_timestamp as i64 - last_frame_timestamp.unwrap() as i64) as f64 / 1000.0;
+                            samples.push(SampleInfo { sample_index: frame_index, timestamp_ms, tag_map: Some(per_frame_map), ..Default::default() });
+                            frame_index += 1;
                         }
                     } else {
                         stream.seek(SeekFrom::Current(aligned_size as i64 - 8))?;

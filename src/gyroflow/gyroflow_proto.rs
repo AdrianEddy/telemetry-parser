@@ -77,7 +77,9 @@ pub mod header {
         pub imu_orientation: ::core::option::Option<::prost::alloc::string::String>,
         /// Additional rigid rotation that aligns the IMU sensor frame with the
         /// camera body frame. Applied to each raw IMU 3-vector v as
+        /// ```text
         ///      v' = imu_rotation · v
+        /// ```
         /// (standard vector rotation). Applied AFTER imu_orientation when both
         /// are present (orientation first as axis remap, then rotation).
         #[prost(message, optional, tag = "14")]
@@ -85,7 +87,9 @@ pub mod header {
         /// Additional rigid rotation that aligns the post-fusion quaternion
         /// stream with the camera body frame. Applied to each quaternion q in
         /// FrameMetadata.quaternions as CONJUGATION (not composition):
+        /// ```text
         ///      q' = quats_rotation · q · quats_rotation⁻¹
+        /// ```
         /// The effect is to rotate the AXIS of q by quats_rotation while
         /// preserving its angle — i.e. to re-express the same physical rotation
         /// in a rotated coordinate frame. Use this to correct a misaligned
@@ -206,10 +210,12 @@ pub struct FrameMetadata {
     /// row started exposing; NOT the midpoint of its exposure.
     ///
     /// "First-read" follows ClipMetadata.frame_readout_direction:
+    /// ```text
     ///    TopToBottom → top row     (visual row 0)
     ///    BottomToTop → bottom row  (visual row frame_height - 1)
     ///    LeftToRight → left column (visual column 0)
     ///    RightToLeft → right column
+    /// ```
     ///
     /// Rationale for the readout-latch convention: hardware naturally timestamps the
     /// readout latch event, since that is the observable moment for the readout chain.
@@ -224,11 +230,13 @@ pub struct FrameMetadata {
     /// row, r = N-1 for the last-read row, where N = ClipMetadata.frame_height for
     /// vertical readout or ClipMetadata.frame_width for horizontal readout):
     ///
+    /// ```text
     ///      row_readout_instant(r) = start_timestamp_us
     ///                             + (r / (N - 1)) · (end_timestamp_us - start_timestamp_us)
     ///      row_exposure_midpoint(r) = row_readout_instant(r) - exposure_time_us / 2
     ///      frame_center_of_capture  = (start_timestamp_us + end_timestamp_us) / 2
     ///                               - exposure_time_us / 2
+    /// ```
     ///
     /// For consumers indexing by visual (top-down) row v, convert to readout-order r
     /// using frame_readout_direction (e.g. for BottomToTop: r = (N - 1) - v).
@@ -243,7 +251,9 @@ pub struct FrameMetadata {
     /// start_timestamp_us this defines the rolling-shutter timeline of the frame.
     ///
     /// AUTHORITATIVE for per-row interpolation. The relation
+    /// ```text
     ///      end_timestamp_us ≈ start_timestamp_us + frame_readout_time_us
+    /// ```
     /// holds approximately, but the two timestamp fields are doubles measured directly
     /// by the camera clock and take precedence over the float helper
     /// frame_readout_time_us if the two ever disagree.
@@ -271,6 +281,7 @@ pub struct FrameMetadata {
     /// EXPOSURE PRECEDENCE: if more than one of exposure_time_us /
     /// shutter_speed_{numerator,denominator} / shutter_angle_degrees is present,
     /// consumers MUST use them in this order (highest precedence first):
+    /// ```text
     ///    1. exposure_time_us (microsecond-precise; most authoritative)
     ///    2. shutter_speed_numerator / shutter_speed_denominator (exact rational)
     ///    3. shutter_angle_degrees (derived from frame rate + angle, as
@@ -283,6 +294,7 @@ pub struct FrameMetadata {
     ///       record_frame_rate this is a no-op; for slow-motion / high-frame-
     ///       rate modes where they differ, sensor_frame_rate is the correct
     ///       divisor.
+    /// ```
     /// Producers SHOULD set the most precise field they have and MAY omit the
     /// less-precise ones.
     ///
@@ -321,8 +333,10 @@ pub struct FrameMetadata {
     ///
     /// SAMPLE-COVERAGE REQUIREMENT: for per-row rolling-shutter correction, the sample
     /// timestamps must cover the row-exposure-midpoint span of this frame, i.e. at minimum
+    /// ```text
     ///      [ start_timestamp_us - exposure_time_us / 2,
     ///        end_timestamp_us   - exposure_time_us / 2 ]
+    /// ```
     /// plus one or two guard samples on each side for spline tangents. A typical
     /// cadence is 4–8 samples per frame plus guards. A single sample per frame degenerates
     /// to per-frame correction (no rolling-shutter compensation).
@@ -356,6 +370,7 @@ pub struct FrameMetadata {
 /// coefficient layout and projection math.
 ///
 /// MULTIPLE ENTRIES PER FRAME:
+/// ```text
 ///    FrameMetadata.lens is `repeated`. Multiple entries per frame are permitted to
 ///    handle intra-frame changes (e.g. zoom or focus actuator moving during readout,
 ///    per-row intrinsics for rolling-shutter-corrected anamorphic). Each entry
@@ -364,6 +379,7 @@ pub struct FrameMetadata {
 ///    by timestamp using the same row-midpoint convention used for ois / ibis.
 ///    When only one entry exists, the lens parameters apply uniformly to the whole
 ///    frame and the timestamp may be omitted.
+/// ```
 #[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
 #[serde(default)]
 pub struct LensData {
@@ -374,8 +390,10 @@ pub struct LensData {
     pub sample_timestamp_us: ::core::option::Option<f64>,
     /// Row-major 3x3 camera intrinsic matrix. Usually \[[fx, 0, cx\], \[0, fy, cy\], \[0, 0, 1]\],
     /// where fx and fy are focal length values in pixels
+    /// ```text
     ///    (f_mm = f_pixels * sensor_width_mm / image_width_px ;
     ///     f_pixels = f_mm / sensor_width_mm * image_width_px),
+    /// ```
     /// and cx, cy is the principal point in pixels (usually width/2, height/2).
     #[prost(float, repeated, tag = "1")]
     pub camera_intrinsic_matrix: ::prost::alloc::vec::Vec<f32>,
@@ -385,11 +403,13 @@ pub struct LensData {
     /// are normalized assuming this focal length; see GenericPolynomial message docs).
     ///
     /// RELATIONSHIP TO camera_intrinsic_matrix:
+    /// ```text
     ///    focal_length_mm is the physical lens focal length and is resolution-INDEPENDENT.
     ///    camera_intrinsic_matrix carries f_x / f_y in OUTPUT-PIXEL units, which IS
     ///    resolution-dependent. They are related (but not equivalent) by
     ///        f_x_pixels = focal_length_mm · (output_width  / sensor_width_used_mm)
     ///    where sensor_width_used_mm = pixel_pitch_x_nm · crop_width / 1e6.
+    /// ```
     ///
     /// PRECEDENCE for projection: camera_intrinsic_matrix is the source of truth for
     /// sensor → output-pixel mapping. focal_length_mm is the source of truth for
@@ -447,9 +467,11 @@ pub struct NoDistortion {}
 /// Reference: <https://docs.opencv.org/4.x/db/d58/group__calib3d__fisheye.html>
 ///
 /// Projection (forward):
+/// ```text
 ///    θ        = angle from optical axis (radians)
 ///    θ_d      = θ · (1 + k₁·θ² + k₂·θ⁴ + k₃·θ⁶ + k₄·θ⁸)
 ///    r_pixels = θ_d · f_px        (f_px from camera_intrinsic_matrix)
+/// ```
 ///
 /// Coefficients: \[k₁, k₂, k₃, k₄\] — exactly 4 floats.
 #[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
@@ -462,11 +484,13 @@ pub struct OpenCvFisheye {
 /// Reference: <https://docs.opencv.org/4.x/d9/d0c/group__calib3d.html>
 ///
 /// Coefficients (variable length, following OpenCV conventions):
+/// ```text
 ///    4 elements:  \[k₁, k₂, p₁, p₂\]
 ///    5 elements:  \[k₁, k₂, p₁, p₂, k₃\]
 ///    8 elements:  \[k₁, k₂, p₁, p₂, k₃, k₄, k₅, k₆\]
 ///    12 elements: \[k₁..k₆, p₁, p₂, s₁..s₄\]                  (rational+thin-prism)
 ///    14 elements: \[k₁..k₆, p₁, p₂, s₁..s₄, τ_x, τ_y\]        (tilt)
+/// ```
 #[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
 #[serde(default)]
 pub struct OpenCvStandard {
@@ -475,7 +499,9 @@ pub struct OpenCvStandard {
 }
 /// LensFun's Poly3 radial distortion model.
 /// Reference: <https://lensfun.github.io/manual/latest/group__Lens.html#gaa505e04666a189274ba66316697e308e>
+/// ```text
 ///    r_d = r · (1 + k₁ · r²)
+/// ```
 /// Coefficients: \[k₁\] — 1 float.
 #[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
 #[serde(default)]
@@ -484,7 +510,9 @@ pub struct LensFunPoly3 {
     pub coefficients: ::prost::alloc::vec::Vec<f32>,
 }
 /// LensFun's Poly5 radial distortion model.
+/// ```text
 ///    r_d = r · (1 + k₁·r² + k₂·r⁴)
+/// ```
 /// Coefficients: \[k₁, k₂\] — 2 floats.
 #[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
 #[serde(default)]
@@ -493,7 +521,9 @@ pub struct LensFunPoly5 {
     pub coefficients: ::prost::alloc::vec::Vec<f32>,
 }
 /// LensFun's PTLens distortion model.
+/// ```text
 ///    r_d = r · (a·r³ + b·r² + c·r + 1)
+/// ```
 /// Coefficients: \[a, b, c\] — 3 floats.
 #[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
 #[serde(default)]
@@ -505,6 +535,7 @@ pub struct LensFunPtLens {
 /// with full power range and dimensionless normalization.
 ///
 /// SEMANTICS — WHAT THE POLYNOMIAL DESCRIBES
+/// ```text
 ///    coefficients describe the projection of the ENCODED PIXELS as they appear in
 ///    the recorded image — NOT the raw lens optics. If the producer applies any
 ///    in-camera distortion correction, geometric crop, anamorphic desqueeze, or
@@ -520,8 +551,10 @@ pub struct LensFunPtLens {
 ///    The consumer ALWAYS undistorts using these coefficients without needing to
 ///    know whether in-camera correction was applied. The polynomial alone encodes
 ///    the projection state.
+/// ```
 ///
 /// MATHEMATICAL FORM
+/// ```text
 ///    Maps the ray angle θ from the optical axis (radians) to a DIMENSIONLESS
 ///    normalized projected radius on the image plane:
 ///
@@ -545,8 +578,10 @@ pub struct LensFunPtLens {
 ///
 ///    where unit_direction is the unit vector pointing from the optical axis to
 ///    the projected ray in the image plane (cos φ, sin φ for azimuth φ).
+/// ```
 ///
 /// COEFFICIENT ORDER
+/// ```text
 ///    coefficients\[i\] is the coefficient of θ^(i+1):
 ///      index 0 → θ¹      (the linear/leading term)
 ///      index 1 → θ²
@@ -556,8 +591,10 @@ pub struct LensFunPtLens {
 ///    difference from OpenCVFisheye, which restricts to θ³, θ⁵, θ⁷, θ⁹
 ///    with an implicit leading θ¹ coefficient of 1.0 — i.e. OpenCVFisheye can
 ///    be expressed in this model as \[1, 0, k₁, 0, k₂, 0, k₃, 0, k₄\].
+/// ```
 ///
 /// STRICT NORMALIZATION REQUIREMENTS
+/// ```text
 ///    This model uses STRICT semantics:
 ///
 ///    1. LensData.focal_length_mm MUST be set on the parent LensData entry. The
@@ -576,20 +613,25 @@ pub struct LensFunPtLens {
 ///         Equidistant fisheye:  r_normalized = θ            → \[1, 0, 0, ...\]
 ///         Rectilinear pinhole:  r_normalized = tan(θ)       → \[1, 0, 1/3, 0, 2/15, ...\]
 ///         Stereographic:        r_normalized = 2·tan(θ/2)   → \[1, 0, 1/12, 0, 1/120, ...\]
+/// ```
 ///
 /// NUMBER OF COEFFICIENTS
+/// ```text
 ///    Variable. Typical ranges:
 ///      - 4 terms: mild fisheye, narrow-to-medium FOV
 ///      - 6 terms: wide-angle / fisheye
 ///      - 8+ terms: extreme wide-angle or non-symmetric optics
 ///    Producers SHOULD report only as many terms as the calibration
 ///    actually fitted; do not pad with trailing zeros.
+/// ```
 ///
 /// INVERSION
+/// ```text
 ///    Forward (θ → r_normalized) is closed-form polynomial evaluation.
 ///    Inverse (r_normalized → θ) requires numerical iteration; Newton's
 ///    method on the polynomial converges in <10 iterations for any
 ///    physically reasonable lens.
+/// ```
 #[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
 #[serde(default)]
 pub struct GenericPolynomial {
@@ -634,6 +676,7 @@ pub struct ImuData {
     pub magnetometer_z: ::core::option::Option<f32>,
 }
 /// Unit quaternion (w + xi + yj + zk) using the HAMILTON convention:
+/// ```text
 ///    - Right-handed coordinate system.
 ///    - Multiplication: i·j = k, j·k = i, k·i = j, and i² = j² = k² = ijk = -1.
 ///      This is NOT the JPL convention (which uses i·j = -k) found in some IMU
@@ -643,6 +686,7 @@ pub struct ImuData {
 ///      precision); consumers MAY renormalize on read.
 ///    - Storage order is (w, x, y, z) as the four float fields below; this is
 ///      independent of the multiplication convention but listed for clarity.
+/// ```
 #[derive(::serde::Serialize, ::serde::Deserialize, Clone, Copy, PartialEq, ::prost::Message)]
 #[serde(default)]
 pub struct Quaternion {
@@ -736,12 +780,14 @@ pub struct IbisData {
     /// (which is in output-pixel units, per LensData docs) using the per-frame
     /// crop:
     ///
+    /// ```text
     ///      pivot_sensor_px_x = FrameMetadata.crop_x
     ///                        + (camera_intrinsic_matrix\[0, 2\] / frame_width)
     ///                          · FrameMetadata.crop_width
     ///      pivot_sensor_px_y = FrameMetadata.crop_y
     ///                        + (camera_intrinsic_matrix\[1, 2\] / frame_height)
     ///                          · FrameMetadata.crop_height
+    /// ```
     ///
     /// (where frame_width/frame_height are ClipMetadata.frame_{width,height}).
     /// Producers that don't expose camera_intrinsic_matrix should approximate
@@ -767,6 +813,7 @@ pub struct IbisData {
 ///
 /// VARIANTS:
 ///
+/// ```text
 ///    - `quaternion`: a rotation the camera applied to the captured pixels before
 ///      encoding (e.g. the image-orientation half of a body-orientation +
 ///      image-orientation quaternion pair, used to re-express data into the encoded
@@ -778,12 +825,15 @@ pub struct IbisData {
 ///
 ///    - `matrix_4x4`: a 4×4 affine transform the camera applied. Preliminary — no
 ///      grounded producer yet.
+/// ```
 ///
 /// MULTIPLE ENTRIES PER FRAME:
+/// ```text
 ///    Multiple EISData samples per frame are permitted; use sample_timestamp_us for
 ///    per-sample timing (aligned with the row-midpoint timeline for rolling shutter).
 ///    When only one entry exists, the transform applies uniformly to the whole frame
 ///    and the timestamp may be omitted.
+/// ```
 #[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
 #[serde(default)]
 pub struct EisData {
@@ -828,18 +878,23 @@ pub struct Matrix4x4 {
 /// read-out and the encoded frame. Used by the EISData.mesh_warp variant.
 ///
 /// DIRECTION:
+/// ```text
 ///    The mesh is the FORWARD direction — it describes what the camera DID to map
 ///    from sensor-native positions to encoded-frame positions. The consumer
 ///    numerically inverts (Newton / Nelder-Mead on the interpolated mesh) to map
 ///    encoded positions back to sensor positions for sampling.
+/// ```
 ///
 /// COORDINATE FRAME:
+/// ```text
 ///    Both grid anchors and warped output positions are in SENSOR-pixel coordinates,
 ///    measured relative to FrameMetadata.crop_x, crop_y (the per-frame capture-area
 ///    origin). Axes match LensOISData / IBISData: +X right, +Y down, sensor-native
 ///    (do NOT rotate with ClipMetadata.rotation_degrees).
+/// ```
 ///
 /// LAYOUT:
+/// ```text
 ///    Grid anchors are uniformly spaced over the rectangle \[0, region_width\] ×
 ///    \[0, region_height\] in sensor-pixel coordinates:
 ///        anchor(i, j) = ( i · region_width  / (grid_width  - 1),
@@ -852,11 +907,14 @@ pub struct Matrix4x4 {
 ///    pixels) representing the per-frame stabilization correction.
 ///
 ///    Total warped_xy length = 2 · grid_width · grid_height.
+/// ```
 ///
 /// INTERPOLATION:
+/// ```text
 ///    Between grid anchors, the consumer interpolates the warped positions. Cubic
 ///    spline (Catmull-Rom or natural cubic) is recommended for smoothness; bilinear
 ///    is acceptable for low-precision use cases.
+/// ```
 #[derive(::serde::Serialize, ::serde::Deserialize, Clone, PartialEq, ::prost::Message)]
 #[serde(default)]
 pub struct MeshWarpData {
@@ -885,6 +943,7 @@ pub struct MeshWarpData {
 /// sample_timestamp_us on every sample.
 ///
 /// COORDINATE / UNIT CONVENTIONS:
+/// ```text
 ///    - latitude_degrees  ∈ \[−90, +90\],   WGS-84, N positive / S negative.
 ///    - longitude_degrees ∈ \[−180, +180\], WGS-84, E positive / W negative.
 ///      NMEA producers (lat/lon as DMS plus N/S/E/W hemisphere char) MUST
@@ -912,6 +971,7 @@ pub struct MeshWarpData {
 ///      fixed multiple of σ). Producers SHOULD omit these unless their hardware
 ///      provides them; setting them to zero would be misinterpreted as "perfect
 ///      accuracy" rather than "unknown accuracy".
+/// ```
 #[derive(::serde::Serialize, ::serde::Deserialize, Clone, Copy, PartialEq, ::prost::Message)]
 #[serde(default)]
 pub struct GpsData {

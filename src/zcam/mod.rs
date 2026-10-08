@@ -73,7 +73,7 @@ impl Zcam {
         true
     }
     pub fn possible_extensions() -> Vec<&'static str> {
-        vec!["mp4", "mov"]
+        vec!["mp4", "mov", "zraw"]
     }
     pub fn frame_readout_time(&self) -> Option<f64> {
         self.frame_readout_time
@@ -290,8 +290,11 @@ impl Zcam {
         insert_tag(tag_map, tag!(parsed GroupId::Imager, TagId::CaptureAreaOrigin, "Sensor crop origin", f32x2, |v| format!("{:?}", v), (self.crop_x as f32, self.crop_y as f32), vec![]), options);
         insert_tag(tag_map, tag!(parsed GroupId::Imager, TagId::CaptureAreaSize, "Sensor crop size", f32x2, |v| format!("{:?}", v), (self.crop_w as f32, self.crop_h as f32), vec![]), options);
 
-        let first_frame_ts_ms = frame_ts_us / 1000.0 - info.timestamp_ms;
-        insert_tag(tag_map, tag!(parsed GroupId::Imager, TagId::FirstFrameTimestamp, "First frame timestamp", f64, |v| format!("{:.4} ms", v), first_frame_ts_ms, vec![]), options);
+        // ZRAW firmware leaves FrameMetaHeader empty
+        if frame_ts_us > 0.0 {
+            let first_frame_ts_ms = frame_ts_us / 1000.0 - info.timestamp_ms;
+            insert_tag(tag_map, tag!(parsed GroupId::Imager, TagId::FirstFrameTimestamp, "First frame timestamp", f64, |v| format!("{:.4} ms", v), first_frame_ts_ms, vec![]), options);
+        }
 
         // ----------------- per-frame camera metadata -----------------
         if let Some(ref c) = frame.frame_meta_of_camera {
@@ -663,4 +666,61 @@ fn readout_dir_to_gyroflow_i32(dir: ReadOutDirection) -> i32 {
         ReadOutDirection::LeftToRight => 2,
         ReadOutDirection::RightToLeft => 3,
     }
+}
+
+/// ZRAW files XOR every 32-bit word of the video track's `stco`, version/flags
+/// included, with the `mvhd` creation time. mp4parse then reads a garbage entry
+/// count and fails with UnexpectedEOF, so undo it in place before parsing.
+/// `co64` is assumed to be scrambled the same way, there's no sample of it yet.
+/// `buf` must start at a top-level box, like the buffer built in `util::parse_mp4`.
+pub(crate) fn deobfuscate_zraw_chunk_offsets(buf: &mut [u8]) {
+    let be32 = |b: &[u8], at: usize| u32::from_be_bytes(b[at..at + 4].try_into().unwrap());
+    let child = |b: &[u8], r: &std::ops::Range<usize>, name: &[u8; 4]| child_boxes(b, r.clone()).into_iter().find(|x| &x.0 == name).map(|x| x.1);
+
+    let Some(moov) = child(buf, &(0..buf.len()), b"moov") else { return };
+    let Some(mvhd) = child(buf, &moov, b"mvhd") else { return };
+    if mvhd.len() < 8 || buf[mvhd.start] != 0 { return; } // Only version 0 (32-bit creation time) seen so far
+    let key = be32(buf, mvhd.start + 4);
+    if key == 0 { return; }
+
+    for (name, trak) in child_boxes(buf, moov) {
+        if &name != b"trak" { continue; }
+        let Some(stbl) = [b"mdia", b"minf", b"stbl"].into_iter().try_fold(trak, |r, n| child(buf, &r, n)) else { continue };
+        for (name, co) in child_boxes(buf, stbl) {
+            let entry_size = match &name { b"stco" => 4, b"co64" => 8, _ => continue };
+            // version/flags is 0 in a valid box, so an obfuscated one stores the key itself
+            if co.len() < 8 || be32(buf, co.start) != key { continue; }
+            let count = (be32(buf, co.start + 4) ^ key) as usize;
+            let end = co.start + 8 + count * entry_size;
+            if end > co.end { continue; }
+            for at in (co.start..end).step_by(4) {
+                let raw = be32(buf, at);
+                // A co64 high half is tiny in any real file and the key (seconds since 1904) has its top bits set,
+                // so the smaller of the two is right whether the camera scrambled the high halves or only the low ones
+                let co64_high = entry_size == 8 && at >= co.start + 8 && (at - co.start) % 8 == 0;
+                let v = if co64_high { raw.min(raw ^ key) } else { raw ^ key };
+                buf[at..at + 4].copy_from_slice(&v.to_be_bytes());
+            }
+            log::debug!("zcam: de-obfuscated ZRAW {} with {count} entries, key {key:#010x}", String::from_utf8_lossy(&name));
+        }
+    }
+}
+
+/// (fourcc, payload range) of each box in `range`, stopping at the first malformed one.
+fn child_boxes(buf: &[u8], range: std::ops::Range<usize>) -> Vec<([u8; 4], std::ops::Range<usize>)> {
+    let mut ret = Vec::new();
+    let (mut pos, end) = (range.start, range.end);
+    while pos + 8 <= end {
+        let size = u32::from_be_bytes(buf[pos..pos + 4].try_into().unwrap()) as u64;
+        let name: [u8; 4] = buf[pos + 4..pos + 8].try_into().unwrap();
+        let (header, size) = match size {
+            0 => (8, (end - pos) as u64),
+            1 if pos + 16 <= end => (16, u64::from_be_bytes(buf[pos + 8..pos + 16].try_into().unwrap())),
+            _ => (8, size),
+        };
+        if size < header as u64 || size > (end - pos) as u64 { break; }
+        ret.push((name, pos + header..pos + size as usize));
+        pos += size as usize;
+    }
+    ret
 }

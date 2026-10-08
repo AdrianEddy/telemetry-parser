@@ -2845,6 +2845,31 @@ pub struct SensorActiveSize {
     #[prost(uint32, tag = "2")]
     pub sensor_active_physical_height_um: u32,
 }
+#[derive(::serde::Serialize, Clone, Copy, PartialEq, ::prost::Message)]
+pub struct ImuRawData {
+    /// * unit: rad/s
+    #[prost(float, tag = "1")]
+    pub gyro_x: f32,
+    #[prost(float, tag = "2")]
+    pub gyro_y: f32,
+    #[prost(float, tag = "3")]
+    pub gyro_z: f32,
+    /// * unit: g
+    #[prost(float, tag = "4")]
+    pub acc_x: f32,
+    #[prost(float, tag = "5")]
+    pub acc_y: f32,
+    #[prost(float, tag = "6")]
+    pub acc_z: f32,
+}
+#[derive(::serde::Serialize, Clone, PartialEq, ::prost::Message)]
+pub struct DeviceRawAttitude {
+    /// * timestamp of the first sample, on the frame's microsecond clock
+    #[prost(uint64, tag = "1")]
+    pub timestamp: u64,
+    #[prost(message, repeated, tag = "2")]
+    pub imu_raw_data: ::prost::alloc::vec::Vec<ImuRawData>,
+}
 /// Attitude of a specific device
 #[derive(::serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct DeviceAttitude {
@@ -3844,6 +3869,10 @@ pub struct DewarpParams {
     pub gimbal_yaw_h1: f32,
     #[prost(float, tag = "33")]
     pub gimbal_yaw_h2: f32,
+    /// * Focal-length temperature-compensation coefficients, in ascending
+    /// power of the temperature delta. Overrides `temp_compen_k` when present.
+    #[prost(float, repeated, tag = "35")]
+    pub temp_compen_k_order: ::prost::alloc::vec::Vec<f32>,
 }
 #[derive(::serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct PanoDewarpParams {
@@ -4265,6 +4294,8 @@ pub struct StreamMeta {
     pub fov_type: ::core::option::Option<FovType>,
     #[prost(message, optional, tag = "5")]
     pub pano_dewarp_params: ::core::option::Option<PanoDewarpParams>,
+    #[prost(message, optional, tag = "6")]
+    pub extri_lens_mode: ::core::option::Option<ExtriLensMode>,
 }
 /// *
 /// Represents the stream metadata of camera device.
@@ -4388,4 +4419,7 @@ pub struct FrameMetaOfImu {
     /// * cur frame. camera attitude samples within video frame interval. processed after motion estimation
     #[prost(message, optional, tag = "4")]
     pub imu_single_attitude_after_fusion: ::core::option::Option<DeviceAttitude>,
+    /// * gyroscope and accelerometer readings within video frame interval, one per IMU sample. The fused attitude is their integration.
+    #[prost(message, optional, tag = "5")]
+    pub imu_raw_attitude: ::core::option::Option<DeviceRawAttitude>,
 }

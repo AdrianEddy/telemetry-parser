@@ -121,6 +121,20 @@ pub struct ExtraMetadata {
     #[prost(enumeration="extra_metadata::VideoPtsType", tag="64")] pub pts_type: i32,
     #[prost(message, optional, tag="65")] pub gyro_cfg_info: Option<extra_metadata::GyroConfigInfo>,
 
+    #[prost(string, tag="111")] pub offset_v6: String,
+    #[prost(string, tag="112")] pub original_offset_v6: String,
+
+    /// How the camera's pictures are spread over files and tracks — including
+    /// whether the two lenses' tracks are in lens order or reversed.
+    #[serde(serialize_with="StreamType_serializer")]
+    #[prost(enumeration="extra_metadata::StreamType", tag="131")] pub stream_type: i32,
+
+    /// Which offset string the camera wrote last. **Advisory** — the enum
+    /// value is not the version number (`OFFSET_V6 = 4`), and the vendor's own
+    /// player ignores it in favour of a fixed v6 > v3 > v2 > v1 preference.
+    #[serde(serialize_with="OffsetVersion_serializer")]
+    #[prost(enumeration="extra_metadata::OffsetVersion", tag="136")] pub capture_offset_version: i32,
+
 }
 
 /// Nested message and enum types in `ExtraMetadata`.
@@ -351,30 +365,33 @@ pub mod extra_metadata {
         #[prost(uint32, tag="1")] pub acc_range: u32,
         #[prost(uint32, tag="2")] pub gyro_range: u32,
     }
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration, ::serde::Serialize)]
-#[repr(i32)]
-pub enum ExtraType {
-    All          = 0,
-    Metadata     = 1,
-    Thumbnail    = 2,
-    Gyro         = 3,
-    Exposure     = 4,
-    ExtThumbnail = 5,
-    FramePts     = 6,
-    Gps          = 7,
-    StarNum      = 8,
-    AaaData      = 9,
-    Highlight    = 10,
-    AaaSim       = 11,
-    ExposureSecondary = 12,
-    Magnetic     = 13,
-    Euler        = 14,
-    SecGyro      = 15,
-    Speed        = 16,
-    TBox         = 17,
-    Quaternions  = 18,
-    TimeMap      = 128
+
+    /// Where the camera put each lens's pictures.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration, ::serde::Serialize)]
+    #[repr(i32)]
+    pub enum StreamType {
+        Unknown             = 0,
+        SingleStreamFile    = 1,
+        /// The two lenses are in two separate files.
+        DualStreamFile      = 2,
+        /// Two video tracks of this file, lens order == track order.
+        DualStreamTrack     = 3,
+        /// Two video tracks of this file, in the opposite order.
+        DualStreamTrackReverse = 4,
+    }
+    /// The offset-string version the camera declares it wrote. The value is an
+    /// enum ordinal and **not** the version number: `V6` is 4, and there is no
+    /// `v4` or `v5` string.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration, ::serde::Serialize)]
+    #[repr(i32)]
+    pub enum OffsetVersion {
+        Unknown = 0,
+        V1      = 1,
+        V2      = 2,
+        V3      = 3,
+        V6      = 4,
+        V8      = 5,
+    }
 }
 
 // ----------------------------------------------------------------------------------------------------------------------
@@ -422,6 +439,8 @@ enum_serializer!(AudioModeType,             extra_metadata::AudioModeType);
 enum_serializer!(SubMediaType,              extra_metadata::SubMediaType);
 enum_serializer!(LogoType,                  extra_metadata::extra_user_options::LogoType);
 enum_serializer!(vec OffsetConvertState,    extra_metadata::extra_user_options::OffsetConvertState);
+enum_serializer!(StreamType,                extra_metadata::StreamType);
+enum_serializer!(OffsetVersion,             extra_metadata::OffsetVersion);
 
 fn bytes_serializer<S>(x: &[u8], s: S) -> Result<S::Ok, S::Error> where S: serde::Serializer {
     let mut ret = String::with_capacity(x.len() * 2);

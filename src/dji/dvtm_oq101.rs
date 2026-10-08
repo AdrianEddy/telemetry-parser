@@ -3907,6 +3907,10 @@ pub struct DewarpParams {
     pub gimbal_yaw_h2: f32,
     #[prost(message, optional, tag = "34")]
     pub gimbal_self_cail_param: ::core::option::Option<GimbalSelfCailParams>,
+    /// * Focal-length temperature-compensation coefficients, in ascending
+    /// power of the temperature delta. Overrides `temp_compen_k` when present.
+    #[prost(float, repeated, tag = "35")]
+    pub temp_compen_k_order: ::prost::alloc::vec::Vec<f32>,
 }
 #[derive(serde::Serialize, Clone, PartialEq, ::prost::Message)]
 pub struct PanoDewarpParams {

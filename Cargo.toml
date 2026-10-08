@@ -1,6 +1,6 @@
 [package]
 name = "telemetry-parser"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Adrian <adrian.eddy@gmail.com>"]
 edition = "2024"
 license = "MIT OR Apache-2.0"
@@ -9,7 +9,7 @@ description = "Library to parse real-time metadata embedded in video files or te
 readme = "README.md"
 
 [dependencies]
-mp4parse = { version = "0.17", git = "https://github.com/AdrianEddy/mp4parse-rust.git", features = ["unstable-api"] }
+mp4parse = { package = "mp4parse-patched", version = "0.17.1", features = ["unstable-api"] }
 byteorder = "1.5"
 pretty-hex = "0.4"
 chrono = "0.4"
@@ -22,12 +22,13 @@ argh = "0.1"
 hex-literal = "1"
 half = "2.7"
 memchr = "2.8"
-fc-blackbox = { git = "https://github.com/ilya-epifanov/fc-blackbox.git", rev = "de08350" }
+fc-blackbox = { package = "fc-blackbox-patched", version = "0.2.1" }
 csv = "1.4"
 human-sort = "0.2"
 log = "0.4"
+video-types = { version = "0.1", default-features = false, features = ["serde"] }
 
-quick-xml = { version = "0.40", optional = true }
+quick-xml = { version = "0.42", optional = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.22"

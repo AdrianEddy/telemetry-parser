@@ -119,6 +119,8 @@ declare_types! {
 
     GpsData: GpsData,
 
+    CameraRig: crate::rig::CameraRig,
+
     Vec_Quaternioni16: Vec<Quaternion<i16>>,
     Vec_TimeScalar_f64: Vec<TimeScalar<f64>>,
     Vec_TimeScalar_i64: Vec<TimeScalar<i64>>,

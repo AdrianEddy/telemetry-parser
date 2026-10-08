@@ -1006,16 +1006,16 @@ message SensorActiveSize {
 }
 
 message ImuRawData {
-    float gyro_x = 1;
+    float gyro_x = 1;                                   /** unit: rad/s */
     float gyro_y = 2;
     float gyro_z = 3;
-    float acc_x = 4;
+    float acc_x = 4;                                    /** unit: g */
     float acc_y = 5;
     float acc_z = 6;
 }
 
 message DeviceRawAttitude {
-    uint64 timestamp = 1;
+    uint64 timestamp = 1;                               /** timestamp of the first sample, on the frame's microsecond clock */
     repeated ImuRawData imu_raw_data = 2;
 }
 
@@ -1382,6 +1382,7 @@ message DewarpParams {
     float gimbal_yaw_h1              = 32;
     float gimbal_yaw_h2              = 33;
     GimbalSelfCailParams gimbal_self_cail_param = 34;
+    repeated float temp_compen_k_order = 35;
 }
 
 message PanoDewarpParams {

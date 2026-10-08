@@ -42,6 +42,7 @@ message StreamMeta {
     VideoStreamMeta             video_stream_meta = 3;
     FOVType                     fov_type = 4;
     PanoDewarpParams            pano_dewarp_params = 5;
+    ExtriLensMode               extri_lens_mode    = 6;
 }
 
 /**
@@ -117,4 +118,5 @@ message FrameMetaOfIMU {
     DeviceMultiAttitude     IMU_attitude_after_fusion = 2;        /** cur/last/next frame. camera attitude samples within video frame interval. processed after motion estimation */
     ImuVsyncPos             IMU_vsync_pos = 3;
     DeviceAttitude          IMU_single_attitude_after_fusion = 4;              /** cur frame. camera attitude samples within video frame interval. processed after motion estimation */
+    DeviceRawAttitude       IMU_raw_attitude = 5;                              /** gyroscope and accelerometer readings within video frame interval, one per IMU sample. The fused attitude is their integration. */
 }

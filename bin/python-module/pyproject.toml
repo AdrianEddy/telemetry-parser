@@ -1,10 +1,11 @@
 [build-system]
-requires = ["maturin>=0.13,<0.14"]
+requires = ["maturin>=1.9.4,<2.0"]
 build-backend = "maturin"
 
 [project]
 name = "telemetry-parser"
-requires-python = ">=3.7"
+dynamic = ["version"]
+requires-python = ">=3.8"
 license = { text = "MIT OR Apache-2.0" }
 authors = [{ name = "Adrian", email = "adrian.eddy@gmail.com" }]
 readme = "README.md"
