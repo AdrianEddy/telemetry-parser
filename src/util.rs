@@ -811,13 +811,16 @@ pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Re
         return Ok(md);
     }
 
-    // Special case for BRAW
+    // Special case for BRAW: the frame is the active area (`crop_size`, the track header includes the sensor border
+    // around it), and the Blackmagic RAW SDK applies the camera's `rotation` when decoding (the default geometry,
+    // used by Resolve and by Gyroflow's decoder), so a vertical clip decodes as a portrait frame with no rotation left
     let mut override_size = None;
     if memmem::find(&last16kb, b"Blackmagic Design").is_some() {
         let mut bmd = crate::blackmagic::BlackmagicBraw::default();
         if let Ok(md) = bmd.parse_meta(stream, filesize) {
             if let Some(size) = md.get("crop_size").and_then(|x| x.as_array()).filter(|x| x.len() == 2).and_then(|x| Some((x[0].as_f64()? as usize, x[1].as_f64()? as usize))) {
-                override_size = Some(size);
+                let rotation = md.get("rotation").and_then(|x| x.as_u64()).unwrap_or_default();
+                override_size = Some(if rotation == 90 || rotation == 270 { (size.1, size.0) } else { size });
             }
         }
     }
