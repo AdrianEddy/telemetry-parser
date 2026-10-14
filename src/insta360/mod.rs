@@ -324,6 +324,47 @@ impl Insta360 {
         });
 
         insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::Data, "Lens profile", Json, |v| serde_json::to_string(v).unwrap(), profile, vec![]), options);
+
+        // Rotate the IMU into lens 0's frame. The `has_offset_v3` IMU orientations
+        // in `process_map` assume this rotation (about 90° on most bodies).
+        let [yaw, pitch, roll] = lens.ypr;
+        if pitch.abs() > 0.0 || roll.abs() > 0.0 || yaw.abs() > 0.0 {
+            const DEG2RAD: f64 = std::f64::consts::PI / 180.0;
+            let yaw = yaw * DEG2RAD;
+            let pitch = pitch * DEG2RAD;
+            let roll = roll * DEG2RAD;
+            let (sr, cr) = (yaw.sin(), yaw.cos());
+            let (sp, cp) = (pitch.sin(), pitch.cos());
+            let (sy, cy) = (roll.sin(), roll.cos());
+            let mat = [
+                [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+                [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+                [-sp,     cp * sr,                cp * cr],
+            ];
+            let rotate = |vec: &mut TimeVector3<f64>| {
+                let mut rotated = [0.0f64; 3];
+                for i in 0..3 {
+                    rotated[i] += mat[i][0] * vec.x;
+                    rotated[i] += mat[i][1] * vec.y;
+                    rotated[i] += mat[i][2] * vec.z;
+                }
+                vec.x = rotated[0];
+                vec.y = rotated[1];
+                vec.z = rotated[2];
+            };
+
+            for group in [GroupId::Gyroscope, GroupId::Accelerometer] {
+                if let Some(x) = tag_map.get_mut(&group) {
+                    if let Some(xx) = x.get_mut(&TagId::Data) {
+                        if let TagValue::Vec_TimeVector3_f64(arr) = &mut xx.value {
+                            for v in arr.get_mut().iter_mut() {
+                                rotate(v);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fn get_output_size(width: u32, height: u32) -> (u32, u32) {
