@@ -716,6 +716,8 @@ pub(crate) fn camera_rig(
         // conversions, which are baked into the string in place and announced
         // by `offset_convert_states` — no clip in the corpus carries one.
         variants: Vec::new(),
+        default_kind: None,
+        no_housing_kind: None,
         audio_source: None,
         siblings: sibling.filter(|_| two_files).into_iter().collect(),
     })

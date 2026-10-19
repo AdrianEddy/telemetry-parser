@@ -49,6 +49,22 @@ pub struct CameraRig {
     /// Alternative geometries the camera ships, described generically. Empty
     /// for most cameras.
     pub variants: Vec<RigVariant>,
+    /// What [`projection`](Self::projection) is calibrated for: the calibration
+    /// the vendor's own software picked for this clip, described as a
+    /// [`variant`](RigVariant::kind) would be. DJI picks by the lens mode the
+    /// clip states — rung 11 of the stitch-distance ladder with nothing on the
+    /// lenses, the lens guards' or the dive case's calibration in one — so a
+    /// clip shot in a housing says which. `None` for a body that ships one
+    /// calibration, or that does not say which it is.
+    #[serde(default)]
+    pub default_kind: Option<VariantKind>,
+    /// What the vendor's software picks for the body with nothing on its
+    /// lenses: [`default_kind`](Self::default_kind) itself on a clip recorded
+    /// that way, and on a clip recorded in a housing the kind of the
+    /// [`variant`](Self::variants) it would have used instead — what choosing
+    /// "no housing" binds. `None` where the housing is no choice.
+    #[serde(default)]
+    pub no_housing_kind: Option<VariantKind>,
     /// How to find the other files of a multi-file rig. Hints only — resolving
     /// them touches the filesystem, which is the host's job, not a parser's.
     pub siblings: Vec<SiblingHint>,
@@ -73,6 +89,8 @@ impl Default for CameraRig {
             }),
             pictures: Vec::new(),
             variants: Vec::new(),
+            default_kind: None,
+            no_housing_kind: None,
             siblings: Vec::new(),
             audio_source: None,
         }

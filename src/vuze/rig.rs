@@ -159,6 +159,8 @@ pub(crate) fn camera_rig(model: &str, calib: &serde_json::Value, crops: [Crop; 2
         }),
         pictures: vec![RigPicture::VideoTrack(0), RigPicture::VideoTrack(1)],
         variants: Vec::new(),
+        default_kind: None,
+        no_housing_kind: None,
         audio_source: None,
         siblings: Vec::new(),
     })

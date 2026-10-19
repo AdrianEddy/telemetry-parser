@@ -367,10 +367,16 @@ pub(crate) fn camera_rig(
     // shipping only the nearer-stitch pair — and "populated but unreadable" is
     // the same answer to the same question. What it does not do is fall through
     // to a rig: when no family reads, there is none.
-    let (default_family, projection) = default_families(extri_lens_mode).iter().find_map(|f| {
-        let (slave, master) = complete(*f)?;
-        Some((*f, projection_for(*f, slave, master)?))
-    })?;
+    let readable = |f: Family| {
+        let (slave, master) = complete(f)?;
+        projection_for(f, slave, master)
+    };
+    let (default_family, projection) =
+        default_families(extri_lens_mode).iter().find_map(|f| Some((*f, readable(*f)?)))?;
+    // The family the same chain lands on with nothing on the lenses: the
+    // default itself on a clip recorded that way, a variant on one recorded in
+    // a housing.
+    let no_housing_family = default_families(0).iter().copied().find(|f| *f == default_family || readable(*f).is_some());
 
     let mut variants = Vec::new();
     for (family, s, m) in pairs {
@@ -394,6 +400,8 @@ pub(crate) fn camera_rig(
         // holds is `Lens::picture`, set by the product-keyed binding above.
         pictures: vec![RigPicture::VideoTrack(0), RigPicture::VideoTrack(1)],
         variants,
+        default_kind: Some(default_family.variant_kind()),
+        no_housing_kind: no_housing_family.map(Family::variant_kind),
         audio_source: None,
         siblings: Vec::new(),
     })

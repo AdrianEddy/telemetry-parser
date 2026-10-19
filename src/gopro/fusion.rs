@@ -186,6 +186,8 @@ pub(crate) fn camera_rig(
             Role::Back => vec![other(SiblingRole::Front), this],
         },
         variants: Vec::new(),
+        default_kind: None,
+        no_housing_kind: None,
         audio_source: match role { Role::Front => Some(SiblingRole::Back), Role::Back => None },
         siblings: vec![sibling],
     })
