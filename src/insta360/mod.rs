@@ -51,7 +51,7 @@ impl Insta360 {
         true
     }
     pub fn possible_extensions() -> Vec<&'static str> {
-        vec!["mp4", "mov", "insv"]
+        vec!["mp4", "mov", "insv", "lrv", "prx"]
     }
     pub fn frame_readout_time(&self) -> Option<f64> {
         self.frame_readout_time
