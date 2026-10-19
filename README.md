@@ -12,6 +12,7 @@ A tool to parse real-time metadata embedded in video files or telemetry from oth
 - [x] MotionCam Pro RAW video (*.mcraw)
 - [x] Canon (C50, C80, C400, R6 Mk3, R5 Mk2) (*.mp4, *.mov, *.mxf, *.crm)
 - [x] Freefly (Ember)
+- [x] Z CAM (E2-M4 Mk2, E2-S6 Mk2, E2-F6 Mk2, E2-F8 Mk2, E2-M4G Mk2, E2-S6G Mk2 and E2N Mk2) (*.mp4, *.mov, *.zraw)
 - [x] Betaflight blackbox (*.bfl, *.bbl, *.csv)
 - [x] ArduPilot logs (*.bin, *.log)
 - [x] Gyroflow [.gcsv log](https://docs.gyroflow.xyz/app/technical-details/gcsv-format)
