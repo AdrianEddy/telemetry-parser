@@ -89,7 +89,7 @@ macro_rules! declare_ids {
                 Ok(match s {
                     $(stringify!($field) => TagId::$field,)*
                     "*" => TagId::Any,
-                    _ if s.starts_with("0x") => TagId::Unknown(s.parse::<u32>()?),
+                    _ if s.starts_with("0x") => TagId::Unknown(u32::from_str_radix(&s[2..], 16)?),
                     _ => TagId::Custom(s.to_string().into())
                 })
             }

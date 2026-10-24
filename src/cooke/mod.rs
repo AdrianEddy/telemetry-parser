@@ -7,6 +7,10 @@ use memchr::memmem;
 
 pub mod bin;
 
+/// The `Timestamp` of the temporal records is the lens's high resolution clock, an unsigned 16-bit counter running at 150 kHz,
+/// so it rolls over every 65536 ticks, about 0.44 s (Cooke /i Technology Part III, "5 Timing data")
+const TIMESTAMP_MODULUS: i64 = 1 << 16;
+
 #[derive(Default)]
 pub struct Cooke {
     pub model: Option<String>,
@@ -46,6 +50,7 @@ impl Cooke {
         let mut prev_timestamp = [0i64; 4];
         let mut prev_absolute_timestamp = [0i64; 4];
         let mut timestamp = [0i64; 4];
+        let mut skipped_records = std::collections::BTreeSet::new();
 
         for chunk in all_data.split("\n\n") {
             if chunk.trim().is_empty() { continue; }
@@ -56,14 +61,15 @@ impl Cooke {
                     let rtype = data.get("RecordType").and_then(|x| x.as_str());
                     let timecode = Self::get_timecode(&data);
                     let tsi = match rtype {
-                        Some("rt.temporal.lens.accelerometer.raw") => 0,
-                        Some("rt.temporal.lens.gyro.raw")          => 1,
-                        Some("rt.temporal.lens.magnetometer.raw")  => 2,
-                        Some("rt.temporal.lens.general")           => 3,
-                        _ => 4
+                        Some("rt.temporal.lens.accelerometer.raw") => Some(0),
+                        Some("rt.temporal.lens.gyro.raw")          => Some(1),
+                        Some("rt.temporal.lens.magnetometer.raw")  => Some(2),
+                        Some("rt.temporal.lens.general")           => Some(3),
+                        _ => None
                     };
-                    if let Some(ts) = data.get("Timestamp").and_then(|x| x.as_i64()) {
-                        timestamp[tsi] += ts + (if prev_timestamp[tsi] > ts { std::u16::MAX as i64 } else { 0 }) - prev_timestamp[tsi];
+                    if let (Some(tsi), Some(ts)) = (tsi, data.get("Timestamp").and_then(|x| x.as_i64())) {
+                        // Ticks since the previous record of this type: the counter difference modulo 2^16 unwraps the roll-overs
+                        timestamp[tsi] += (ts - prev_timestamp[tsi]).rem_euclid(TIMESTAMP_MODULUS);
                         prev_timestamp[tsi] = ts;
                     }
                     //if tsi == 1 { println!("{:?}, ts: {:.2}", timecode, timestamp[tsi] as f64 / 150000.0); }
@@ -167,7 +173,12 @@ impl Cooke {
                             util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::Metadata, "Recorder info", Json, |v| format!("{:?}", v), data, vec![]), &options);
                         },
                         _ => {
-                            panic!("Unknown record: {data:?}");
+                            // The record types can be extended (e.g. with `.derived` data) and documents without a `RecordType`
+                            // are disregarded (Cooke /i Lens Metadata File specification, "LMF Records")
+                            if skipped_records.insert(rtype.map(str::to_owned)) {
+                                log::debug!("Skipping Cooke /i records of type {rtype:?}");
+                            }
+                            continue;
                         }
                     }
 

@@ -377,7 +377,7 @@ impl RedR3d {
                 let mut items = vec![];
                 for i in 0..num_items {
                     let v = match d[0] {
-                        0x10 => serde_json::to_value(std::str::from_utf8(&d[2..]).unwrap_or(&"")),
+                        0x10 => serde_json::to_value(Self::entry_str(&d[2..])),
                         0x20 => serde_json::to_value((&d[2 + i*4..]).read_f32::<BigEndian>()? as f64),
                         0x30 => serde_json::to_value((&d[2 + i*1..]).read_u8()?),
                         0x40 => serde_json::to_value((&d[2 + i*2..]).read_i16::<BigEndian>()?),
@@ -432,6 +432,13 @@ impl RedR3d {
             util::insert_tag(map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), serde_json::Value::Object(md), vec![]), &options);
         }
         Ok(())
+    }
+
+    /// The text of a string (0x10) entry: its bytes up to the first NUL. The entry size bounds the string, and some cameras
+    /// also count a C terminator in it, e.g. the V-RAPTOR XE writes its model as `V-RAPTOR XE 8K VV\0`
+    fn entry_str(v: &[u8]) -> &str {
+        let end = v.iter().position(|&c| c == 0).unwrap_or(v.len());
+        std::str::from_utf8(&v[..end]).unwrap_or("")
     }
 
     fn parse_rmd(file: &str) -> HashMap<String, String> {
