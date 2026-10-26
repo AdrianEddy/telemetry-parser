@@ -99,7 +99,7 @@ macro_rules! impl_formats {
                     if check {
                         if let Some(mut x) = <$class>::detect(&buf, &filepath, &options) {
                             return Ok(Input {
-                                samples: x.parse(stream, size, progress_cb, cancel_flag, options).ok(),
+                                samples: x.parse(stream, size, progress_cb, cancel_flag, options).map_err(|e| log::error!("Failed to parse {} as {}: {e}", filepath.as_ref().display(), stringify!($name))).ok(),
                                 inner: SupportedFormats::$name(x)
                             });
                         }

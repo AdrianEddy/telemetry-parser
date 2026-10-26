@@ -59,9 +59,15 @@ impl Nikon {
                 continue; // go inside these boxes
             } else {
                 if typ == fourcc("NCDT") {
-                    let mut buf = vec![0u8; size as usize - header_size as usize];
-                    stream.read_exact(&mut buf)?;
-                    self.parse_nev_clip_metadata(&buf[26..], &mut first_map, &options).unwrap();
+                    // The clip's metadata is a list of boxes: NCHD (its version), NCTG (the tags), NCTH and NCVW (the
+                    // thumbnail and the preview), NCM1, NCM2 and NCDB. The tags are NCTG's data, up to its end
+                    let buf = util::read_box_data(stream, size, header_size)?;
+                    match util::find_box_data(&buf, b"NCTG") {
+                        Some(tags) => if let Err(e) = self.parse_nev_clip_metadata(tags, &mut first_map, &options) {
+                            log::warn!("Nikon: the clip metadata can't be read: {e}");
+                        },
+                        None => log::warn!("Nikon: the clip metadata (NCDT) has no tags (NCTG)"),
+                    }
                 }
 
                 stream.seek(SeekFrom::Start(org_pos + size - header_size as u64))?;
@@ -75,8 +81,11 @@ impl Nikon {
             }
 
             if data.len() > 8 {
-                let mut map = if info.sample_index == 0 { first_map.clone() } else { GroupedTagMap::new() };
-                self.parse_nev_frame_metadata(&data, &mut map, &options).unwrap();
+                // The clip's metadata goes on its first sample, whichever entry of the track that is
+                let mut map = if samples.is_empty() { first_map.clone() } else { GroupedTagMap::new() };
+                if let Err(e) = self.parse_nev_frame_metadata(&data, &mut map, &options) {
+                    log::warn!("Nikon: the metadata of sample {} can't be read: {e}", info.sample_index);
+                }
                 info.tag_map = Some(map);
                 samples.push(info);
             }
@@ -350,8 +359,8 @@ impl Nikon {
     pub fn parse_nev_frame_metadata(&self, data: &[u8], map: &mut GroupedTagMap, options: &crate::InputOptions) -> Result<()> {
         let mut md = serde_json::Map::<String, serde_json::Value>::new();
         if let Some(map) = map.get(&GroupId::Default) {
-            if let Some(v) = map.get_t(TagId::Metadata) as Option<&serde_json::Value> {
-                md = v.as_object().unwrap().clone();
+            if let Some(v) = (map.get_t(TagId::Metadata) as Option<&serde_json::Value>).and_then(|v| v.as_object()) {
+                md = v.clone();
             }
         }
         let mut cursor = Cursor::new(data);
@@ -384,12 +393,14 @@ impl Nikon {
 
                 match tag_id {
                     0x0110_0100 => { // ImageWidth
-                        let v = u32::from_be_bytes(value_bytes[0..4].try_into().unwrap());
-                        md.insert("image_width".into(), (v as u64).into());
+                        if let Ok(v) = value_cursor.read_u32::<BigEndian>() {
+                            md.insert("image_width".into(), (v as u64).into());
+                        }
                     }
                     0x0110_0101 => { // ImageHeight
-                        let v = u32::from_be_bytes(value_bytes[0..4].try_into().unwrap());
-                        md.insert("image_height".into(), (v as u64).into());
+                        if let Ok(v) = value_cursor.read_u32::<BigEndian>() {
+                            md.insert("image_height".into(), (v as u64).into());
+                        }
                     }
                     0x0110_A302 => { // CFAPattern
                         let arr: Vec<serde_json::Value> = value_bytes.iter().map(|&b| (b as u64).into()).collect();
@@ -461,8 +472,8 @@ impl Nikon {
                 }
             } else if &magic == b"NRAW" || &magic == b"NRFM" || &magic == b"NRFH" || &magic == b"NRHM" || &magic == b"NRTH" {
                 // Container atoms - parse contents (don't skip, just continue from current position)
-            } else if &magic == b"NRTI" {
-                // Thumbnail atom - skip entire atom
+            } else if &magic == b"NRTI" && atom_size >= 16 {
+                // Thumbnail atom - skip entire atom. A shorter one, without the thumbnail's size, is skipped as unknown
                 let mut _unknown = [0u8; 4];
                 cursor.read_exact(&mut _unknown)?;
                 let thumb_size = cursor.read_u32::<BigEndian>()? as u64;

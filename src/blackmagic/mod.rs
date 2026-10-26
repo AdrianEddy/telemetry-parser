@@ -184,8 +184,10 @@ impl BlackmagicBraw {
         let mut meta = None;
         while let Some(pos) = memchr::memmem::find(&all[offs..], b"meta") {
             if all.len() > offs+pos+12 && &all[offs+pos+8..offs+pos+12] == b"hdlr" {
-                let size = (&all[offs+pos-4..]).read_u32::<BigEndian>()? as usize;
-                meta = Some(&all[offs+pos-4..offs+pos-4+size][8..]);
+                // The box starts with its size, before its type
+                let start = (offs+pos).checked_sub(4).ok_or(ErrorKind::InvalidData)?;
+                let size = (&all[start..]).read_u32::<BigEndian>()? as usize;
+                meta = Some(all[start..].get(8..size).ok_or(ErrorKind::InvalidData)?);
                 break;
             }
             offs += pos + 4;
@@ -196,7 +198,8 @@ impl BlackmagicBraw {
             let mut md = serde_json::Map::<String, serde_json::Value>::new();
             Self::iter_boxes(meta, false, |name, d, _| {
                 if name == "keys" {
-                    Self::iter_boxes(&d[8..], false, |_, d, _| {
+                    // After its version, flags and count
+                    Self::iter_boxes(d.get(8..).ok_or(ErrorKind::UnexpectedEof)?, false, |_, d, _| {
                         if let Ok(key) = std::str::from_utf8(&d) {
                             keys.push(key.to_string());
                         }
@@ -205,10 +208,10 @@ impl BlackmagicBraw {
                 }
                 if name == "ilst" {
                     Self::iter_boxes(&d, true, |_, d, i| {
-                        let typ = (&d[..4]).read_u32::<BigEndian>()?;
+                        let typ = d.get(..4).ok_or(ErrorKind::UnexpectedEof)?.read_u32::<BigEndian>()?;
                         if let Some(key) = keys.get(i).cloned() {
                             // https://developer.apple.com/library/archive/documentation/QuickTime/QTFF/Metadata/Metadata.html#//apple_ref/doc/uid/TP40000939-CH1-SW35
-                            let mut d = &d[8..];
+                            let mut d = d.get(8..).ok_or(ErrorKind::UnexpectedEof)?; // after the type and the locale
                             let v = match typ {
                                 1  => serde_json::to_value(std::str::from_utf8(d).unwrap_or(&"")),
                                 23 => serde_json::to_value(d.read_f32::<BigEndian>()? as f64),
@@ -224,7 +227,7 @@ impl BlackmagicBraw {
                                 77 => serde_json::to_value(d.read_u32::<BigEndian>()?),
                                 78 => serde_json::to_value(d.read_u64::<BigEndian>()?),
                                 _ => {
-                                    log::debug!("{}({}): {}", key, typ, pretty_hex::pretty_hex(&d[..128.min(d.len() - 1)].to_vec()));
+                                    log::debug!("{}({}): {}", key, typ, pretty_hex::pretty_hex(&d[..128.min(d.len().saturating_sub(1))].to_vec()));
                                     Err(serde_json::Error::io(ErrorKind::InvalidData.into()))
                                 }
                             };
@@ -252,7 +255,7 @@ impl BlackmagicBraw {
     fn parse_per_frame_meta(data: &[u8]) -> Result<serde_json::Value> {
         if data.len() > 8 && &data[4..8] == b"bmdf" {
             let size = (&data[..8]).read_u32::<BigEndian>()? as usize;
-            let meta = &data[8..size];
+            let meta = data.get(8..size).ok_or(ErrorKind::InvalidData)?;
             let mut md = serde_json::Map::<String, serde_json::Value>::new();
             Self::iter_boxes(meta, false, |name, mut d, _| {
                 fn get_str<'a>(d: &'a [u8]) -> serde_json::Result<&'a str> {
@@ -287,29 +290,29 @@ impl BlackmagicBraw {
         Err(ErrorKind::InvalidData.into())
     }
 
+    // Calls `cb` with the name and contents of each box in `data`. The items of an array (an `ilst`) are an index from 1
+    // and a `data` box, whose name and contents `cb` gets with the index from 0. A box of size 0 extends to the end of
+    // `data`, and the walk stops at a box it can't step past: smaller than its header, or past the end of `data`
     fn iter_boxes<F: FnMut(&str, &[u8], usize) -> Result<()>>(data: &[u8], is_array: bool, mut cb: F) -> Result<()> {
         let mut offs = 0;
         while data.len().saturating_sub(offs) > 8 {
-            if let Some(mut size_slice) = data.get(offs..offs+4) {
-                let size = size_slice.read_u32::<BigEndian>()? as usize;
-                if let Some(d) = &data.get(offs+8..offs+size) {
-                    if is_array {
-                        let index = (&data[offs+4..offs+8]).read_u32::<BigEndian>()? as usize;
-                        let size2 = (&data[offs+8..offs+12]).read_u32::<BigEndian>()? as usize;
-                        let d = &data[offs+16..offs+8+size2];
-                        if let Ok(name) = std::str::from_utf8(&data[offs+12..offs+16]) {
-                            cb(name, d, index - 1)?;
-                        }
-                    } else {
-                        if let Ok(name) = std::str::from_utf8(&data[offs+4..offs+8]) {
-                            cb(name, d, 0)?;
-                        }
-                    }
+            let size = match (&data[offs..offs+4]).read_u32::<BigEndian>()? as usize {
+                0 => data.len() - offs,
+                size => size
+            };
+            let Some(d) = data[offs..].get(8..size) else { break };
+            if is_array {
+                let index = (&data[offs+4..offs+8]).read_u32::<BigEndian>()? as usize;
+                let size2 = d.get(..4).map_or(0, |mut x| x.read_u32::<BigEndian>().unwrap_or_default() as usize);
+                if let (Some(index), Some(d), Some(Ok(name))) = (index.checked_sub(1), d.get(8..size2), d.get(4..8).map(std::str::from_utf8)) {
+                    cb(name, d, index)?;
                 }
-                offs += size;
             } else {
-                break;
+                if let Ok(name) = std::str::from_utf8(&data[offs+4..offs+8]) {
+                    cb(name, d, 0)?;
+                }
             }
+            offs += size;
         }
         Ok(())
     }

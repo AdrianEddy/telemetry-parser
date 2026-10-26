@@ -202,11 +202,11 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             let count = d.read_u32::<BigEndian>()?;
             let length = d.read_u32::<BigEndian>()?;
             if count != 10 || length != 2 { return Err(Error::new(ErrorKind::Other, "Invalid")); }
-            let sr = read_f16_corrected(d)?; let sg = read_f16_corrected(d)?; let sb = read_f16_corrected(d)?;
-            let or = read_f16_corrected(d)?; let og = read_f16_corrected(d)?; let ob = read_f16_corrected(d)?;
-            let pr = read_f16_corrected(d)?; let pg = read_f16_corrected(d)?; let pb = read_f16_corrected(d)?;
+            let sr = read_half_float(d)?; let sg = read_half_float(d)?; let sb = read_half_float(d)?;
+            let or = read_half_float(d)?; let og = read_half_float(d)?; let ob = read_half_float(d)?;
+            let pr = read_half_float(d)?; let pg = read_half_float(d)?; let pb = read_half_float(d)?;
 
-            let sat = read_f16_corrected(d)?;
+            let sat = read_half_float(d)?;
             Ok(serde_json::json!({
                 "slope":  { "r": sr, "g": sg, "b": sb},
                 "offset": { "r": or, "g": og, "b": ob},
@@ -324,9 +324,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             _ => format!("{{{:08x}-{:08x}-{:08x}-{:08x}}}", v.0, v.1, v.2, v.3)
         } }, |d| read_uuid(d), tag_data),
         0xe114 => tag!(Default, TagId::Custom("PostCDLTransform".into()), "Post-CDL transform", String, "{}", |d| read_utf8(d), tag_data),
-        0xe201 => tag!(Cooke, TagId::Data,    "BinaryMetadata",    Json, "{:?}", |d| {
-            Ok(serde_json::Value::Array(crate::cooke::bin::parse(d.get_ref()).unwrap())) // TODO: unwrap
-        }, tag_data),
+        0xe201 => tag!(Cooke, TagId::Data,    "BinaryMetadata",    tag_data), // will be parsed in process_map
         0xe202 => tag!(Cooke, TagId::Custom("UserMetadata".into()),    "UserMetadata",      String, "{}", |d| read_utf8(d), tag_data),
         0xe203 => tag!(Cooke, TagId::Custom("CalibrationType".into()), "CalibrationType",   u8, |v| { match v {
             0 => "mm".into(),
@@ -809,19 +807,10 @@ fn read_f16(d: &mut Cursor::<&[u8]>) -> Result<f32> {
     Ok(((num & 0x0FFF) as f64 * 10f64.powf(exp as f64)) as f32)
 }
 
-fn read_f16_corrected(d: &mut Cursor::<&[u8]>) -> Result<f32> {
-    let num = d.read_i16::<BigEndian>()? as i32;
-    let sign = (num & 0x8000) != 0;
-    let mut exp = (num >> 10) & 0xFF;
-    let mant = (num & 0x03FF) as f64;
-
-    if exp == 0 || exp == 0xFF {
-        return Err(Error::new(ErrorKind::Other, "Invalid f16"));
-    }
-    exp -= 0x0F; // bias
-    let ret = ((mant / 8388608.0 + 1.0) * 2f64.powf(exp as f64)) as f32; // (1 + mantissa) * 2^exponent
-
-    Ok(if sign { -ret } else { ret })
+/// A "Half Float" of SMPTE RDD 18: IEEE 754 binary16, big-endian. `read_f16` reads the other 16-bit number of RDD 18, the
+/// "Half Float (lens serial)" distance format (section 5.1)
+fn read_half_float(d: &mut Cursor::<&[u8]>) -> Result<f32> {
+    Ok(half::f16::from_bits(d.read_u16::<BigEndian>()?).to_f32())
 }
 
 fn read_u16_array(d: &mut Cursor::<&[u8]>) -> Result<Vec<u16>> {

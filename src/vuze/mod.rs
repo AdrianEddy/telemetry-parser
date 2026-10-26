@@ -73,13 +73,11 @@ impl Vuze {
                 continue; // go inside these boxes
             } else {
                 if typ == fourcc("modl") { // Model
-                    let mut buf = vec![0u8; size as usize - header_size as usize];
-                    stream.read_exact(&mut buf)?;
+                    let buf = util::read_box_data(stream, size, header_size)?;
                     self.model = Some(String::from_utf8_lossy(&buf).trim_start_matches("Vuze").to_string());
                 }
                 if typ == fourcc("pmod") || typ == fourcc("scfg") {
-                    let mut buf = vec![0u8; size as usize - header_size as usize];
-                    stream.read_exact(&mut buf)?;
+                    let buf = util::read_box_data(stream, size, header_size)?;
                     let value = String::from_utf8_lossy(&buf).trim().to_owned();
                     if typ == fourcc("pmod") { processing_mode = Some(value); }
                     else { capture_mode = Some(value); }
@@ -90,14 +88,12 @@ impl Vuze {
                 // the two recorded image circles says.
                 for (i, key) in ["rcrp", "lcrp"].iter().enumerate() {
                     if typ == fourcc(key) {
-                        let mut buf = vec![0u8; size as usize - header_size as usize];
-                        stream.read_exact(&mut buf)?;
+                        let buf = util::read_box_data(stream, size, header_size)?;
                         crops[i] = rig::Crop::parse(&String::from_utf8_lossy(&buf));
                     }
                 }
                 if typ == fourcc("cali") { // Calibration YAML
-                    let mut buf = vec![0u8; size as usize - header_size as usize];
-                    stream.read_exact(&mut buf)?;
+                    let buf = util::read_box_data(stream, size, header_size)?;
                     let calib = String::from_utf8_lossy(&buf).to_string().replace("%YAML:1.0", "");
 
                     match serde_yaml::from_str(calib.trim()) as serde_yaml::Result<serde_json::Value> {
@@ -110,9 +106,7 @@ impl Vuze {
                     }
                 }
                 if typ == fourcc("bmdt") { // IMU data
-                    let buflen = size as usize - header_size as usize;
-                    let mut buf = vec![0u8; buflen];
-                    stream.read_exact(&mut buf)?;
+                    let buf = util::read_box_data(stream, size, header_size)?;
 
                     let data = records::parse(&buf, &cancel_flag, &progress_cb);
                     self.frame_readout_time = data.readout_ms;

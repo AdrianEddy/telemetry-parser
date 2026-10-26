@@ -27,8 +27,19 @@ pub struct SampleInfo {
     pub tag_map: Option<GroupedTagMap>
 }
 
+/// The end of a box at `pos` that is `size` bytes long with its header of `header_size` (ISO/IEC 14496-12 §4.2): none
+/// for a size smaller than the header, which no walk can step past, or for an end past the largest stream position (an
+/// `i64`, as file offsets are). So a walk that goes from each box to the next one at its end always moves forward, by a
+/// header at least. Nor can the end plus a header overflow, the sum the `read_box` walks seek by (`org_pos + size`)
+fn box_end(pos: u64, size: u64, header_size: u64) -> Option<u64> {
+    pos.checked_add(size).filter(|end| size >= header_size && *end <= i64::MAX as u64)
+}
+
 // Read all boxes and make sure all top-level boxes are named using ascii and have correct size.
 // If there's any garbage at the end of the file, it is removed.
+// A box of size 0 extends to the end of the file, so it's the last one (ISO/IEC 14496-12 §4.2). A recording that was
+// never finished is left that way: FFmpeg writes its `mdat` with size 0 and only sets it when it writes the `moov` after
+// it. Any other size that can't be stepped past (`box_end`) is garbage, like a box past the end of the file
 pub fn get_mp4_good_size<T: Read + Seek>(stream: &mut T, size: u64) -> Result<usize> {
     let mut good_size = 0;
     while stream.stream_position()? < size {
@@ -37,12 +48,15 @@ pub fn get_mp4_good_size<T: Read + Seek>(stream: &mut T, size: u64) -> Result<us
         let mut name = [0u8; 4];
         let name_read_ok = stream.read_exact(&mut name).is_ok();
         let name_good = name_read_ok && name.iter().all(|x| x.is_ascii() && *x > 13);
+        let mut header_size = 8;
         if len == 1 { // Large box
             len = stream.read_u64::<BigEndian>()?;
+            header_size = 16;
+        } else if len == 0 { // Up to the end of the file
+            len = size - start_pos;
         }
-        let end_pos = start_pos + len;
-        let size_good = size >= end_pos;
-        if name_good && size_good {
+        let end_pos = box_end(start_pos, len, header_size).filter(|end_pos| size >= *end_pos);
+        if let (true, Some(end_pos)) = (name_good, end_pos) {
             good_size = end_pos as usize;
             stream.seek(SeekFrom::Start(end_pos))?;
         } else {
@@ -54,31 +68,40 @@ pub fn get_mp4_good_size<T: Read + Seek>(stream: &mut T, size: u64) -> Result<us
 }
 
 // if mdhd timescale is 0, try to patch it if we know valid value
+//
+// The mdhd box (ISO/IEC 14496-12 §8.4.2) has its size before its type, and its version after it: 32 bytes in version 0,
+// 44 in version 1, whose creation and modification dates and duration are 64-bit rather than 32-bit. Bytes that read
+// "mdhd" without that size aren't one. The track's hdlr box follows it, its name 32 bytes in: a counted string in GoPro's
+// files, "GoPro MET" after its length
 pub fn patch_mdhd_timescale(all: &mut [u8]) {
     let mut offs = 0;
     while let Some(pos) = memchr::memmem::find(&all[offs..], b"mdhd") {
-        if all.len() > offs+pos+70 && &all[offs+pos+32..offs+pos+36] == b"hdlr" {
-            let typ = unsafe { std::str::from_utf8_unchecked(&all[offs+pos+61..offs+pos+70] ) };
-            let version = all[offs + 5];
-            let dates = match version { 1 => 16, _ => 8 }; // creation and modification dates size
-            // Skip 4 bytes fourcc
-            // Skip 4 bytes version + flags
-            // Skip 8 or 16 bytes creation/modification dates
-            let ts_offset = offs+pos+4+4+dates;
-            let timescale = (&all[ts_offset..]).read_u32::<BigEndian>().unwrap();
-            if timescale == 0 {
-                let patch = match typ {
-                    "GoPro AAC" => 48000u32,
-                    "GoPro MET" => 1000u32,
-                    _ => 0u32
-                };
-                log::warn!("Track {typ} timescale is 0, trying patching it to {patch}");
-                if patch > 0 {
-                    all[ts_offset..ts_offset+4].copy_from_slice(&patch.to_be_bytes());
-                }
+        let at = offs + pos;
+        offs = at + 4;
+        let Some(start) = at.checked_sub(4) else { continue };
+        let size = (&all[start..at]).read_u32::<BigEndian>().unwrap() as usize;
+        let dates = match (all.get(at + 4).copied(), size) {
+            (Some(0), 32) => 8,
+            (Some(1), 44) => 16,
+            _ => continue,
+        };
+        let hdlr = start + size;
+        if all.get(hdlr + 4..hdlr + 8) != Some(b"hdlr") { continue; }
+        let Some(typ) = all.get(hdlr + 33..hdlr + 42) else { continue };
+        // After the type, the version and flags, and the dates
+        let ts_offset = at + 4 + 4 + dates;
+        let timescale = (&all[ts_offset..]).read_u32::<BigEndian>().unwrap();
+        if timescale == 0 {
+            let patch = match typ {
+                b"GoPro AAC" => 48000u32,
+                b"GoPro MET" => 1000u32,
+                _ => 0u32
+            };
+            log::warn!("Track {} timescale is 0, trying patching it to {patch}", String::from_utf8_lossy(typ));
+            if patch > 0 {
+                all[ts_offset..ts_offset+4].copy_from_slice(&patch.to_be_bytes());
             }
         }
-        offs += pos + 4;
     }
 }
 
@@ -143,7 +166,7 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
         }
 
         let mut all = read_beginning_and_end(stream, size, read_mb*1024*1024)?;
-        if let Some(pos) = memchr::memmem::find(&all, b"mdat") {
+        if let Some(pos) = memchr::memmem::find(&all, b"mdat").filter(|pos| *pos >= 4) { // after its size
             let how_much_less = (size - all.len()) as u64;
             let mut len = (&all[pos-4..]).read_u32::<BigEndian>()? as u64;
             let is_large_box = len == 1;
@@ -179,6 +202,8 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
             return mp4parse::read_mp4(&mut std::io::Cursor::new(&all), mp4parse::ParseStrictness::Permissive);
         }
     }
+    // The whole file, from its start rather than wherever the caller's reads left the stream
+    stream.seek(SeekFrom::Start(0))?;
     mp4parse::read_mp4(stream, mp4parse::ParseStrictness::Permissive)
 }
 
@@ -186,7 +211,12 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, mut typ
     where F: FnMut(SampleInfo, &[u8], u64, Option<&VideoMetadata>)
 {
 
-    let ctx = parse_mp4(stream, size).or_else(|_| mp4parse::read_mp4(stream, mp4parse::ParseStrictness::Permissive))?;
+    // When `parse_mp4`'s quick parse fails (of the file's two ends, or of its boxes up to the first bad one), the whole
+    // file as mp4parse reads it. That is from the file's start: the failed parse leaves the stream wherever it stopped
+    let ctx = parse_mp4(stream, size).or_else(|_| {
+        stream.seek(SeekFrom::Start(0))?;
+        mp4parse::read_mp4(stream, mp4parse::ParseStrictness::Permissive)
+    })?;
 
     let mut track_index = 0;
     // let mut sample_delta = 0u32;
@@ -214,8 +244,10 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, mut typ
 
                 if let Some(samples) = mp4parse::unstable::create_sample_table(&x, 0.into()) {
                     let mut sample_data = Vec::new();
-                    let mut sample_index = 0u64;
-                    for s in samples {
+                    // A sample is numbered by its entry in the sample table, the ones too short to be delivered
+                    // included: the parsers number the frames by it, so a frame whose sample is empty is a gap in the
+                    // numbers rather than moving every frame after it
+                    for (sample_index, s) in samples.iter().enumerate() {
                         if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) { break; }
 
                         let mut sample_size = (s.end_offset.0 - s.start_offset.0) as usize;
@@ -236,10 +268,9 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, mut typ
                             stream.seek(SeekFrom::Start(s.start_offset.0 as u64))?;
                             stream.read_exact(&mut sample_data[..])?;
 
-                            callback(SampleInfo { sample_index, track_index, timestamp_ms: sample_timestamp_ms, duration_ms: sample_duration_ms, tag_map: None, video_rotation }, &sample_data, s.start_offset.0 as u64, video_md.as_ref());
+                            callback(SampleInfo { sample_index: sample_index as u64, track_index, timestamp_ms: sample_timestamp_ms, duration_ms: sample_duration_ms, tag_map: None, video_rotation }, &sample_data, s.start_offset.0 as u64, video_md.as_ref());
 
                             //timestamp_ms += duration_ms;
-                            sample_index += 1;
                         }
                     }
                     if single {
@@ -301,6 +332,32 @@ pub fn camera_rig(input: &crate::Input) -> Option<crate::rig::CameraRig> {
         .find_map(|map| (map.get_t(TagId::Rig) as Option<&crate::rig::CameraRig>).cloned())
 }
 
+/// The time between two samples of a track that it has no samples for: `next` starts where `prev` ends in a track that
+/// delivers every sample, and later by the samples it didn't deliver (`get_track_samples` skips the empty ones). A gap
+/// is at least one whole sample long, so less than half of `prev`'s duration is rounding of the times, and no gap
+pub(crate) fn time_missing_between(prev: &SampleInfo, next: &SampleInfo) -> f64 {
+    let gap = next.timestamp_ms - (prev.timestamp_ms + prev.duration_ms);
+    if prev.duration_ms > 0.0 && gap >= prev.duration_ms / 2.0 { gap } else { 0.0 }
+}
+
+/// A sample of evenly spaced readings (an IMU reading at a steady rate, whose samples give no time per reading): the
+/// sample, the camera clock's time of its readings when the format has one (GoPro's stamps, in µs), and their count
+type EvenlySpaced<'a> = (&'a SampleInfo, Option<i64>, usize);
+
+/// The time from the end of `prev`'s readings to the start of `next`'s on their timeline, which spaces the readings
+/// `reading_ms` apart: none for samples the track delivered one after another, whose readings continue the timeline.
+/// Across samples it didn't deliver (`time_missing_between`) it's the time of those, so the readings after them stay at
+/// their own sample's time instead of landing a frame early for every sample missing. That is on the clock the
+/// readings are spaced by: the track's, or the camera's when the samples are stamped by it, from the two stamps less
+/// the readings of `prev`
+fn time_before_readings(prev: EvenlySpaced, next: EvenlySpaced, reading_ms: f64) -> f64 {
+    let missing_ms = time_missing_between(prev.0, next.0);
+    match (prev.1, next.1) {
+        (Some(prev_us), Some(next_us)) if missing_ms > 0.0 => (next_us - prev_us) as f64 / 1000.0 - prev.2 as f64 * reading_ms,
+        _ => missing_ms,
+    }
+}
+
 pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Result<Vec<IMUData>> {
     let mut timestamp = 0f64;
     let mut first_timestamp = None;
@@ -310,12 +367,17 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
     let mut data_index = 0;
 
     let mut fix_timestamps = false;
+    // The samples with evenly spaced readings, by where their readings start in `final_data`, and their duration
+    let mut evenly_spaced: Vec<(usize, EvenlySpaced)> = Vec::new();
+    let mut evenly_spaced_duration_ms = 0.0;
+    let is_gopro = input.camera_type() == "GoPro";
 
     if let Some(ref samples) = input.samples {
         for info in samples {
             if info.tag_map.is_none() { continue; }
 
             let grouped_tag_map = info.tag_map.as_ref().unwrap();
+            let mut sample_evenly_spaced = false;
 
             for (group, map) in grouped_tag_map {
                 if group == &GroupId::Gyroscope || group == &GroupId::Accelerometer || group == &GroupId::Magnetometer {
@@ -353,6 +415,7 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
                                 let arr = arr.get();
                                 let reading_duration = info.duration_ms / arr.len() as f64;
                                 fix_timestamps = true;
+                                sample_evenly_spaced |= !arr.is_empty();
 
                                 for (j, v) in arr.iter().enumerate() {
                                     if final_data.len() <= data_index + j {
@@ -390,26 +453,45 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
                     }
                 }
             }
+            if sample_evenly_spaced {
+                // GoPro's readings are spaced by the camera's clock (`GoPro::get_avg_sample_duration`), its gyroscope's
+                let stamp_us = grouped_tag_map.get(&GroupId::Gyroscope).filter(|_| is_gopro).and_then(crate::gopro::GoPro::stamp_us);
+                evenly_spaced.push((data_index, (info, stamp_us, 0)));
+                evenly_spaced_duration_ms += info.duration_ms;
+            }
             data_index = final_data.len();
         }
     }
 
     if fix_timestamps && !final_data.is_empty() {
         let avg_diff = {
-            if input.camera_type() == "GoPro" {
+            if is_gopro {
                 crate::gopro::GoPro::get_avg_sample_duration(input.samples.as_ref().unwrap(), &GroupId::Gyroscope)
             } else {
-                let mut total_duration_ms = 0.0;
-                for info in input.samples.as_ref().unwrap() {
-                    total_duration_ms += info.duration_ms;
-                }
-                Some(total_duration_ms / final_data.len() as f64)
+                // The readings span the samples they came in
+                Some(evenly_spaced_duration_ms / final_data.len() as f64)
             }
         };
         if let Some(avg_diff) = avg_diff {
             if avg_diff > 0.0 {
+                // Where each sample's readings start: past the evenly spaced timeline by the time before them
+                // (`time_before_readings`), from the first sample's own time
+                let mut sample_starts = Vec::with_capacity(evenly_spaced.len());
+                let mut offset_ms = 0.0;
+                for (k, &(start, sample)) in evenly_spaced.iter().enumerate() {
+                    offset_ms = match k.checked_sub(1).map(|previous| evenly_spaced[previous]) {
+                        Some((previous_start, (info, stamp_us, _))) => offset_ms + time_before_readings((info, stamp_us, start - previous_start), sample, avg_diff),
+                        None => sample.0.timestamp_ms,
+                    };
+                    sample_starts.push((start, offset_ms));
+                }
+                let mut sample_starts = sample_starts.into_iter().peekable();
+                let mut offset_ms = 0.0;
                 for (i, x) in final_data.iter_mut().enumerate() {
-                    x.timestamp_ms = avg_diff * i as f64;
+                    while let Some((_, sample_offset_ms)) = sample_starts.next_if(|(start, _)| *start <= i) {
+                        offset_ms = sample_offset_ms;
+                    }
+                    x.timestamp_ms = avg_diff * i as f64 + offset_ms;
                 }
             }
         }
@@ -442,38 +524,31 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
                 crate::gopro::GoPro::get_avg_sample_duration(samples, &GroupId::Magnetometer),
             )
         } else {
+            // Each sensor's readings span the samples they came in, which `time_before_readings` advances the readings
+            // past the time of any others
             let mut total_len = (0, 0, 0);
-            for grouped_tag_map in samples.iter().filter_map(|v| v.tag_map.as_ref()) {
+            let mut total_duration_ms = (0.0, 0.0, 0.0);
+            for info in samples {
+                let Some(ref grouped_tag_map) = info.tag_map else { continue };
                 for (group, map) in grouped_tag_map {
-                    if let Some(taginfo) = map.get(&TagId::Data) {
-                        if let TagValue::Vec_Vector3_i16(arr) = &taginfo.value {
-                            match group {
-                                GroupId::Gyroscope     => total_len.0 += arr.get().len(),
-                                GroupId::Accelerometer => total_len.1 += arr.get().len(),
-                                GroupId::Magnetometer  => total_len.2 += arr.get().len(),
-                                _ => {}
-                            }
-                        }
-                        if let TagValue::Vec_Vector3_f32(arr) = &taginfo.value {
-                            match group {
-                                GroupId::Gyroscope     => total_len.0 += arr.get().len(),
-                                GroupId::Accelerometer => total_len.1 += arr.get().len(),
-                                GroupId::Magnetometer  => total_len.2 += arr.get().len(),
-                                _ => {}
-                            }
-                        }
+                    let len = match map.get(&TagId::Data).map(|taginfo| &taginfo.value) {
+                        Some(TagValue::Vec_Vector3_i16(arr)) => arr.get().len(),
+                        Some(TagValue::Vec_Vector3_f32(arr)) => arr.get().len(),
+                        _ => 0
+                    };
+                    if len == 0 { continue; }
+                    match group {
+                        GroupId::Gyroscope     => { total_len.0 += len; total_duration_ms.0 += info.duration_ms; },
+                        GroupId::Accelerometer => { total_len.1 += len; total_duration_ms.1 += info.duration_ms; },
+                        GroupId::Magnetometer  => { total_len.2 += len; total_duration_ms.2 += info.duration_ms; },
+                        _ => {}
                     }
                 }
             }
-
-            let mut total_duration_ms = 0.0;
-            for info in samples {
-                total_duration_ms += info.duration_ms;
-            }
             (
-                if total_len.0 > 0 { Some(total_duration_ms / total_len.0 as f64) } else { None },
-                if total_len.1 > 0 { Some(total_duration_ms / total_len.1 as f64) } else { None },
-                if total_len.2 > 0 { Some(total_duration_ms / total_len.2 as f64) } else { None }
+                if total_len.0 > 0 { Some(total_duration_ms.0 / total_len.0 as f64) } else { None },
+                if total_len.1 > 0 { Some(total_duration_ms.1 / total_len.1 as f64) } else { None },
+                if total_len.2 > 0 { Some(total_duration_ms.2 / total_len.2 as f64) } else { None }
             )
         };
         log::debug!("Reading duration: {:?}", reading_duration);
@@ -491,6 +566,11 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
                 }
             }
         }
+
+        // Each sensor's last sample of evenly spaced readings (`time_before_readings`). GoPro's timelines start where the
+        // camera's own stamps put them (`GoPro::imu_start_times_ms`), the others at their first sample's time
+        let mut last_sample: (Option<EvenlySpaced>, Option<EvenlySpaced>, Option<EvenlySpaced>) = (None, None, None);
+        let is_gopro = input.camera_type() == "GoPro";
 
         for info in samples {
             if info.tag_map.is_none() { continue; }
@@ -527,6 +607,24 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
                     let io = io.as_bytes();
 
                     if let Some(taginfo) = map.get(&TagId::Data) {
+                        let evenly_spaced = match &taginfo.value {
+                            TagValue::Vec_Vector3_i16(arr) => arr.get().len(),
+                            TagValue::Vec_Vector3_f32(arr) => arr.get().len(),
+                            _ => 0
+                        };
+                        if evenly_spaced > 0 {
+                            let (timeline_ms, last, reading_ms) = match group {
+                                GroupId::Gyroscope     => (&mut timestamp.0, &mut last_sample.0, reading_duration.0),
+                                GroupId::Accelerometer => (&mut timestamp.1, &mut last_sample.1, reading_duration.1),
+                                _                      => (&mut timestamp.2, &mut last_sample.2, reading_duration.2),
+                            };
+                            let sample = (info, if is_gopro { crate::gopro::GoPro::stamp_us(map) } else { None }, evenly_spaced);
+                            match last.replace(sample) {
+                                Some(previous) => *timeline_ms += time_before_readings(previous, sample, reading_ms.unwrap_or_default()),
+                                None if !is_gopro => *timeline_ms = info.timestamp_ms,
+                                None => {}
+                            }
+                        }
                         match &taginfo.value {
                             // Sony and GoPro
                             TagValue::Vec_Vector3_i16(arr) => {
@@ -684,18 +782,37 @@ pub fn create_csv_map_hdr<'a, 'b>(row: &'b csv::StringRecord, headers: &'a csv::
     headers.iter().zip(row).map(|(a, b)| (a, b)).collect()
 }
 
+/// The samples of a track and the sum of their durations in the time-to-sample table, in the track's timescale
+fn stts_samples_and_duration(track: &mp4parse::Track) -> Option<(u64, u64)> {
+    let stts = track.stts.as_ref().filter(|stts| !stts.samples.is_empty())?;
+    Some(stts.samples.iter().fold((0u64, 0u64), |(samples, duration), v| {
+        (samples + v.sample_count as u64, duration + v.sample_count as u64 * v.sample_delta as u64)
+    }))
+}
+
+/// The frame rate of a track: its samples over the sum of their durations in the time-to-sample table. That is the
+/// average rate ffmpeg reads (`avg_frame_rate`, libavformat/mov.c) and the one MDK, Gyroflow's player, gives the video;
+/// for a constant frame rate it's the nominal one. Not the media duration (`mdhd`): a muxer can count the composition
+/// delay of B-frames into that (ffmpeg does), and a 900-frame 59.94 fps clip delayed by two frames reads as 59.81 fps
+/// by it. Only a table that gives its samples no duration at all leaves the media duration to go by
 pub fn get_fps_from_track(track: &mp4parse::Track) -> Option<f64> {
-    if let Some(ref stts) = track.stts {
-        if !stts.samples.is_empty() {
-            let samples: u32 = stts.samples.iter().map(|v| v.sample_count).sum();
-            let timescale = track.timescale?;
-            let duration = track.duration?;
-            let duration_us = duration.0 as f64 * 1000_000.0 / timescale.0 as f64;
-            let us_per_frame = duration_us / samples as f64;
-            return Some(1000_000.0 / us_per_frame);
-        }
+    let (samples, stts_duration) = stts_samples_and_duration(track)?;
+    let timescale = track.timescale?;
+    let duration = if stts_duration > 0 { stts_duration } else { track.duration?.0 };
+    let duration_us = duration as f64 * 1000_000.0 / timescale.0 as f64;
+    let us_per_frame = duration_us / samples as f64;
+    Some(1000_000.0 / us_per_frame)
+}
+
+/// The duration of a track in its timescale: the media duration (`mdhd`), at most the sum of the sample durations, as
+/// ffmpeg takes it (libavformat/mov.c). A muxer can count the composition delay of B-frames into the media duration,
+/// which the samples don't play for
+fn track_duration(track: &mp4parse::Track) -> Option<u64> {
+    let stts_duration = stts_samples_and_duration(track).map(|(_, duration)| duration).filter(|duration| *duration > 0);
+    match (track.duration.map(|d| d.0), stts_duration) {
+        (Some(media), Some(samples)) => Some(media.min(samples)),
+        (media, samples) => media.or(samples),
     }
-    None
 }
 
 #[derive(Default, Debug, Clone)]
@@ -709,9 +826,9 @@ pub struct VideoMetadata {
 
 pub fn get_video_metadata_from_track(track: &mp4parse::Track) -> Result<VideoMetadata> {
     let mut duration_sec = 0.0;
-    if let Some(d) = track.duration {
+    if let Some(d) = track_duration(track) {
         if let Some(ts) = track.timescale {
-            duration_sec = d.0 as f64 / ts.0 as f64;
+            duration_sec = d as f64 / ts.0 as f64;
         }
     }
     if let Some(ref tkhd) = track.tkhd {
@@ -790,16 +907,67 @@ pub const fn fourcc(s: &str) -> u32 {
     let s = s.as_bytes();
     (s[3] as u32) | ((s[2] as u32) << 8) | ((s[1] as u32) << 16) | ((s[0] as u32) << 24)
 }
+/// The header of the box at the reader's position: its type, position and size, and the size of the header. The size
+/// counts the header: it's the 32-bit one, or the 64-bit one after the type when that is 1. A size of 0 is a box that
+/// extends to the end of the file (ISO/IEC 14496-12 §4.2), the last one. Any other size that no walk can step past
+/// (`box_end`: smaller than the header, or ending past the largest stream position) is an error (`InvalidData`), so a
+/// walk that goes from box to box by their sizes always moves forward
 pub fn read_box<R: Read + Seek>(reader: &mut R) -> Result<(u32, u64, u64, i64)> {
     let pos = reader.stream_position()?;
     let size = reader.read_u32::<BigEndian>()?;
     let typ = reader.read_u32::<BigEndian>()?;
-    if size == 1 {
-        let largesize = reader.read_u64::<BigEndian>()?;
-        Ok((typ, pos, largesize, 16))
+    let (size, header_size) = if size == 1 {
+        (reader.read_u64::<BigEndian>()?, 16)
+    } else if size == 0 {
+        return Ok((typ, pos, 0, 8));
     } else {
-        Ok((typ, pos, size as u64, 8))
+        (size as u64, 8)
+    };
+    if box_end(pos, size, header_size).is_none() {
+        return Err(Error::new(ErrorKind::InvalidData, format!("Box {} at {pos} has an invalid size {size}", String::from_utf8_lossy(&typ.to_be_bytes()))));
     }
+    Ok((typ, pos, size, header_size as i64))
+}
+
+/// The data of the box whose header `read_box` just read: its `size` bytes but the `header_size` of the header
+/// (`read_data`). A box that runs past the end of the stream is an error (`UnexpectedEof`)
+pub fn read_box_data<R: Read + Seek>(reader: &mut R, size: u64, header_size: i64) -> Result<Vec<u8>> {
+    read_data(reader, size.saturating_sub(header_size as u64))
+}
+
+/// The next `len` bytes of the stream, for a length the file gives: fewer is an error (`UnexpectedEof`). They are read
+/// into a buffer of that size, or of the rest of the stream where that is shorter, so a damaged length allocates no
+/// more than the stream holds, and a whole box is read in one allocation
+pub fn read_data<R: Read + Seek>(reader: &mut R, len: u64) -> Result<Vec<u8>> {
+    let pos = reader.stream_position()?;
+    let rest = reader.seek(SeekFrom::End(0))?.saturating_sub(pos);
+    reader.seek(SeekFrom::Start(pos))?;
+    let mut data = Vec::new();
+    usize::try_from(len.min(rest)).ok().and_then(|n| data.try_reserve_exact(n).ok()).ok_or(ErrorKind::OutOfMemory)?;
+    if reader.by_ref().take(len).read_to_end(&mut data)? as u64 != len {
+        return Err(ErrorKind::UnexpectedEof.into());
+    }
+    Ok(data)
+}
+
+/// The data of the first box of type `typ` among the boxes that fill `data`, which is a box's data. A box of size 0
+/// extends to the end of `data` (the end of the box it is in, as FFmpeg reads it), and the search ends at a box it can't
+/// step past (`box_end`) or that runs past the end of `data`
+pub fn find_box_data<'a>(data: &'a [u8], typ: &[u8; 4]) -> Option<&'a [u8]> {
+    let mut pos = 0;
+    while let Some(mut header) = data.get(pos..pos + 8) {
+        let (size, header_size) = match header.read_u32::<BigEndian>().ok()? {
+            0 => ((data.len() - pos) as u64, 8),
+            1 => (data.get(pos + 8..).and_then(|mut x| x.read_u64::<BigEndian>().ok())?, 16),
+            size => (size as u64, 8)
+        };
+        let end = box_end(pos as u64, size, header_size).filter(|end| *end <= data.len() as u64)? as usize;
+        if &data[pos + 4..pos + 8] == typ {
+            return Some(&data[pos + header_size as usize..end]);
+        }
+        pos = end;
+    }
+    None
 }
 
 fn trim_sequence_suffix(stem: &str) -> Option<&str> {
@@ -857,4 +1025,39 @@ macro_rules! try_block {
             Some(())
         }())
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A version `version` mdhd box of timescale `timescale`, and the hdlr box after it, named as GoPro names its tracks
+    fn mdhd_hdlr(version: u8, timescale: u32, name: &str) -> Vec<u8> {
+        let dates = if version == 1 { 16 } else { 8 };
+        let mut mdhd = vec![version, 0, 0, 0];
+        mdhd.extend(std::iter::repeat_n(0x11, dates));
+        mdhd.extend(timescale.to_be_bytes());
+        mdhd.extend(std::iter::repeat_n(0x22, dates / 2)); // The duration
+        mdhd.extend([0x55, 0xC4, 0, 0]); // The language and pre_defined
+        let mut hdlr = vec![0; 8]; // The version, flags and pre_defined
+        hdlr.extend(b"meta");
+        hdlr.extend([0; 12]);
+        hdlr.push(name.len() as u8);
+        hdlr.extend(name.as_bytes());
+        let boxed = |typ: &[u8], body: Vec<u8>| [&(body.len() as u32 + 8).to_be_bytes()[..], typ, &body].concat();
+        [boxed(b"mdhd", mdhd), boxed(b"hdlr", hdlr)].concat()
+    }
+
+    #[test]
+    fn a_zero_mdhd_timescale_is_patched_in_either_version() {
+        let prefix = &b"bytes that read mdhd but aren't a box"[..];
+        for version in [0, 1] {
+            let mut data = [prefix, &mdhd_hdlr(version, 0, "GoPro MET")].concat();
+            patch_mdhd_timescale(&mut data);
+            assert_eq!(data, [prefix, &mdhd_hdlr(version, 1000, "GoPro MET")].concat());
+        }
+        let mut other = mdhd_hdlr(1, 0, "GoPro TCD");
+        patch_mdhd_timescale(&mut other);
+        assert_eq!(other, mdhd_hdlr(1, 0, "GoPro TCD"));
+    }
 }

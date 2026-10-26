@@ -51,8 +51,9 @@ impl QoocamEgo {
         None
     }
 
-    fn parse_data<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<HashMap<String, Value>> {
-        let mut map = HashMap::new();
+    /// The entries of a `kfix` or `kvar` box, in the file's order
+    fn parse_data<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<(String, Value)>> {
+        let mut map = Vec::new();
         let count = stream.read_u32::<LittleEndian>()?;
         for _ in 0..count {
             let mut name = [0u8; 32];
@@ -64,8 +65,7 @@ impl QoocamEgo {
             let length = stream.read_u32::<LittleEndian>()?;
             let v = match typ.as_ref() {
                 "CHAR" => {
-                    let mut buf = vec![0u8; length as usize];
-                    stream.read_exact(&mut buf)?;
+                    let buf = util::read_data(stream, length as u64)?;
                     Value::Json(serde_json::Value::String(String::from_utf8_lossy(&buf).trim_matches(char::from(0)).to_string()))
                 },
                 "S32" => {
@@ -102,23 +102,19 @@ impl QoocamEgo {
                     }
                 }
                 "DOUBLE" => {
+                    // A number, or null for one that isn't finite, which JSON has none for
                     if length == 1 {
-                        let f = stream.read_f64::<LittleEndian>()?.into();
-                        let n = serde_json::Number::from_f64(f);
-                        Value::Json(serde_json::Value::Number(n.expect("Bad Double")))
+                        Value::Json(serde_json::Value::from(stream.read_f64::<LittleEndian>()?))
                     } else {
                         let mut arr = Vec::new();
                         for _ in 0..length {
-                            let f = stream.read_f64::<LittleEndian>()?.into();
-                            let n = serde_json::Number::from_f64(f);
-                            arr.push(serde_json::Value::Number(n.expect("Bad Double")))
+                            arr.push(serde_json::Value::from(stream.read_f64::<LittleEndian>()?))
                         }
                         Value::Json(serde_json::Value::Array(arr))
                     }
                 }
                 "U8" => {
-                    let mut buf = vec![0u8; length as usize];
-                    stream.read_exact(&mut buf)?;
+                    let buf = util::read_data(stream, length as u64)?;
                     Value::Buffer(buf)
                 }
                 _ => {
@@ -126,9 +122,15 @@ impl QoocamEgo {
                     Value::Json(serde_json::Value::Null)
                 }
             };
-            map.insert(name, v);
+            map.push((name, v));
         }
         Ok(map)
+    }
+
+    /// The value of the entry called `name` among `parse_data`'s: the last one of that name, as each replaces the one
+    /// before it
+    fn entry<'a>(md: &'a [(String, Value)], name: &str) -> Option<&'a Value> {
+        md.iter().rev().find(|(k, _)| k == name).map(|(_, v)| v)
     }
 
     pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, _size: usize, _progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
@@ -137,7 +139,8 @@ impl QoocamEgo {
         let mut exp = Vec::new();
         let mut first_timestamp = None;
         let mut last_timestamp = None;
-        let mut metadata = HashMap::new();
+        // In the order of the file's entries, as the other parsers give their metadata
+        let mut metadata = serde_json::Map::new();
         let mut rear_lens = false;
 
         let mut map = GroupedTagMap::new();
@@ -155,8 +158,8 @@ impl QoocamEgo {
                         metadata.insert(k.clone(), v.clone());
                     }
                 }
-                if let Some(Value::Buffer(lens_index)) = md.get("LENS_INDEX") {
-                    if lens_index[0] == 1 {
+                if let Some(Value::Buffer(lens_index)) = Self::entry(&md, "LENS_INDEX") {
+                    if lens_index.first() == Some(&1) {
                         rear_lens = true;
                     }
                 }
@@ -167,7 +170,7 @@ impl QoocamEgo {
 
                 let mut g_range = 2000.0;
                 let mut a_range = 4.0;
-                if let Some(Value::Json(serde_json::Value::String(v))) = md.get("INFO") {
+                if let Some(Value::Json(serde_json::Value::String(v))) = Self::entry(&md, "INFO") {
                     // v = "V_S_PTS=5812115123 V_E_PTS=5966273383 V_F_NUM=9252 V_FPS=60.0 V_MUX_FPS=60.0 V_IMU_F=6 V_G_RANGE=2000 V_A_RANGE=4 V_CROP_SCALE=0,0,0,0,1,1,0 V_VERSION=3"
                     let info = v.split_whitespace()
                                 .map(|s| s.split('=').collect::<Vec<&str>>())
@@ -185,7 +188,7 @@ impl QoocamEgo {
                 g_range /= 2.0;
                 a_range /= 2.0;
 
-                if let Some(Value::Buffer(imu)) = md.get("IMU") {
+                if let Some(Value::Buffer(imu)) = Self::entry(&md, "IMU") {
                     let mut d = std::io::Cursor::new(&imu);
                     while d.position() < imu.len() as u64 {
                         let timestamp_ms = d.read_u64::<LittleEndian>()? as f64 / 1000.0;
@@ -213,7 +216,7 @@ impl QoocamEgo {
                         });
                     }
                 }
-                if let Some(Value::Buffer(buf)) = md.get("EXP") {
+                if let Some(Value::Buffer(buf)) = Self::entry(&md, "EXP") {
                     let mut d = std::io::Cursor::new(&buf);
                     while d.position() < buf.len() as u64 {
                         exp.push(TimeScalar {

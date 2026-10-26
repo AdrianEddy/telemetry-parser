@@ -136,7 +136,8 @@ fn build_packets(messages: &[proto::Main]) -> std::io::Result<(Vec<Vec<u8>>, Vec
     let mut pts_us   = Vec::with_capacity(messages.len());
     let mut dur_us   = Vec::with_capacity(messages.len());
 
-    let mut frame_index = telemetry_parser::gyroflow::FrameIndex::default();
+    // Held to the clip's length like the JSONL reader's, so a broken frame number lands where it does there
+    let mut frame_index = telemetry_parser::gyroflow::FrameIndex::new(telemetry_parser::gyroflow::clip_frames(clip));
     let mut pending_header: Option<proto::Header> = None;
 
     for main in messages {

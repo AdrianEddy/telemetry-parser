@@ -107,12 +107,14 @@ where P: Fn(&[u8], &crate::InputOptions, &mut GroupedTagMap) -> Result<()> {
                     tag_map: Some(map),
                     ..Default::default()
                 });
-                index += 1;
 
                 if options.probe_only {
                     cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
                 }
             }
+            // The element is frame-wrapped, one per frame: a frame whose metadata can't be read still counts, so the
+            // samples keep the numbers of their frames
+            index += 1;
         } else {
             stream.seek(SeekFrom::Current(length as i64))?;
         }

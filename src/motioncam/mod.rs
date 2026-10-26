@@ -149,9 +149,14 @@ impl MotionCam {
                 log::warn!("MotionCam frame at {}: {e}", frame.offset);
                 Value::Null
             });
-            // A frame from the index keeps its place even without metadata, so the sample index stays the frame number
+            // The sample index is the frame's number in the video rendered from the file, which has the frames in time
+            // order (gyroflow looks the per-frame metadata up by it). A frame from the index keeps its place even without
+            // metadata. A frame found by the walk of a file without an index has its time in its metadata only, and
+            // without one it has no place in the sequence: a decoder walking such a file skips it as well (oxivideo's
+            // does), and MotionCam's own decoder opens no file without an index at all. Skipping it here too keeps the
+            // numbers of the frames after it those of the video
             let Some(timestamp) = frame.timestamp.or_else(|| json_i64(md.get("timestamp"))) else {
-                log::warn!("MotionCam frame at {} has no timestamp", frame.offset);
+                log::warn!("MotionCam frame at {} has no timestamp, skipped", frame.offset);
                 continue;
             };
             let duration = |key: &str| json_f64(md.get(key)).filter(|x| *x > 0.0 && *x < MAX_DURATION_NS);
@@ -425,15 +430,16 @@ fn milliseconds(ts: i64, since: i64) -> f64 {
     (ts as i128 - since as i128) as f64 / 1e6
 }
 
-/// Axes of the motion samples for gyroflow: x right, y up, z towards the viewer, in the recorded raw image.
+/// Axes of the motion samples for gyroflow's IMU frame: x up, y left, z towards the viewer, in the recorded raw image
+/// (a quarter turn from its camera frame, x right, y up, which the integrators turn it into as `(-y, x, z)`).
 ///
 /// The camera's axes (x right, y down, z forward in the raw image) follow from the sensor orientation, the
 /// clockwise rotation that makes the raw image upright on the phone held in portrait. Android's LENS_POSE_ROTATION
 /// (x, y, z, w) gives the same rotation from the phone's sensor axes, but it's often a placeholder and the sensor
-/// orientation is what apps rely on, so the pose is used only without one. Gyroflow's axes are the camera's with
-/// y and z flipped
+/// orientation is what apps rely on, so the pose is used only without one. Up is the camera's y negated, left its x
+/// negated, towards the viewer its z negated
 fn imu_orientation(container: &Value) -> String {
-    let axes = |m: [[f64; 3]; 3]| axes_string(&[m[0], m[1].map(|x| -x), m[2].map(|x| -x)]);
+    let axes = |m: [[f64; 3]; 3]| axes_string(&[m[1].map(|x| -x), m[0].map(|x| -x), m[2].map(|x| -x)]);
     let front = json_f64(container.get("lensFacing")) == Some(0.0);
     let from_sensor = json_f64(container.get("sensorOrientation")).and_then(|angle| axes(sensor_orientation_rotation(angle, front)));
     let from_pose = pose_rotation(container).and_then(axes);
@@ -443,7 +449,7 @@ fn imu_orientation(container: &Value) -> String {
             sensor
         }
         (Some(x), _) | (None, Some(x)) => x,
-        (None, None) => "yXZ".into() // the usual back camera, at 90°
+        (None, None) => "XYZ".into() // the usual back camera, at 90°
     }
 }
 
@@ -747,4 +753,26 @@ fn json_i64(v: Option<&Value>) -> Option<i64> {
 }
 fn json_f64_array(v: Option<&Value>) -> Option<Vec<f64>> {
     v?.as_array()?.iter().map(|x| json_f64(Some(x))).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn orientation(sensor_orientation: f64, front: bool) -> String {
+        imu_orientation(&serde_json::json!({ "sensorOrientation": sensor_orientation, "lensFacing": if front { 0 } else { 1 } }))
+    }
+
+    #[test]
+    fn imu_axes_follow_the_sensor_orientation() {
+        // The usual back camera: the raw image's top is the phone's right edge (+x), its left the phone's top (+y), and
+        // the viewer is on the screen's side (+z), which is Android's own axes
+        assert_eq!(orientation(90.0, false), "XYZ");
+        // Mounted the other way round: a half turn around the viewing axis
+        assert_eq!(orientation(270.0, false), "xyZ");
+        // The usual front camera: the raw image's top is the phone's right edge, and it looks out of the screen
+        assert_eq!(orientation(270.0, true), "Xyz");
+        // Without either, the usual back camera
+        assert_eq!(imu_orientation(&serde_json::json!({})), "XYZ");
+    }
 }

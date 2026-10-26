@@ -23,7 +23,7 @@ pub fn get_filename(path: &str) -> String {
         return (funcs.get_filename)(path);
     }
     let mut filename = path;
-    if let Some(pos) = path.rfind('/').or_else(|| path.rfind('\\')) {
+    if let Some(pos) = path.rfind(['/', '\\']) {
         filename = &path[pos + 1..];
     }
     filename.to_owned()
@@ -34,7 +34,7 @@ pub fn get_folder(path: &str) -> String {
         return (funcs.get_folder)(path);
     }
     if !path.ends_with('/') && !path.ends_with('\\') {
-        if let Some(pos) = path.rfind('/').or_else(|| path.rfind('\\')) {
+        if let Some(pos) = path.rfind(['/', '\\']) {
             return path[..pos].to_owned();
         }
     }
