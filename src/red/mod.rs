@@ -30,7 +30,7 @@ struct PartAtoms {
     first_frame_number: Option<u32>,
 }
 
-/// The camera clock of the frames read, as far as their timestamps establish it, by the rules of mp4-trim's R3D frame clock. A
+/// The camera clock of the frames read, as far as their timestamps establish it, by the rules of R3D frame clock. A
 /// frame's timestamp is the camera clock's time of it, but KOMODO firmware 1.7.0, 1.7.5 and 1.8.3 writes other bytes in the
 /// field of single frames, ASCII text or a time seconds off, so it is the frame's time only where the frames around it say so:
 /// - two frames of a stretch (below) agree when the time between their timestamps is the frames between them at the record frame
