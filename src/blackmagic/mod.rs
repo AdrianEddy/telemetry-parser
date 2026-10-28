@@ -50,6 +50,9 @@ impl BlackmagicBraw {
     pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         let mut gyro = Vec::new();
         let mut accl = Vec::new();
+        // The frame each reading was taken during (`util::READING_FRAMES`)
+        let (mut gyro_frames, mut accl_frames) = (Vec::new(), Vec::new());
+        let mut container_fps = None;
 
         let mut map = GroupedTagMap::new();
 
@@ -93,10 +96,11 @@ impl BlackmagicBraw {
             util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), meta, vec![]), &options);
         }
 
-        let _ = util::get_track_samples(stream, size, mp4parse::TrackType::Video, true, Some(8192), |mut info: SampleInfo, data: &[u8], file_position: u64, _video_md: Option<&VideoMetadata>| {
+        let _ = util::get_track_samples(stream, size, mp4parse::TrackType::Video, true, Some(8192), |mut info: SampleInfo, data: &[u8], file_position: u64, video_md: Option<&VideoMetadata>| {
             if size > 0 {
                 progress_cb(file_position as f64 / size as f64 / 3.0);
             }
+            if container_fps.is_none() { container_fps = video_md.map(|md| md.fps).filter(|fps| *fps > 0.0); }
             if let Ok(md) = Self::parse_per_frame_meta(data) {
                 let mut map = GroupedTagMap::new();
 
@@ -129,6 +133,11 @@ impl BlackmagicBraw {
                 }
             }
         }
+        // The readings are timed on the capture timeline, as the sensor captures the frames: frame k from k / its rate
+        // (the clip's sensor rate, the container's frame rate when it states none). A reading is the frame's being
+        // captured at the middle of its sample's time. Without either rate the frames aren't known
+        let capture_rate = frame_rate.or(container_fps);
+        let frame_of = |info: &SampleInfo| capture_rate.map(|rate| ((info.timestamp_ms + info.duration_ms.max(0.0) / 2.0) * rate / 1000.0).floor().max(0.0) as u64);
         let cancel_flag2 = cancel_flag.clone();
         util::get_metadata_track_samples(stream, size, false, |info: SampleInfo, data: &[u8], file_position: u64, _video_md: Option<&VideoMetadata>| {
             if size > 0 {
@@ -140,12 +149,14 @@ impl BlackmagicBraw {
                 crate::try_block!({
                     d.seek(SeekFrom::Start(8)).ok()?;
                     if &data[4..8] == b"mogy" {
+                        gyro_frames.extend(frame_of(&info));
                         gyro.push(TimeVector3 { t: (info.timestamp_ms - self.frame_readout_time.unwrap_or(0.0) / 2.0) / 1000.0,
                             x: d.read_f32::<LittleEndian>().ok()? as f64,
                             y: d.read_f32::<LittleEndian>().ok()? as f64,
                             z: d.read_f32::<LittleEndian>().ok()? as f64
                         });
                     } else if &data[4..8] == b"moac" {
+                        accl_frames.extend(frame_of(&info));
                         accl.push(TimeVector3 { t: (info.timestamp_ms - self.frame_readout_time.unwrap_or(0.0) / 2.0) / 1000.0,
                             x: -d.read_f32::<LittleEndian>().ok()? as f64,
                             y: -d.read_f32::<LittleEndian>().ok()? as f64,
@@ -162,6 +173,10 @@ impl BlackmagicBraw {
 
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), accl, vec![]), &options);
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]), &options);
+        if capture_rate.is_some() {
+            util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Custom(util::READING_FRAMES.into()), "Frame of each reading", Vec_u64, |v| format!("{:?}", v), accl_frames, Vec::new()), &options);
+            util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Custom(util::READING_FRAMES.into()), "Frame of each reading", Vec_u64, |v| format!("{:?}", v), gyro_frames, Vec::new()), &options);
+        }
 
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "m/s²".into(),  Vec::new()), &options);
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Unit, "Gyroscope unit",     String, |v| v.to_string(), "rad/s".into(), Vec::new()), &options);

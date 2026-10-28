@@ -27,6 +27,7 @@ mod zcam;
 mod motioncam;
 
 pub mod rig;
+pub mod segment_table;
 pub mod tags_impl;
 pub mod util;
 pub mod filesystem;
@@ -65,7 +66,9 @@ macro_rules! impl_formats {
         }
         pub struct Input {
             inner: SupportedFormats,
-            pub samples: Option<Vec<SampleInfo>>
+            pub samples: Option<Vec<SampleInfo>>,
+            /// The file's segment table, `Err` with why it can't be used when the file has one that isn't valid for it
+            segment_table: Option<segment_table::Found>,
         }
         impl Input {
             pub fn from_stream<T: Read + Seek, P: AsRef<std::path::Path>, F: Fn(f64)>(stream: &mut T, size: usize, filepath: P, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Input> {
@@ -98,10 +101,20 @@ macro_rules! impl_formats {
                     }
                     if check {
                         if let Some(mut x) = <$class>::detect(&buf, &filepath, &options) {
-                            return Ok(Input {
+                            let probe_only = options.probe_only;
+                            let mut input = Input {
                                 samples: x.parse(stream, size, progress_cb, cancel_flag, options).map_err(|e| log::error!("Failed to parse {} as {}: {e}", filepath.as_ref().display(), stringify!($name))).ok(),
-                                inner: SupportedFormats::$name(x)
-                            });
+                                inner: SupportedFormats::$name(x),
+                                segment_table: None,
+                            };
+                            // A probe reads the start of the data only, which the table can't be checked against
+                            if !probe_only {
+                                input.segment_table = input.read_segment_table(stream, size);
+                                if let Some(Err(e)) = &input.segment_table {
+                                    log::warn!("{}: the segment table isn't valid for the file, ignored: {e}", filepath.as_ref().display());
+                                }
+                            }
+                            return Ok(input);
                         }
                     }
                 )*}
@@ -128,6 +141,28 @@ macro_rules! impl_formats {
                     }
                 }
                 return Err(Error::new(ErrorKind::Other, "Unsupported file format"));
+            }
+            /// The segment table of the file (`segment_table`), when it has one that is valid for it
+            pub fn segment_table(&self) -> Option<&segment_table::SegmentTable> {
+                self.segment_table.as_ref().and_then(|x| x.as_ref().ok())
+            }
+            /// The segments of the file's segment table (`segment_table`), when it has one that is valid for it
+            pub fn trim_segments(&self) -> Option<&[segment_table::TrimSegment]> {
+                self.segment_table().map(|x| x.segments.as_slice())
+            }
+            /// Why the file's segment table can't be used, when it has one that isn't valid for it
+            pub fn unusable_segment_table(&self) -> Option<&str> {
+                self.segment_table.as_ref().and_then(|x| x.as_ref().err()).map(String::as_str)
+            }
+            /// The table of the file read: that of the file the parser read the motion and the frames from, which is the
+            /// file's sidecar when it was read through one. A RED clip's is in its RMD sidecar, a MotionCam recording's in
+            /// the `.mcraw` its video was read with, any other file's in the file
+            fn read_segment_table<T: Read + Seek>(&self, stream: &mut T, size: usize) -> Option<segment_table::Found> {
+                match &self.inner {
+                    SupportedFormats::RedR3d(x) => x.segment_table(),
+                    SupportedFormats::MotionCam(x) => x.segment_table(stream, size as u64),
+                    _ => segment_table::read(stream, size as u64),
+                }
             }
             pub fn parser_name(&self) -> &'static str {
                 match &self.inner {

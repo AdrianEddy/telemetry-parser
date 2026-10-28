@@ -16,6 +16,11 @@ pub struct RedR3d {
     record_framerate: Option<f64>,
     all_parts: Vec<String>,
     cooke_error_logged: bool,
+    /// The frames read through all the clip's parts
+    clip_frames: u64,
+    /// The clip's video frame rate, `(numerator, denominator)`: the first video stream descriptor of the first part's header
+    /// that has one
+    video_rate: Option<(u64, u64)>,
 }
 
 /// The atoms of a part of a clip its data is read from, in the part's order
@@ -229,6 +234,8 @@ impl RedR3d {
         let mut gyro: Vec<TimeVector3<f64>> = Vec::new();
         let mut accl: Vec<TimeVector3<f64>> = Vec::new();
         let mut imu_timestamps: Vec<u64> = Vec::new();
+        // The frame each IMU record is recorded with (`util::READING_FRAMES`): the frame its atom follows in the clip
+        let mut imu_frames: Vec<u64> = Vec::new();
         // The camera time of the clip's time 0 for the frames read: µs on the clock of the frame timestamps and the IMU
         // samples, up to where the clip's time is joined after missing frames (`junctions`)
         let mut time_base = None;
@@ -299,6 +306,10 @@ impl RedR3d {
                     },
                     Err(e) => log::warn!("RED: {e} in the RED2 header of {path}"),
                 }
+            }
+            // The descriptors come before the metadata block, a header without one has them too
+            if self.video_rate.is_none() {
+                self.video_rate = Self::video_rate(&header);
             }
             if options.probe_only {
                 break 'files;
@@ -384,7 +395,18 @@ impl RedR3d {
                 frame_timestamps.push(frame_timestamp);
                 last_frame = Some((index, frame_number));
             }
+            // The frames of the part by where they are in it, for the frame each data atom follows. The first atoms of a
+            // part before its first frame follow the part before's last frame, the clip's first ones none: they're the
+            // clip's first frame's
+            let mut frames_at: Vec<(u64, u64)> = atoms.frames.iter().enumerate().map(|(k, &(offset, _))| (offset, frame_index + k as u64)).collect();
+            frames_at.sort_unstable();
+            let frame_before_part = frame_index.saturating_sub(1);
+            let frame_of_atom = |offset: u64| match frames_at.partition_point(|(at, _)| *at < offset) {
+                0 => frame_before_part,
+                n => frames_at[n - 1].1,
+            };
             frame_index += atoms.frames.len() as u64;
+            self.clip_frames = frame_index;
 
             // The data atoms after a 4 KB header: CSV text in RDX\x01, the IMU in RDX\x02, records of a timestamp (u64, µs on
             // the clock of the frame timestamps), the acceleration and the rotation (i16 x, y, z each). An atom cut short
@@ -453,6 +475,7 @@ impl RedR3d {
                     // it by one regular step: all 9894 such records of 78 files. It's kept, as the R3D SDK's IMU samples keep
                     // it, and the samples by time keep one of them (`util::normalized_imu_interpolated`)
                     let mut timestamp_before: Option<u64> = None;
+                    let atom_frame = frame_of_atom(offset);
                     'records: while end - pos >= 20 {
                         let n = ((end - pos) / 20).min(chunk.len() as u64 / 20) as usize * 20;
                         Self::read_at(stream, pos, &mut chunk[..n])?;
@@ -465,6 +488,7 @@ impl RedR3d {
                             timestamp_before = Some(timestamp);
                             let value = |i: usize| BigEndian::read_i16(&record[8 + i * 2..]) as i32;
                             imu_timestamps.push(timestamp);
+                            imu_frames.push(atom_frame);
                             accl.push(TimeVector3 { t: 0.0, x: -value(0) as f64 / 100.0, y: -value(1) as f64 / 100.0, z: -value(2) as f64 / 100.0 });
                             gyro.push(TimeVector3 { t: 0.0, x: value(3) as f64 / 10.0, y: value(4) as f64 / 10.0, z: value(5) as f64 / 10.0 });
                         }
@@ -561,12 +585,16 @@ impl RedR3d {
                 if let Some(t) = time(timestamp) {
                     accl[kept] = TimeVector3 { t, ..accl[i] };
                     gyro[kept] = TimeVector3 { t, ..gyro[i] };
+                    imu_frames[kept] = imu_frames[i];
                     kept += 1;
                 }
             }
             accl.truncate(kept);
             gyro.truncate(kept);
+            imu_frames.truncate(kept);
         }
+        // Each sensor's readings' frames: a record's, both of its samples
+        let (mut accl_frames, mut gyro_frames) = (imu_frames.clone(), imu_frames);
         // The frames are timed by the camera's frame timestamps (the R3D SDK's per-frame `frame_timestamp`, in µs on the clock
         // of the IMU samples) when these increase from frame to frame and the first agrees with the camera clock (above), and
         // otherwise by the record frame rate, as the video is. DSMC2 bodies (RED RAVEN, DSMC2 DRAGON-X) and KOMODO firmware
@@ -633,6 +661,7 @@ impl RedR3d {
                             let t = match frame_rate { Some(fps) => sample.sample_index as f64 / fps, None => sample.timestamp_ms / 1000.0 };
                             if let Some(camera_acceleration) = arr.get("camera_acceleration").and_then(|x| x.as_array()) {
                                 if camera_acceleration.len() == 3 {
+                                    accl_frames.push(sample.sample_index);
                                     accl.push(TimeVector3 { t,
                                         x: -camera_acceleration[0].as_f64().unwrap_or(0.0),
                                         y: -camera_acceleration[1].as_f64().unwrap_or(0.0),
@@ -642,6 +671,7 @@ impl RedR3d {
                             }
                             if let Some(camera_rotation) = arr.get("camera_rotation").and_then(|x| x.as_array()) {
                                 if camera_rotation.len() == 3 {
+                                    gyro_frames.push(sample.sample_index);
                                     gyro.push(TimeVector3 { t,
                                         x: camera_rotation[0].as_f64().unwrap_or(0.0),
                                         y: camera_rotation[1].as_f64().unwrap_or(0.0),
@@ -657,6 +687,8 @@ impl RedR3d {
 
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Data, "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{:?}", v), accl, vec![]), &options);
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro, vec![]), &options);
+        util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Custom(util::READING_FRAMES.into()), "Frame of each reading", Vec_u64, |v| format!("{:?}", v), accl_frames, Vec::new()), &options);
+        util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Custom(util::READING_FRAMES.into()), "Frame of each reading", Vec_u64, |v| format!("{:?}", v), gyro_frames, Vec::new()), &options);
 
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Unit, "Accelerometer unit", String, |v| v.to_string(), "m/s²".into(),  Vec::new()), &options);
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Unit, "Gyroscope unit",     String, |v| v.to_string(), "deg/s".into(), Vec::new()), &options);
@@ -825,6 +857,26 @@ impl RedR3d {
     fn entry_str(v: &[u8]) -> &str {
         let end = v.iter().position(|&c| c == 0).unwrap_or(v.len());
         std::str::from_utf8(&v[..end]).unwrap_or("")
+    }
+
+    /// The frame rate of a `RED2` header's first video stream descriptor (`rdi`, from 0x44 when the header has one): its
+    /// numerator, a u32 at 20, over its denominator, a u16 at 18
+    fn video_rate(atom: &[u8]) -> Option<(u64, u64)> {
+        if atom.get(0x40).is_none_or(|count| *count == 0) || atom.get(0x44..0x47) != Some(b"rdi") { return None; }
+        let d = atom.get(0x44..0x44 + 24)?;
+        let (num, den) = (u32::from_be_bytes(d[20..24].try_into().ok()?) as u64, u16::from_be_bytes(d[18..20].try_into().ok()?) as u64);
+        (num > 0 && den > 0).then_some((num, den))
+    }
+
+    /// The segment table of the clip, in its RMD sidecar ([`crate::segment_table::read_rmd`]), checked against the clip's
+    /// frames once it's parsed. `None` when the clip has no RMD or the RMD no table
+    pub(crate) fn segment_table(&self) -> Option<crate::segment_table::Found> {
+        let rmd = self.all_parts.iter().find(|x| filesystem::get_extension(x) == "rmd")?;
+        let bytes = match filesystem::open_file(rmd).and_then(|mut f| util::read_data(&mut f.file, f.size as u64)) {
+            Ok(bytes) => bytes,
+            Err(e) => return Some(Err(format!("the RMD sidecar {rmd} can't be read: {e}"))),
+        };
+        crate::segment_table::read_rmd(&bytes, self.clip_frames, self.video_rate)
     }
 
     /// The clip metadata block of a `RED2` header atom, `atom` being the whole atom. At 0x40 the header has the number of its

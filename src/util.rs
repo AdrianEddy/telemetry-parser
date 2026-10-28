@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright © 2021 Adrian <adrian.eddy at gmail>
 
-use std::{ io::*, collections::{ BTreeSet, BTreeMap } };
+use std::{ io::*, collections::BTreeMap };
 use std::sync::{ Arc, atomic::AtomicBool };
 use byteorder::{ ReadBytesExt, BigEndian };
 use mp4parse::{ MediaContext, TrackType };
@@ -501,6 +501,184 @@ pub fn normalized_imu(input: &crate::Input, orientation: Option<String>) -> Resu
 }
 
 pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<String>) -> Result<Vec<IMUData>> {
+    Ok(imu_readings(input, orientation)?.interpolated(|_| Some(())).0)
+}
+
+/// The tag of an IMU sensor's group (`TagId::Custom`, a `Vec_u64`) holding the video frame of each of its readings
+/// (`TagId::Data`, in their order), for a format whose sample holds the readings of many frames but which records where
+/// each reading is among the frames: see `ReadingOrigin::frame`. A group whose readings' frames can't be told has none
+pub const READING_FRAMES: &str = "ReadingFrames";
+
+/// Where a reading of the IMU was read from (`imu_readings`)
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct ReadingOrigin {
+    /// Its sample: the index in `Input::samples`
+    pub sample: usize,
+    /// The video frame the reading is recorded with, where its sample holds the readings of many frames and the format
+    /// records each reading's place among the frames (`READING_FRAMES`): a RED clip's IMU records by the frame the atom
+    /// holding them follows, a Blackmagic RAW clip's and a MotionCam recording's readings by the frame being captured
+    /// when they were taken. A file cut from recordings keeps each segment's readings with its frames, so this tells
+    /// the readings of one segment from the next one's where their times don't: a reading is timed by its motion, which
+    /// can be before the frame it's recorded with
+    pub frame: Option<u64>,
+}
+
+/// The readings of one sensor of the IMU by their time (µs), each with where it came from: a later sample's reading at
+/// the same time replaces the earlier one
+pub type SensorReadings = BTreeMap<i64, (Vector3<f64>, ReadingOrigin)>;
+
+/// A sensor of the IMU that's put at the gyroscope's times (`ImuReadings::interpolated`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum ImuSensor {
+    Accelerometer,
+    Magnetometer,
+}
+
+/// A value of the accelerometer or the magnetometer at a gyroscope reading's time that `ImuReadings::interpolated` takes
+/// between two readings of the sensor of which the parts aren't all known (`ImuReadings::unplaced_values`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UnplacedValue<P> {
+    /// The gyroscope reading's time (µs, its key in `ImuReadings::gyro`), and its part, `None` where its origin doesn't
+    /// tell
+    pub at_us: i64,
+    pub part: Option<P>,
+    pub sensor: ImuSensor,
+    /// The readings of the sensor the value is between: their times (µs) and parts
+    pub before: (i64, Option<P>),
+    pub after: (i64, Option<P>),
+}
+
+/// The IMU readings of a file, each sensor's on its own timeline (`imu_readings`), before they're put together at the
+/// gyroscope's times (`interpolated`)
+#[derive(Clone, Debug, Default)]
+pub struct ImuReadings {
+    pub gyro: SensorReadings,
+    pub accl: SensorReadings,
+    pub magn: SensorReadings,
+}
+
+impl ImuReadings {
+    /// The readings at the gyroscope's times, with where each gyroscope reading came from. The accelerometer and the
+    /// magnetometer are interpolated at a gyroscope reading's time between their nearest readings before and after it
+    /// that are of the gyroscope reading's part (`part`, of a reading's origin): the readings of one part are the
+    /// motion of one stretch of time and those of another part another one's, as the segments of a file cut from
+    /// recordings are, so no value is interpolated from two of them. `None` where the part has no reading on one side,
+    /// as at the ends of a file. A reading whose part its origin doesn't tell (`part` gives `None`) is of whichever part
+    /// its time is in, which only the parts' times on the motion timeline tell: it's taken with every part's readings,
+    /// and a gyroscope reading of an unknown part is interpolated from all of them. One part for all of them
+    /// (`|_| Some(())`), or none known (`|_| None::<()>`), is `normalized_imu_interpolated`
+    pub fn interpolated<P: PartialEq>(&self, part: impl Fn(&ReadingOrigin) -> Option<P>) -> (Vec<IMUData>, Vec<ReadingOrigin>) {
+        // Each sensor's readings: those of no known part, each part's with those (the parts in the order of their first
+        // readings), and all of them where that's another map than those
+        struct ByPart<P> { unknown: BTreeMap<i64, Vector3<f64>>, parts: Vec<(P, BTreeMap<i64, Vector3<f64>>)>, all: Option<BTreeMap<i64, Vector3<f64>>> }
+        let by_part = |sensor: &SensorReadings| {
+            let mut s = ByPart { unknown: BTreeMap::new(), parts: Vec::new(), all: None };
+            for (t, (v, origin)) in sensor {
+                match part(origin) {
+                    Some(p) => match s.parts.iter_mut().find(|(q, _)| *q == p) {
+                        Some((_, map)) => { map.insert(*t, v.clone()); }
+                        None => s.parts.push((p, BTreeMap::from([(*t, v.clone())]))),
+                    },
+                    None => { s.unknown.insert(*t, v.clone()); }
+                }
+            }
+            if !s.parts.is_empty() && (!s.unknown.is_empty() || s.parts.len() > 1) {
+                s.all = Some(sensor.iter().map(|(t, (v, _))| (*t, v.clone())).collect());
+            }
+            if !s.unknown.is_empty() {
+                for (_, map) in &mut s.parts { map.extend(s.unknown.iter().map(|(t, v)| (*t, v.clone()))); }
+            }
+            s
+        };
+        let (accl, magn) = (by_part(&self.accl), by_part(&self.magn));
+        let at = |s: &ByPart<P>, p: &Option<P>, ts: i64| get_at_timestamp(ts, match p {
+            Some(p) => s.parts.iter().find(|(q, _)| q == p).map_or(&s.unknown, |(_, map)| map),
+            None => s.all.as_ref().or(s.parts.first().map(|(_, map)| map)).unwrap_or(&s.unknown),
+        });
+
+        let mut final_data = Vec::with_capacity(self.gyro.len());
+        let mut origins = Vec::with_capacity(self.gyro.len());
+        for (x, (v, origin)) in &self.gyro {
+            let p = part(origin);
+            final_data.push(IMUData {
+                timestamp_ms: *x as f64 / 1000.0,
+                gyro: Some([v.x, v.y, v.z]),
+                accl: at(&accl, &p, *x),
+                magn: at(&magn, &p, *x),
+            });
+            origins.push(*origin);
+        }
+        (final_data, origins)
+    }
+
+    /// The values of the accelerometer and the magnetometer that `interpolated(part)` takes from a reading of no known
+    /// part, or gives a gyroscope reading of no known part: each between two readings of the sensor (none at the
+    /// gyroscope reading's own time), with the times and the parts of the gyroscope reading and of those two (`None` where
+    /// the origin doesn't tell). A reading of no known part is of the part its time is in, which the parts' places on the
+    /// motion timeline tell once they're known: such a value is of its gyroscope reading's part only if both readings
+    /// it's between turn out to be of that part too. Where one isn't, the part has no reading of the sensor on that side
+    /// (the readings of a part are those of its time, and those its origins tell, which are in its time too), and the
+    /// value is `None`, as `interpolated` gives one of a known part
+    pub fn unplaced_values<P: PartialEq + Copy>(&self, part: impl Fn(&ReadingOrigin) -> Option<P>) -> Vec<UnplacedValue<P>> {
+        // Each sensor's readings by their time with their parts: all of them, those of no known part, and each part's with
+        // those, the readings `interpolated` takes a gyroscope reading's value from
+        struct Pools<P> { all: BTreeMap<i64, Option<P>>, unknown: BTreeMap<i64, Option<P>>, parts: Vec<(P, BTreeMap<i64, Option<P>>)> }
+        let pools = |sensor: &SensorReadings| {
+            let all: BTreeMap<i64, Option<P>> = sensor.iter().map(|(t, (_, origin))| (*t, part(origin))).collect();
+            let unknown: BTreeMap<i64, Option<P>> = all.iter().filter(|(_, p)| p.is_none()).map(|(t, p)| (*t, *p)).collect();
+            let mut parts: Vec<(P, BTreeMap<i64, Option<P>>)> = Vec::new();
+            for (t, p) in &all {
+                let Some(p) = p else { continue };
+                match parts.iter_mut().find(|(q, _)| q == p) {
+                    Some((_, map)) => { map.insert(*t, Some(*p)); }
+                    None => parts.push((*p, unknown.iter().map(|(t, q)| (*t, *q)).chain([(*t, Some(*p))]).collect())),
+                }
+            }
+            Pools { all, unknown, parts }
+        };
+        let sensors = [(ImuSensor::Accelerometer, pools(&self.accl)), (ImuSensor::Magnetometer, pools(&self.magn))];
+        let mut values = Vec::new();
+        for (at_us, (_, origin)) in &self.gyro {
+            let p = part(origin);
+            for (sensor, s) in &sensors {
+                let pool = match &p {
+                    Some(p) => s.parts.iter().find(|(q, _)| q == p).map_or(&s.unknown, |(_, map)| map),
+                    None => &s.all,
+                };
+                if pool.contains_key(at_us) { continue; }
+                let (Some((&before, &bp)), Some((&after, &ap))) = (pool.range(..*at_us).next_back(), pool.range(*at_us..).next()) else { continue };
+                if p.is_none() || bp.is_none() || ap.is_none() {
+                    values.push(UnplacedValue { at_us: *at_us, part: p, sensor: *sensor, before: (before, bp), after: (after, ap) });
+                }
+            }
+        }
+        values
+    }
+}
+
+/// `map`'s value at `ts`: linear between its readings before and after it, `None` past either end
+fn get_at_timestamp(ts: i64, map: &BTreeMap<i64, Vector3<f64>>) -> Option<[f64; 3]> {
+    if map.is_empty() { return None; }
+    if let Some(v) = map.get(&ts) { return Some([v.x, v.y, v.z]); }
+
+    if let Some((k1, v1)) = map.range(..=ts).next_back() {
+        if let Some((k2, v2)) = map.range(ts..).next() {
+            let time_delta = (k2 - k1) as f64;
+            let fract = (ts - k1) as f64 / time_delta;
+            // dbg!(&fract);
+            return Some([
+                v1.x * (1.0 - fract) + (v2.x * fract),
+                v1.y * (1.0 - fract) + (v2.y * fract),
+                v1.z * (1.0 - fract) + (v2.z * fract),
+            ]);
+        }
+    }
+    None
+}
+
+/// The readings of the IMU, each sensor's on its own timeline as `normalized_imu_interpolated` times them, with where
+/// each one came from
+pub fn imu_readings(input: &crate::Input, orientation: Option<String>) -> Result<ImuReadings> {
     let mut first_timestamp = None;
 
     let accurate_ts = input.has_accurate_timestamps();
@@ -509,11 +687,7 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
         crate::gopro::GoPro::imu_start_times_ms(input.samples.as_deref().unwrap_or_default())
     } else { (0.0, 0.0, 0.0) };
 
-    let mut gyro_map = BTreeMap::new();
-    let mut accl_map = BTreeMap::new();
-    let mut magn_map = BTreeMap::new();
-
-    let mut gyro_timestamps = BTreeSet::new();
+    let mut readings = ImuReadings::default();
 
     if let Some(ref samples) = input.samples {
         let mut reading_duration =
@@ -572,7 +746,7 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
         let mut last_sample: (Option<EvenlySpaced>, Option<EvenlySpaced>, Option<EvenlySpaced>) = (None, None, None);
         let is_gopro = input.camera_type() == "GoPro";
 
-        for info in samples {
+        for (sample_pos, info) in samples.iter().enumerate() {
             if info.tag_map.is_none() { continue; }
 
             let grouped_tag_map = info.tag_map.as_ref().unwrap();
@@ -606,6 +780,9 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
                     }
                     let io = io.as_bytes();
 
+                    // The video frame of each reading, where the format records it (`READING_FRAMES`)
+                    let frames = map.get_t(TagId::Custom(READING_FRAMES.into())) as Option<&Vec<u64>>;
+                    let origin = |j: usize| ReadingOrigin { sample: sample_pos, frame: frames.and_then(|f| f.get(j).copied()) };
                     if let Some(taginfo) = map.get(&TagId::Data) {
                         let evenly_spaced = match &taginfo.value {
                             TagValue::Vec_Vector3_i16(arr) => arr.get().len(),
@@ -625,31 +802,44 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
                                 None => {}
                             }
                         }
+                        let sensor = match group {
+                            GroupId::Gyroscope     => &mut readings.gyro,
+                            GroupId::Accelerometer => &mut readings.accl,
+                            _                      => &mut readings.magn,
+                        };
                         match &taginfo.value {
                             // Sony and GoPro
                             TagValue::Vec_Vector3_i16(arr) => {
                                 let arr = arr.get();
 
-                                for v in arr {
+                                for (j, v) in arr.iter().enumerate() {
                                     let itm = v.clone().into_scaled(&raw2unit, &unit2deg).orient(io);
-                                         if group == &GroupId::Gyroscope     { let ts = (timestamp.0 * 1000.0f64).round() as i64; gyro_map.insert(ts, itm); timestamp.0 += reading_duration.0.unwrap(); gyro_timestamps.insert(ts); }
-                                    else if group == &GroupId::Accelerometer { let ts = (timestamp.1 * 1000.0f64).round() as i64; accl_map.insert(ts, itm); timestamp.1 += reading_duration.1.unwrap(); }
-                                    else if group == &GroupId::Magnetometer  { let ts = (timestamp.2 * 1000.0f64).round() as i64; magn_map.insert(ts, itm); timestamp.2 += reading_duration.2.unwrap(); }
+                                    let (timeline_ms, reading_ms) = match group {
+                                        GroupId::Gyroscope     => (&mut timestamp.0, reading_duration.0),
+                                        GroupId::Accelerometer => (&mut timestamp.1, reading_duration.1),
+                                        _                      => (&mut timestamp.2, reading_duration.2),
+                                    };
+                                    sensor.insert((*timeline_ms * 1000.0f64).round() as i64, (itm, origin(j)));
+                                    *timeline_ms += reading_ms.unwrap();
                                 }
                             },
                             // Canon
                             TagValue::Vec_Vector3_f32(arr) => {
                                 let arr = arr.get();
 
-                                for v in arr {
+                                for (j, v) in arr.iter().enumerate() {
                                     let itm = v.clone().into_scaled(&raw2unit, &unit2deg).orient(io);
-                                         if group == &GroupId::Gyroscope     { let ts = (timestamp.0 * 1000.0f64).round() as i64; gyro_map.insert(ts, itm); timestamp.0 += reading_duration.0.unwrap(); gyro_timestamps.insert(ts); }
-                                    else if group == &GroupId::Accelerometer { let ts = (timestamp.1 * 1000.0f64).round() as i64; accl_map.insert(ts, itm); timestamp.1 += reading_duration.1.unwrap(); }
-                                    else if group == &GroupId::Magnetometer  { let ts = (timestamp.2 * 1000.0f64).round() as i64; magn_map.insert(ts, itm); timestamp.2 += reading_duration.2.unwrap(); }
+                                    let (timeline_ms, reading_ms) = match group {
+                                        GroupId::Gyroscope     => (&mut timestamp.0, reading_duration.0),
+                                        GroupId::Accelerometer => (&mut timestamp.1, reading_duration.1),
+                                        _                      => (&mut timestamp.2, reading_duration.2),
+                                    };
+                                    sensor.insert((*timeline_ms * 1000.0f64).round() as i64, (itm, origin(j)));
+                                    *timeline_ms += reading_ms.unwrap();
                                 }
                             },
                             TagValue::Vec_TimeVector3_f64(arr) => {
-                                for v in arr.get() {
+                                for (j, v) in arr.get().iter().enumerate() {
                                     let mut timestamp_ms = v.t * 1000.0;
                                     if !accurate_ts {
                                         if first_timestamp.is_none() {
@@ -661,9 +851,7 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
                                     let timestamp_us = (timestamp_ms * 1000.0).round() as i64;
 
                                     let itm = v.clone().into_scaled(&raw2unit, &unit2deg).orient(io);
-                                         if group == &GroupId::Gyroscope     { gyro_map.insert(timestamp_us, itm);  gyro_timestamps.insert(timestamp_us); }
-                                    else if group == &GroupId::Accelerometer { accl_map.insert(timestamp_us, itm); }
-                                    else if group == &GroupId::Magnetometer  { magn_map.insert(timestamp_us, itm); }
+                                    sensor.insert(timestamp_us, (itm, origin(j)));
                                 }
                             },
                             _ => ()
@@ -674,36 +862,7 @@ pub fn normalized_imu_interpolated(input: &crate::Input, orientation: Option<Str
         }
     }
 
-    fn get_at_timestamp(ts: i64, map: &BTreeMap<i64, Vector3<f64>>) -> Option<[f64; 3]> {
-        if map.is_empty() { return None; }
-        if let Some(v) = map.get(&ts) { return Some([v.x, v.y, v.z]); }
-
-        if let Some((k1, v1)) = map.range(..=ts).next_back() {
-            if let Some((k2, v2)) = map.range(ts..).next() {
-                let time_delta = (k2 - k1) as f64;
-                let fract = (ts - k1) as f64 / time_delta;
-                // dbg!(&fract);
-                return Some([
-                    v1.x * (1.0 - fract) + (v2.x * fract),
-                    v1.y * (1.0 - fract) + (v2.y * fract),
-                    v1.z * (1.0 - fract) + (v2.z * fract),
-                ]);
-            }
-        }
-        None
-    }
-
-    let mut final_data = Vec::with_capacity(gyro_map.len());
-    for x in &gyro_timestamps {
-        final_data.push(IMUData {
-            timestamp_ms: *x as f64 / 1000.0,
-            gyro: get_at_timestamp(*x, &gyro_map),
-            accl: get_at_timestamp(*x, &accl_map),
-            magn: get_at_timestamp(*x, &magn_map)
-        });
-    }
-
-    Ok(final_data)
+    Ok(readings)
 }
 
 pub fn interpolate_at_timestamp(timestamp_us: i64, offsets: &BTreeMap<i64, f64>) -> f64 {

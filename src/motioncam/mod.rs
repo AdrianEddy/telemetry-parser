@@ -40,6 +40,7 @@ const OIS_INDEX:           u32 = 10;
 const OIS_DATA:            u32 = 11;
 const ACCELEROMETER_INDEX: u32 = 12;
 const ACCELEROMETER_DATA:  u32 = 13;
+const SEGMENT_TABLE:       u32 = u32::from_le_bytes(crate::segment_table::BOX_TYPE);
 
 const MOTION_SAMPLE_SIZE: u64 = 24; // i64 timestamp, f32 x, y, z, u32 reserved
 const OIS_SAMPLE_SIZE:    u64 = 16; // i64 timestamp, f32 x, y shift
@@ -92,6 +93,15 @@ impl MotionCam {
         self.parse_container(stream, size as u64, progress_cb, cancel_flag, &options)
     }
 
+    /// The segment table of the recording read ([`crate::segment_table::read`]): that of the sidecar the motion and the
+    /// frames are read from when there's one, otherwise that of `stream`
+    pub(crate) fn segment_table<T: Read + Seek>(&self, stream: &mut T, size: u64) -> Option<crate::segment_table::Found> {
+        match &self.sidecar {
+            Some(path) => filesystem::open_file(path).ok().and_then(|mut file| crate::segment_table::read(&mut file.file, file.size as u64)),
+            None => crate::segment_table::read(stream, size),
+        }
+    }
+
     fn parse_container<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, file_size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: &crate::InputOptions) -> Result<Vec<SampleInfo>> {
         let probe = options.probe_only;
 
@@ -110,6 +120,9 @@ impl MotionCam {
         }
         let container: Value = serde_json::from_slice(&read_payload(stream, len, file_size)?)?;
         let buffer_start = stream.stream_position()?;
+        // A segment table, the item right after the container metadata in a recording cut from other recordings. A probe
+        // reads one frame, which the table can't be checked against
+        let table = if probe { None } else { read_table_item(stream, buffer_start, file_size) };
         self.model = camera_model(&container);
 
         // The indexes are written when the recording is finalized. Without them (an interrupted recording) the
@@ -188,7 +201,18 @@ impl MotionCam {
         }
         let capture_area = loaded.iter().find_map(|x| x.capture_area);
         let received_ms = loaded.first().and_then(|x| x.received_ms);
-        let frame_rate = frame_rate(&frame_timestamps);
+        // The frame rate the frames' intervals give, unless the recording has a segment table that is valid for it: its
+        // frames are then cut from recordings whose frame rate the table states, which a short cut doesn't show where
+        // the camera dropped frames (its intervals can then be mostly the dropped frames' longer ones). That holds when
+        // every segment comes from a recording of the one rate
+        let frame_rate = match table.map(|text| table_frame_rate(&text, &frame_timestamps)) {
+            Some(Ok(rate)) => rate.or_else(|| frame_rate(&frame_timestamps)),
+            Some(Err(e)) => {
+                log::warn!("MotionCam: the segment table isn't valid for the recording, ignored: {e}");
+                frame_rate(&frame_timestamps)
+            }
+            None => frame_rate(&frame_timestamps),
+        };
 
         // ------------------------------- Motion -------------------------------
         let limit = |chunks: &[u64]| -> Vec<u64> { chunks.iter().copied().take(if probe { 1 } else { usize::MAX }).collect() };
@@ -203,6 +227,12 @@ impl MotionCam {
         let origin = origin.or_else(|| gyro.first().map(|x| x.0)).unwrap_or_default();
         let seconds = |ts: i64| (ts as i128 - origin as i128) as f64 / 1e9;
         let vec3 = |(ts, v): &Sample| TimeVector3 { t: seconds(*ts), x: v[0] as f64, y: v[1] as f64, z: v[2] as f64 };
+        // The frame each motion sample was taken during (`util::READING_FRAMES`): the last one whose timestamp, on the
+        // same clock, isn't after it, the first frame's for the samples before it. Without frames on the samples' clock
+        // (none, or an UNKNOWN timestamp source) a sample's frame can't be told
+        let frame_of = |(ts, _): &Sample| frame_timestamps.partition_point(|f| *f <= *ts).saturating_sub(1) as u64;
+        let frames_of = |samples: &[Sample]| self.accurate_timestamps.then(|| samples.iter().map(frame_of).collect::<Vec<u64>>());
+        let (gyro_frames, accl_frames) = (frames_of(&gyro), frames_of(&accl));
         let gyro: Vec<TimeVector3<f64>> = gyro.iter().map(vec3).collect();
         let accl: Vec<TimeVector3<f64>> = accl.iter().map(vec3).collect();
         let ois:  Vec<TimeVector3<f64>> = ois.iter().map(vec3).collect();
@@ -252,12 +282,18 @@ impl MotionCam {
             util::insert_tag(map, tag!(parsed GroupId::Gyroscope, TagId::Data,        "Gyroscope data",  Vec_TimeVector3_f64, |v| format!("{v:?}"), gyro, vec![]), options);
             util::insert_tag(map, tag!(parsed GroupId::Gyroscope, TagId::Unit,        "Gyroscope unit",  String, |v| v.to_string(), "rad/s".into(), vec![]), options);
             util::insert_tag(map, tag!(parsed GroupId::Gyroscope, TagId::Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.clone(), vec![]), options);
+            if let Some(frames) = gyro_frames {
+                util::insert_tag(map, tag!(parsed GroupId::Gyroscope, TagId::Custom(util::READING_FRAMES.into()), "Frame of each reading", Vec_u64, |v| format!("{v:?}"), frames, Vec::new()), options);
+            }
         }
         if !accl.is_empty() {
             // Including gravity, iOS values already converted from g by the app
             util::insert_tag(map, tag!(parsed GroupId::Accelerometer, TagId::Data,        "Accelerometer data", Vec_TimeVector3_f64, |v| format!("{v:?}"), accl, vec![]), options);
             util::insert_tag(map, tag!(parsed GroupId::Accelerometer, TagId::Unit,        "Accelerometer unit", String, |v| v.to_string(), "m/s²".into(), vec![]), options);
             util::insert_tag(map, tag!(parsed GroupId::Accelerometer, TagId::Orientation, "IMU orientation",    String, |v| v.to_string(), imu_orientation.clone(), vec![]), options);
+            if let Some(frames) = accl_frames {
+                util::insert_tag(map, tag!(parsed GroupId::Accelerometer, TagId::Custom(util::READING_FRAMES.into()), "Frame of each reading", Vec_u64, |v| format!("{v:?}"), frames, Vec::new()), options);
+            }
         }
         if !ois.is_empty() {
             // Android's lens shift in pixels of the active array (x, y; z unused)
@@ -424,6 +460,24 @@ fn frame_rate(timestamps: &[i64]) -> Option<f64> {
     let periods: f64 = intervals.iter().map(|x| (*x as f64 / median).round().max(1.0)).sum();
     let span: f64 = intervals.iter().map(|x| *x as f64).sum();
     Some(periods * 1e9 / span)
+}
+
+/// The payload of a segment table item at `at` (`crate::segment_table`), if the item there is one
+fn read_table_item<T: Read + Seek>(stream: &mut T, at: u64, file_size: u64) -> Option<Vec<u8>> {
+    stream.seek(SeekFrom::Start(at)).ok()?;
+    let (kind, len) = read_item(stream).ok()?;
+    if kind != SEGMENT_TABLE || len > MAX_JSON_SIZE { return None; }
+    read_payload(stream, len, file_size).ok()
+}
+
+/// The frame rate a recording's segment table states, checked against the recording's frames (`timestamps`, ns, in
+/// order): its sources' when they all have the same one, `None` when they don't
+fn table_frame_rate(text: &[u8], timestamps: &[i64]) -> std::result::Result<Option<f64>, String> {
+    let table = crate::segment_table::check_mcraw(text, timestamps)?;
+    let mut rates = table.segments.iter().map(|s| table.sources[s.source].fps);
+    let first = rates.next().ok_or("no segments")?;
+    // Rates are compared as fractions: 30000/1001 is 60000/2002
+    Ok(rates.all(|r| r.0 as u128 * first.1 as u128 == first.0 as u128 * r.1 as u128).then(|| first.0 as f64 / first.1 as f64))
 }
 
 fn milliseconds(ts: i64, since: i64) -> f64 {
@@ -630,7 +684,7 @@ fn walk_items<T: Read + Seek>(stream: &mut T, start: u64, end: u64, file_size: u
             GYRO_DATA                      => walk.seen.gyro.push(pos),
             ACCELEROMETER_DATA             => walk.seen.accelerometer.push(pos),
             OIS_DATA                       => walk.seen.ois.push(pos),
-            METADATA | AUDIO_DATA_METADATA => { }
+            METADATA | AUDIO_DATA_METADATA | SEGMENT_TABLE => { }
             AUDIO_INDEX => {
                 // i64 count, i64 start timestamp, then the entries
                 let mut header = [0u8; 16];
