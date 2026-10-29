@@ -27,8 +27,11 @@ pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress
 
         let mut map = GroupedTagMap::new();
 
+        // The log's other header fields, in the order of their names, as the CSV reader gives them: `fc_blackbox` holds
+        // them in a `HashMap`, whose order changes from one run to the next
+        let other_headers = bbox.header.other_headers.iter().collect::<std::collections::BTreeMap<_, _>>();
         util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::Metadata, "Extra metadata", Json, |v| format!("{:?}", v), {
-            serde_json::to_value(&bbox.header.other_headers).map_err(|_| Error::new(ErrorKind::Other, "Serialize error"))?
+            serde_json::to_value(&other_headers).map_err(|_| Error::new(ErrorKind::Other, "Serialize error"))?
         }, vec![]), &options);
         util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope,     TagId::Scale, "Gyroscope scale",     f64, |v| format!("{:?}", v), gyro_scale, vec![]), &options);
         util::insert_tag(&mut map, tag!(parsed GroupId::Accelerometer, TagId::Scale, "Accelerometer scale", f64, |v| format!("{:?}", v), accl_scale, vec![]), &options);

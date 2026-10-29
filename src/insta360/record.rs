@@ -303,7 +303,9 @@ impl super::Insta360 {
                         let type_ = d.read_u8()?;
                         let count = d.read_u32::<LittleEndian>()?;
                         if count > 0 {
-                            let mut list = Vec::with_capacity(count as usize);
+                            // Room for the timestamps the record's bytes can hold, not for what the count says
+                            let item = if type_ != 2 && type_ != 18 { 8 } else { 16 };
+                            let mut list = Vec::with_capacity((count as u64).min((len as u64 - d.position()) / item) as usize);
                             for _ in 0..count {
                                 if type_ != 2 && type_ != 18 {
                                     list.push(vec![d.read_u64::<LittleEndian>()?]);

@@ -158,9 +158,9 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
             let mut buf = vec![0u8; insta360::HEADER_SIZE];
             stream.seek(SeekFrom::End(-(insta360::HEADER_SIZE as i64)))?;
             stream.read_exact(&mut buf)?;
-            if &buf[insta360::HEADER_SIZE-32..] == insta360::MAGIC {
-                let extra_size = (&buf[32..]).read_u32::<byteorder::LittleEndian>()? as f32;
-                read_mb += (extra_size / 1024.0 / 1024.0).ceil() as usize;
+            // A trailer that fits the file: the size of one that doesn't isn't what the end of the file holds
+            if let Some(extra_size) = insta360::trailer_size(&buf, size) {
+                read_mb += (extra_size as f32 / 1024.0 / 1024.0).ceil() as usize;
             }
             stream.seek(SeekFrom::Start(0))?;
         }
@@ -207,8 +207,91 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
     mp4parse::read_mp4(stream, mp4parse::ParseStrictness::Permissive)
 }
 
-pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, mut typ: mp4parse::TrackType, single: bool, max_sample_size: Option<usize>, mut callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
+/// The most bytes of a sample read at once: a sample a larger read is asked of isn't read (and is reported), so a size a
+/// sample table or a sample's own header states can't make the read allocate more than that. The parsers read metadata
+/// samples whole of up to 163 KiB (GoPro's GPMF at 400 fps), and of a video frame only its header (Blackmagic RAW's
+/// first 8 KiB, the 892-byte frame header of Nikon's R3D NE and N-RAW): 64 MiB, the bound of MotionCam's metadata
+/// (`MAX_JSON_SIZE`)
+const MAX_SAMPLE_SIZE: u64 = 64 << 20;
+
+/// A sample of a track (`read_track_samples`), whose bytes its parser reads as far as it needs them (`read`): only bytes
+/// that are in the file, at most `MAX_SAMPLE_SIZE` of them at once. A read of others leaves the sample out
+pub struct TrackSample<'a, T> {
+    stream: &'a mut T,
+    buffer: &'a mut Vec<u8>,
+    start: u64,
+    size: u64,
+    file_end: u64,
+    left_out: Option<LeftOut>,
+}
+
+/// Why a read left a sample out (`TrackSample::read`): its bytes aren't all in the file, or they are more than
+/// `MAX_SAMPLE_SIZE` (how many)
+#[derive(Clone, Copy)]
+enum LeftOut {
+    Missing,
+    TooLarge(u64),
+}
+
+impl<T: Read + Seek> TrackSample<'_, T> {
+    /// The sample's size, as its track's sample table states it
+    pub fn size(&self) -> u64 {
+        self.size
+    }
+    /// Where the sample starts in the file
+    pub fn position(&self) -> u64 {
+        self.start
+    }
+    /// Whether a read left the sample out: its parser uses none of it (`read`)
+    pub fn is_left_out(&self) -> bool {
+        self.left_out.is_some()
+    }
+    /// The `len` bytes of the sample from `offset` into it. `None` when they aren't all in the file, or are more than
+    /// `MAX_SAMPLE_SIZE`: the sample is left out, and reported. An error when they aren't the sample's (past its end), or
+    /// the stream fails
+    pub fn read(&mut self, offset: u64, len: u64) -> Result<Option<&[u8]>> {
+        if offset.checked_add(len).is_none_or(|end| end > self.size) {
+            return Err(Error::new(ErrorKind::InvalidInput, "a read past the end of a sample"));
+        }
+        let Some(at) = self.start.checked_add(offset).filter(|at| at.checked_add(len).is_some_and(|end| end <= self.file_end)) else {
+            self.left_out = Some(LeftOut::Missing);
+            return Ok(None);
+        };
+        if len > MAX_SAMPLE_SIZE {
+            self.left_out = Some(LeftOut::TooLarge(len));
+            return Ok(None);
+        }
+        let len = len as usize;
+        if self.buffer.len() != len {
+            self.buffer.resize(len, 0u8);
+        }
+        self.stream.seek(SeekFrom::Start(at))?;
+        self.stream.read_exact(&mut self.buffer[..])?;
+        Ok(Some(&self.buffer[..]))
+    }
+}
+
+/// Calls `callback` with each sample longer than 4 bytes of the tracks of type `typ` (the first of them when `single`):
+/// the sample whole, or its first `max_sample_size` bytes when the caller reads no more of one (`read_track_samples`)
+pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4parse::TrackType, single: bool, max_sample_size: Option<usize>, mut callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
     where F: FnMut(SampleInfo, &[u8], u64, Option<&VideoMetadata>)
+{
+    read_track_samples(stream, size, typ, single, |info, sample, video_md| {
+        let len = max_sample_size.map_or(sample.size(), |max| sample.size().min(max as u64));
+        let position = sample.position();
+        if len > 4 && let Some(data) = sample.read(0, len)? {
+            callback(info, data, position, video_md);
+        }
+        Ok(())
+    }, cancel_flag)
+}
+
+/// Calls `callback` with each sample longer than 4 bytes of the tracks of type `typ` (the first of them when `single`),
+/// whose parser reads the parts of it it needs (`TrackSample::read`). A sample a read leaves out (its bytes aren't in the
+/// file: a recording cut short, or a damaged sample table; or more than `MAX_SAMPLE_SIZE` of them at once) is one its
+/// parser uses nothing of: a track's samples left out are reported (a warning), and its other samples are read
+pub fn read_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, mut typ: mp4parse::TrackType, single: bool, mut callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
+    where F: FnMut(SampleInfo, &mut TrackSample<T>, Option<&VideoMetadata>) -> Result<()>
 {
 
     // When `parse_mp4`'s quick parse fails (of the file's two ends, or of its boxes up to the first bad one), the whole
@@ -218,9 +301,10 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, mut typ
         mp4parse::read_mp4(stream, mp4parse::ParseStrictness::Permissive)
     })?;
 
-    let mut track_index = 0;
     // let mut sample_delta = 0u32;
     // let mut timestamp_ms = 0f64;
+    // Where the file ends, as the stream has it: a sample's bytes past it aren't in the file
+    let file_end = stream.seek(SeekFrom::End(0))?;
 
     let mut video_md = None;
     let mut video_rotation = None;
@@ -230,7 +314,7 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, mut typ
         typ = mp4parse::TrackType::Unknown;
     }
 
-    for x in &ctx.tracks {
+    for (track_index, x) in ctx.tracks.iter().enumerate() {
         if x.track_type == mp4parse::TrackType::Video && video_md.is_none() {
             video_md = get_video_metadata_from_track(x).ok();
             video_rotation = video_md.as_ref().map(|x| x.rotation);
@@ -244,34 +328,45 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, mut typ
 
                 if let Some(samples) = mp4parse::unstable::create_sample_table(&x, 0.into()) {
                     let mut sample_data = Vec::new();
+                    // The samples whose bytes aren't in the file, the first of them, and those too large to read at once
+                    let (mut missing, mut first_missing, mut too_large, mut largest) = (0usize, None, 0usize, None);
                     // A sample is numbered by its entry in the sample table, the ones too short to be delivered
                     // included: the parsers number the frames by it, so a frame whose sample is empty is a gap in the
-                    // numbers rather than moving every frame after it
+                    // numbers rather than moving every frame after it. So is one left out
                     for (sample_index, s) in samples.iter().enumerate() {
                         if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) { break; }
 
-                        let mut sample_size = (s.end_offset.0 - s.start_offset.0) as usize;
-                        if let Some(max_sample_size) = max_sample_size {
-                            if sample_size > max_sample_size {
-                                sample_size = max_sample_size;
-                            }
-                        }
+                        let (start, whole) = (s.start_offset.0, s.end_offset.0 - s.start_offset.0);
                         let start_comp_ms = mp4parse::unstable::track_time_to_us(mp4parse::TrackScaledTime::<i64>(s.start_composition.0, x.id), mp4parse::TrackTimeScale::<i64>(timescale.0 as i64, timescale.1)).ok_or(mp4parse::Error::InvalidData(mp4parse::Status::MvhdBadTimescale))?.0 as f64 / 1000.0;
                         let end_comp_ms   = mp4parse::unstable::track_time_to_us(mp4parse::TrackScaledTime::<i64>(s.end_composition.0,   x.id), mp4parse::TrackTimeScale::<i64>(timescale.0 as i64, timescale.1)).ok_or(mp4parse::Error::InvalidData(mp4parse::Status::MvhdBadTimescale))?.0 as f64 / 1000.0;
                         let sample_timestamp_ms = start_comp_ms;
                         let sample_duration_ms = end_comp_ms - start_comp_ms;
-                        if sample_size > 4 {
-                            if sample_data.len() != sample_size {
-                                sample_data.resize(sample_size, 0u8);
+                        if whole > 4 {
+                            let mut sample = TrackSample { stream: &mut *stream, buffer: &mut sample_data, start, size: whole, file_end, left_out: None };
+                            callback(SampleInfo { sample_index: sample_index as u64, track_index, timestamp_ms: sample_timestamp_ms, duration_ms: sample_duration_ms, tag_map: None, video_rotation }, &mut sample, video_md.as_ref())?;
+                            match sample.left_out {
+                                Some(LeftOut::Missing) => {
+                                    missing += 1;
+                                    first_missing.get_or_insert((sample_index, start));
+                                }
+                                Some(LeftOut::TooLarge(bytes)) => {
+                                    too_large += 1;
+                                    largest = largest.max(Some((bytes, sample_index)));
+                                }
+                                None => { }
                             }
-
-                            stream.seek(SeekFrom::Start(s.start_offset.0 as u64))?;
-                            stream.read_exact(&mut sample_data[..])?;
-
-                            callback(SampleInfo { sample_index: sample_index as u64, track_index, timestamp_ms: sample_timestamp_ms, duration_ms: sample_duration_ms, tag_map: None, video_rotation }, &sample_data, s.start_offset.0 as u64, video_md.as_ref());
 
                             //timestamp_ms += duration_ms;
                         }
+                    }
+                    // The track by its ID (its `tkhd`'s). A walk cancelled before its end reports nothing
+                    let track = || format!("{:?} track {}", x.track_type, x.track_id.map_or_else(|| "without an ID".into(), |id| id.to_string()));
+                    let walked = !cancel_flag.load(std::sync::atomic::Ordering::Relaxed);
+                    if let Some((first, at)) = first_missing.filter(|_| walked) {
+                        log::warn!("{}: {missing} of its {} samples aren't in the file, which ends at byte {file_end} (the first of them is sample {first}, at byte {at}): the file was cut short or is damaged, and the samples in it are read", track(), samples.len());
+                    }
+                    if let Some((bytes, index)) = largest.filter(|_| walked) {
+                        log::warn!("{}: {too_large} of its samples are larger than {MAX_SAMPLE_SIZE} bytes, the most of a sample read at once, and aren't read (sample {index}: {bytes} bytes)", track());
                     }
                     if single {
                         break;
@@ -279,7 +374,6 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, mut typ
                 }
             }
         }
-        track_index += 1;
     }
     Ok(ctx)
 }
@@ -1020,12 +1114,7 @@ pub fn get_video_metadata_from_track(track: &mp4parse::Track) -> Result<VideoMet
 
 pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Result<VideoMetadata> { // -> (width, height, fps, duration_s, rotation)
     let mut header = [0u8; 4];
-    let mut last16kb = vec![0u8; 16384];
     stream.read_exact(&mut header)?;
-    if filesize > 16384 {
-        stream.seek(SeekFrom::End(-16384))?;
-        stream.read_exact(&mut last16kb)?;
-    }
     stream.seek(SeekFrom::Start(0))?;
 
     if header == [0x06, 0x0E, 0x2B, 0x34] { // MXF header
@@ -1034,18 +1123,22 @@ pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Re
         return Ok(md);
     }
 
-    // Special case for BRAW: the frame is the active area (`crop_size`, the track header includes the sensor border
-    // around it), and the Blackmagic RAW SDK applies the camera's `rotation` when decoding (the default geometry,
-    // used by Resolve and by Gyroflow's decoder), so a vertical clip decodes as a portrait frame with no rotation left
+    // Special case for BRAW: the frame is the picture the Blackmagic RAW SDK decodes (`BlackmagicBraw::picture_size`, the
+    // camera's crop of the sensor, which the track header can include the sensor border around), and the SDK applies
+    // the camera's `rotation` when decoding (the default geometry, used by Resolve and by Gyroflow's decoder), so a
+    // vertical clip decodes as a portrait frame with no rotation left. A Blackmagic RAW clip is told by its movie
+    // metadata (`BlackmagicBraw::parse_meta`: `moov/meta`, found by the file's structure), Blackmagic Design's with a key
+    // of Blackmagic RAW's own, as `BlackmagicBraw::detect` takes it; not by the file's last bytes, which a card's stale
+    // data can follow the clip's last box with
     let mut override_size = None;
-    if memmem::find(&last16kb, b"Blackmagic Design").is_some() {
-        let mut bmd = crate::blackmagic::BlackmagicBraw::default();
-        if let Ok(md) = bmd.parse_meta(stream, filesize) {
-            if let Some(size) = md.get("crop_size").and_then(|x| x.as_array()).filter(|x| x.len() == 2).and_then(|x| Some((x[0].as_f64()? as usize, x[1].as_f64()? as usize))) {
-                let rotation = md.get("rotation").and_then(|x| x.as_u64()).unwrap_or_default();
-                override_size = Some(if rotation == 90 || rotation == 270 { (size.1, size.0) } else { size });
-            }
-        }
+    let mut bmd = crate::blackmagic::BlackmagicBraw::default();
+    let braw = bmd.parse_meta(stream, filesize).ok().filter(|md| {
+        md.get("manufacturer").and_then(|x| x.as_str()) == Some("Blackmagic Design") && (md.get("braw_codec_bitrate").is_some() || md.get("braw_compression_ratio").is_some())
+    });
+    if let Some(md) = braw
+        && let Some(size) = crate::blackmagic::BlackmagicBraw::picture_size(&md) {
+        let rotation = md.get("rotation").and_then(|x| x.as_u64()).unwrap_or_default();
+        override_size = Some(if rotation == 90 || rotation == 270 { (size.1, size.0) } else { size });
     }
 
     let mp = parse_mp4(stream, filesize)?;

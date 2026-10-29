@@ -19,7 +19,24 @@ use crate::tags_impl::{GroupId::*, TagId::*};
 pub const HEADER_SIZE: usize = 32 + 4 + 4 + 32; // padding(32), size(4), version(4), magic(32)
 pub const MAGIC: &[u8] = b"8db42d694ccc418790edff439fe026bf";
 
+/// The most records a walk of the trailer reads: one of each type. A record's type is its one-byte id, the table that
+/// indexes a trailer (its Offsets record) has a slot per type, and the descriptors that close the records restate that
+/// table. The trailer's size is a 32-bit field, so descriptors that never end would otherwise have a walk read some
+/// 715 million of them, six bytes each.
+const MAX_RECORDS: usize = 256;
+
 use crate::util::*;
+
+/// The size of the trailer that `footer`, the last [`HEADER_SIZE`] bytes of a file of `file_size` bytes, closes: `None`
+/// when it isn't a trailer's footer, or when the size it states, which covers the whole trailer with the footer, doesn't
+/// fit the file.
+pub(crate) fn trailer_size(footer: &[u8], file_size: usize) -> Option<usize> {
+    if footer.len() != HEADER_SIZE || &footer[HEADER_SIZE-32..] != MAGIC {
+        return None;
+    }
+    let size = (&footer[32..]).read_u32::<LittleEndian>().ok()? as usize;
+    (HEADER_SIZE..=file_size).contains(&size).then_some(size)
+}
 
 #[derive(Default)]
 pub struct Insta360 {
@@ -81,18 +98,27 @@ impl Insta360 {
         if &buf[HEADER_SIZE-32..] == MAGIC {
             let mut map = GroupedTagMap::new();
 
-            let extra_size = (&buf[32..]).read_u32::<LittleEndian>()? as i64;
+            let Some(extra_size) = trailer_size(&buf, size) else {
+                let stated = (&buf[32..]).read_u32::<LittleEndian>()?;
+                return Err(Error::new(ErrorKind::InvalidData, format!("the Insta360 footer states a trailer of {stated} bytes, which isn't between its own {HEADER_SIZE} and the file's {size}")));
+            };
+            let extra_start = size - extra_size;
+            let extra_size = extra_size as i64;
             let version    = (&buf[36..]).read_u32::<LittleEndian>()?;
-            let extra_start = size - extra_size as usize;
 
             let mut offset = (HEADER_SIZE + 4+1+1) as i64;
 
-            stream.seek(SeekFrom::End(-offset + 1))?;
-            let first_id = stream.read_u8()?;
-            if first_id == record::RecordType::Offsets {
-                let size = stream.read_u32::<LittleEndian>()? as i64;
-                buf.resize(size as usize, 0);
-                stream.seek(SeekFrom::End(-offset - size))?;
+            // The last record's descriptor, where the trailer has room for one. A record's data is in the trailer,
+            // before its descriptor: an Offsets record whose data isn't is no table, and the walk below ends at it
+            let last = if offset <= extra_size {
+                stream.seek(SeekFrom::End(-offset + 1))?;
+                Some((stream.read_u8()?, stream.read_u32::<LittleEndian>()? as i64))
+            } else {
+                None
+            };
+            if let Some((first_id @ record::RecordType::Offsets, table_size)) = last.filter(|(_, s)| offset + s <= extra_size) {
+                buf.resize(table_size as usize, 0);
+                stream.seek(SeekFrom::End(-offset - table_size))?;
                 stream.read_exact(&mut buf)?;
                 self.parse_record(first_id, 0, version, &buf, Some(&mut offsets), options)?;
 
@@ -138,7 +164,12 @@ impl Insta360 {
                 }
             }
 
+            let mut records = 0;
             while offset < extra_size {
+                if records == MAX_RECORDS {
+                    log::warn!("Insta360 trailer holds more than {MAX_RECORDS} records, the most it can (one of each type); the bytes before the last {MAX_RECORDS} are not read");
+                    break;
+                }
                 stream.seek(SeekFrom::End(-offset))?;
 
                 if cancel_flag.load(Relaxed) { break; }
@@ -149,6 +180,13 @@ impl Insta360 {
                 let format = stream.read_u8()?;
                 let id     = stream.read_u8()?;
                 let size   = stream.read_u32::<LittleEndian>()? as i64;
+
+                // Its data is in the trailer, before its descriptor, and so is every record before it: one that runs
+                // past the trailer's start leaves nothing for the walk to find
+                if offset + size > extra_size {
+                    log::warn!("Insta360 record {id} runs past the trailer ({} of {extra_size} bytes); it and the bytes before it are not read", offset + size);
+                    break;
+                }
 
                 buf.resize(size as usize, 0);
 
@@ -161,6 +199,7 @@ impl Insta360 {
                 }
 
                 offset += size + 4+1+1;
+                records += 1;
             }
             return Ok(map);
         }

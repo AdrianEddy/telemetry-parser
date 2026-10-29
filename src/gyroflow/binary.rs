@@ -58,7 +58,7 @@ pub struct GyroflowProtobuf {
     // ---- timing reference ----
     // start_timestamp_us of the very first FrameMetadata seen. Used ONLY to compute
     // the per-frame FirstFrameTimestamp jitter J_i (= start_ts/1000 −
-    // info.timestamp_ms) and per-frame readout. It is deliberately NOT subtracted
+    // info.timestamp_ms). It is deliberately NOT subtracted
     // from the IMU / quaternion sample timestamps: per the gyroflow.proto contract
     // those stay on the camera clock (the same clock as start_timestamp_us), and
     // gyroflow's contract-native gyroflow_proto::get_time_offset converts the
@@ -69,8 +69,16 @@ pub struct GyroflowProtobuf {
     first_start_ts_us: Option<f64>,
 
     // Clock skew (µs) between frame.start_timestamp_us and the IMU sample clock,
-    // measured and applied ONLY for GPMD passthrough (is_gpmd_passthrough).
+    // measured and applied ONLY for GPMD passthrough (is_gpmd_passthrough): one
+    // skew for the whole clip, taken at its first frame.
     ts_clock_skew_us: f64,
+
+    // Set once the clip's first frame has been read: the frame the passthrough's
+    // skew, the clip-level readout time and the lens warning are taken at. It is
+    // the first frame read, not any frame starting when that one does: a frame
+    // clock that doesn't move between frames (one start written for every frame)
+    // would otherwise retake the skew at each of them.
+    read_first_frame: bool,
 
     // Set when the input is the JSONL encoding of this same message stream
     // rather than an MP4 metadata track. See proto_json.rs.
@@ -816,6 +824,7 @@ impl GyroflowProtobuf {
     }
 
     fn process_frame(&mut self, frame: &gyroflow_proto::FrameMetadata, info: &SampleInfo, tag_map: &mut GroupedTagMap, options: &crate::InputOptions) {
+        let first_frame = !std::mem::replace(&mut self.read_first_frame, true);
         let (sensor_w, sensor_h, raw_pp_x, raw_pp_y) = self.camera()
             .map_or((0u32, 0u32, 0u32, 0u32), |c| (c.sensor_pixel_width, c.sensor_pixel_height, c.pixel_pitch_x_nm, c.pixel_pitch_y_nm));
         // The proto requires both pitches (square-pixel sensors must set them
@@ -852,7 +861,7 @@ impl GyroflowProtobuf {
         insert_tag(tag_map, tag!(parsed GroupId::Imager, TagId::CaptureAreaOrigin, "Sensor crop origin", f32x2, |v| format!("{:?}", v), crop_origin, vec![]), options);
         insert_tag(tag_map, tag!(parsed GroupId::Imager, TagId::CaptureAreaSize, "Sensor crop size", f32x2, |v| format!("{:?}", v), crop_size, vec![]), options);
 
-        if self.is_gpmd_passthrough && self.first_start_ts_us == Some(frame.start_timestamp_us) {
+        if self.is_gpmd_passthrough && first_frame {
             if let Some(first_imu_ts) = frame.imu.iter().find_map(|s| s.sample_timestamp_us) {
                 self.ts_clock_skew_us = frame.start_timestamp_us - first_imu_ts;
             }
@@ -896,7 +905,7 @@ impl GyroflowProtobuf {
         // or when the clip-level helper looks stale (zero); the per-frame doubles are
         // measured directly by the camera clock per the proto spec and never disagree
         // with themselves the way clip-level can with per-frame.
-        if self.first_start_ts_us == Some(frame.start_timestamp_us) && per_frame_readout_us > 0.0 {
+        if first_frame && per_frame_readout_us > 0.0 {
             if self.frame_readout_time_us <= 0.0 {
                 self.frame_readout_time_us = per_frame_readout_us;
                 self.frame_readout_time = Some(pack_readout_time_ms(per_frame_readout_us, self.readout_direction));
@@ -942,7 +951,7 @@ impl GyroflowProtobuf {
         // currently consumed downstream and would require time-interpolation
         // support that gyroflow's lens_params machinery does not yet expose.
         // Warn the producer (once per parse) so the dropped data isn't silent.
-        if frame.lens.len() > 1 && self.first_start_ts_us == Some(frame.start_timestamp_us) {
+        if frame.lens.len() > 1 && first_frame {
             log::warn!(
                 "Proto producer emitted {} LensData entries on frame 0 (intra-frame zoom / \
                  focus actuator motion). Gyroflow currently consumes only the first; \

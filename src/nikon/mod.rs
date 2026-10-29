@@ -75,20 +75,26 @@ impl Nikon {
         }
         stream.seek(SeekFrom::Start(0))?;
 
-        util::get_track_samples(stream, size, mp4parse::TrackType::Video, true, None, |mut info: SampleInfo, data: &[u8], file_position: u64, _video_md: Option<&VideoMetadata>| {
+        // Of each frame only its header is read (`frame_header`), which holds its metadata
+        util::read_track_samples(stream, size, mp4parse::TrackType::Video, true, |mut info: SampleInfo, sample: &mut util::TrackSample<T>, _video_md: Option<&VideoMetadata>| {
             if size > 0 {
-                progress_cb(file_position as f64 / size as f64);
+                progress_cb(sample.position() as f64 / size as f64);
             }
 
-            if data.len() > 8 {
-                // The clip's metadata goes on its first sample, whichever entry of the track that is
+            if sample.size() > 8 {
+                // The clip's metadata goes on its first sample, whichever entry of the track that is. A sample without a
+                // frame header (an AVC proxy's) has no metadata of its own
                 let mut map = if samples.is_empty() { first_map.clone() } else { GroupedTagMap::new() };
-                if let Err(e) = self.parse_nev_frame_metadata(&data, &mut map, &options) {
+                let header = Self::frame_header(sample)?;
+                if let Err(e) = self.parse_nev_frame_metadata(header.unwrap_or_default(), &mut map, &options) {
                     log::warn!("Nikon: the metadata of sample {} can't be read: {e}", info.sample_index);
                 }
-                info.tag_map = Some(map);
-                samples.push(info);
+                if !sample.is_left_out() {
+                    info.tag_map = Some(map);
+                    samples.push(info);
+                }
             }
+            Ok(())
         }, cancel_flag)?;
 
         if samples.is_empty() && !first_map.is_empty() {
@@ -355,7 +361,37 @@ impl Nikon {
         Ok(())
     }
 
-    /// Parse per-frame metadata from NRAW frame data
+    /// The frame header (`NRFH`) of an R3D NE or N-RAW frame, its atoms; `None` for a sample that isn't such a frame, or
+    /// when a read leaves the sample out (`TrackSample::read`). A frame is an `NRAW` atom of its format's version
+    /// (`NRFM`), the header, an `NRTH` atom (whose `NRTI` states the image's size) and the image: the header, which holds
+    /// the frame's metadata, follows the version, 892 bytes 20 bytes in (under 1 KiB of the ZR's frames of up to 7.4 MiB),
+    /// and is the only part read. The atoms are found by their sizes, each within its parent
+    fn frame_header<'a, T: Read + Seek>(sample: &'a mut util::TrackSample<T>) -> Result<Option<&'a [u8]>> {
+        // The size and type of the atom `at` bytes into the frame
+        fn atom<T: Read + Seek>(sample: &mut util::TrackSample<T>, at: u64) -> Result<Option<(u64, [u8; 4])>> {
+            Ok(sample.read(at, 8)?.map(|h| (u64::from(u32::from_be_bytes([h[0], h[1], h[2], h[3]])), [h[4], h[5], h[6], h[7]])))
+        }
+        let end = match atom(sample, 0)? {
+            Some((size, kind)) if &kind == b"NRAW" && size >= 8 => size.min(sample.size()),
+            _ => return Ok(None),
+        };
+        let mut at = 8;
+        while at + 8 <= end {
+            let Some((size, kind)) = atom(sample, at)? else { return Ok(None) };
+            if size < 8 || at + size > end {
+                return Ok(None);
+            }
+            if &kind == b"NRFH" {
+                return sample.read(at + 8, size - 8);
+            }
+            at += size;
+        }
+        Ok(None)
+    }
+
+    /// The metadata of an R3D NE or N-RAW frame from its frame header's atoms (`frame_header`): the header's version
+    /// (`NRHM`) and an `NRMT` atom per item, of the item's tag, a pad byte and its value. The walk stops at an atom it
+    /// can't step past. With the clip's metadata already in `map` (the first sample's), the frame's is added to it
     pub fn parse_nev_frame_metadata(&self, data: &[u8], map: &mut GroupedTagMap, options: &crate::InputOptions) -> Result<()> {
         let mut md = serde_json::Map::<String, serde_json::Value>::new();
         if let Some(map) = map.get(&GroupId::Default) {
@@ -363,33 +399,16 @@ impl Nikon {
                 md = v.clone();
             }
         }
-        let mut cursor = Cursor::new(data);
-        let len = data.len() as u64;
+        let mut at = 0;
+        while let Some(head) = data.get(at..at + 8) {
+            let atom_size = u32::from_be_bytes([head[0], head[1], head[2], head[3]]) as usize;
+            let Some(atom) = data[at..].get(..atom_size).filter(|_| atom_size >= 8) else { break };
 
-        // Scan for NRMT atoms
-        while cursor.position() + 12 <= len {
-            let atom_start = cursor.position();
-
-            let atom_size = cursor.read_u32::<BigEndian>()? as u64;
-
-            // Validate size
-            if atom_size < 12 || atom_start + atom_size > len {
-                cursor.set_position(atom_start + 1);
-                continue;
-            }
-
-            let mut magic = [0u8; 4];
-            cursor.read_exact(&mut magic)?;
-
-            if &magic == b"NRMT" && atom_size >= 13 {
+            if &atom[4..8] == b"NRMT" && atom_size >= 13 {
                 // NRMT structure: [size:4]["NRMT":4][tag_id:4][pad:1][value:N]
-                let tag_id = cursor.read_u32::<BigEndian>()?;
-                let _padding = cursor.read_u8()?; // Skip padding byte
-                let value_size = (atom_size - 13) as usize; // 4+4+4+1 = 13 bytes header
-
-                let mut value_bytes = vec![0u8; value_size];
-                cursor.read_exact(&mut value_bytes)?;
-                let mut value_cursor = Cursor::new(&value_bytes);
+                let tag_id = u32::from_be_bytes([atom[8], atom[9], atom[10], atom[11]]);
+                let value_bytes = &atom[13..];
+                let mut value_cursor = Cursor::new(value_bytes);
 
                 match tag_id {
                     0x0110_0100 => { // ImageWidth
@@ -470,23 +489,8 @@ impl Nikon {
                         }
                     }
                 }
-            } else if &magic == b"NRAW" || &magic == b"NRFM" || &magic == b"NRFH" || &magic == b"NRHM" || &magic == b"NRTH" {
-                // Container atoms - parse contents (don't skip, just continue from current position)
-            } else if &magic == b"NRTI" && atom_size >= 16 {
-                // Thumbnail atom - skip entire atom. A shorter one, without the thumbnail's size, is skipped as unknown
-                let mut _unknown = [0u8; 4];
-                cursor.read_exact(&mut _unknown)?;
-                let thumb_size = cursor.read_u32::<BigEndian>()? as u64;
-                cursor.set_position(atom_start + thumb_size + 8);
-            } else {
-                // Unknown atom with valid size - skip it
-                if atom_size >= 8 {
-                    cursor.set_position(atom_start + atom_size);
-                } else {
-                    // Invalid size - advance by 1 byte and try again
-                    cursor.set_position(atom_start + 1);
-                }
             }
+            at += atom_size;
         }
 
         // Insert frame metadata as JSON

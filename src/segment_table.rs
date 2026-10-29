@@ -653,7 +653,7 @@ fn child<'a>(payload: &'a [u8], typ: &[u8; 4]) -> Option<&'a [u8]> {
 /// Where the first box of type `typ` among the boxes in [`start`, `end`) of the stream is: its payload's start and
 /// size. `None` when there's none before a box that doesn't fit, or, with `text_types` (a file's top level, where it
 /// tells a file that isn't one), before a box whose type isn't text
-fn find_box<R: Read + Seek>(stream: &mut R, start: u64, end: u64, typ: &[u8; 4], text_types: bool) -> Result<Option<(u64, u64)>> {
+pub(crate) fn find_box<R: Read + Seek>(stream: &mut R, start: u64, end: u64, typ: &[u8; 4], text_types: bool) -> Result<Option<(u64, u64)>> {
     let mut pos = start;
     while pos + 8 <= end {
         stream.seek(SeekFrom::Start(pos))?;
