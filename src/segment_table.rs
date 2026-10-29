@@ -38,16 +38,37 @@
 //! - `clock_shift`: by how many ticks of the source's `clock` the camera-clock values of the segment were moved back, so
 //!   that the file's clock runs on across segments: a value `c` of this file is the source's `c + clock_shift` (modulo
 //!   the clock's `modulus` for a clock that wraps). `null` exactly when the source's `clock` is.
-//! - Sources may carry members of their own format; a reader ignores members it doesn't know. One is used here:
-//!   `sony_ibis_template` (see [`IbisTemplate`]).
+//! - Sources may carry members of their own format; a reader ignores members it doesn't know. Two are used here:
+//!   `sony_ibis_template` (see [`IbisTemplate`]) and Z CAM's `zcam_imu_origin_us`
+//!   ([`TableSource::zcam_imu_origin_us`]).
+//! - `telemetry_log`, in the table of a video whose telemetry is a log beside it (see [`TelemetryLog`]): the log that
+//!   was written with the video, whose clock the sources' `clock` is.
+//!
+//! # Telemetry logs
+//!
+//! The telemetry of a video that no format claims is a log beside it (a `.gcsv`, a Runcam CSV, the Gyroflow protobuf's
+//! JSON lines). A log has no frames of its own, nor a place for a table, so the video's table carries the log's: its
+//! sources' `clock` is the log's clock, each `clock_shift` how far the log's values of the segment's frames were moved
+//! back, and `telemetry_log` names the log, by its size and CRC-32. A log read as the telemetry of a video takes the
+//! video's table, valid for the video ([`read_for_log`]):
+//! 1. when the table names the log read (`telemetry_log`: the log has its `size` and `crc32`), the log is the one the
+//!    video was trimmed with: the table is the log's, its clocks and shifts with it;
+//! 2. otherwise (the table names no log, or another one) the log isn't known to be at the video's frames: the table's
+//!    segments describe the video's frames whatever its log, every one a hard boundary of them, but no source has a
+//!    `clock` and no segment a `clock_shift` (each `null`), and a warning says the log isn't the one the video was
+//!    trimmed with.
+//!
+//! A table without `telemetry_log` never applies a clock to a log. The log's name isn't compared: a video and its log
+//! are renamed together.
 //!
 //! # Validity
 //!
 //! Other tools copy `moov/udta` into files whose frames differ, so a reader uses a table only when it describes the file
 //! it is in ([`SegmentTable::validate`]):
 //! 1. the file has exactly one table, and it is a version-1 document with every member present with its type, each
-//!    segment naming a source and lying within its frames, times not negative, rates and frame counts positive, and
-//!    `clock_shift` `null` exactly when its source's clock is (within `[0, modulus)` for a clock that wraps);
+//!    segment naming a source and lying within its frames, times not negative, rates and frame counts positive,
+//!    `clock_shift` `null` exactly when its source's clock is (within `[0, modulus)` for a clock that wraps), and
+//!    `telemetry_log`, when there, with its members of their types and a clock on every source;
 //! 2. the segments follow each other: frames from 0, and each segment's times continue from the one before;
 //! 3. they cover the file's video: as many frames as it presents, each segment starting at its first frame's
 //!    presentation time, and the last one ending within one nominal frame of the end of the video.
@@ -93,8 +114,9 @@ pub struct TableSource {
     pub members: serde_json::Map<String, Value>,
 }
 
-/// Sony's stabilizer timing of a source clip (`sony_ibis_template`): the times of the clip's first sensor-shift (IBIS)
-/// and lens-shift (OIS) samples, as its metadata has them (µs within their frame), in order. The splines of a frame's
+/// The stabilizer timing of a source clip (`sony_ibis_template`), a Sony clip's or a Gyroflow protobuf clip's (of an
+/// MP4's track, or of its JSON lines log): the times of the clip's first sensor-shift (IBIS) and lens-shift (OIS)
+/// samples, as telemetry-parser gives them (µs within their frame), in order. The splines of a frame's
 /// stabilizer positions are spaced by the intervals of the clip's first samples, so a trimmed clip, whose first samples
 /// aren't its source's, spaces them by these instead to have its source's splines. Each list is at least as long as
 /// any frame's spline needs, or the source's samples
@@ -118,6 +140,17 @@ impl TableSource {
                 None
             }
         }
+    }
+    /// Z CAM's IMU origin of the source (`zcam_imu_origin_us`): the raw `IMUData.timestamp` (µs on the source's
+    /// `clock`) of the first IMU batch the source's readings are timed from (the Z CAM reader's), by which a trimmed
+    /// file's readings are timed as the source's. A member that isn't a whole number is ignored
+    pub fn zcam_imu_origin_us(&self) -> Option<u64> {
+        let member = self.members.get("zcam_imu_origin_us")?;
+        let origin = member.as_u64();
+        if origin.is_none() {
+            log::warn!("The segment table's zcam_imu_origin_us of {} isn't a whole number, ignored", self.name);
+        }
+        origin
     }
     /// The nominal frame rate in frames per second
     pub fn fps_f64(&self) -> f64 {
@@ -157,11 +190,31 @@ impl TrimSegment {
     pub fn has_frame(&self, frame: u64) -> bool { frame >= self.out_first_frame && frame < self.out_end_frame() }
 }
 
+/// The telemetry log written with a video, which its table's clocks describe (`telemetry_log`, see [Telemetry
+/// logs](self#telemetry-logs))
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TelemetryLog {
+    /// Its file name as it was written (informational, never compared: a video and its log are renamed together),
+    /// `None` when its trim had no names for its outputs
+    pub name: Option<String>,
+    /// What it is read as: `gcsv` (a gcsv, also under `.csv`), `runcam` (Runcam's CSV) or `jsonl` (the Gyroflow
+    /// protobuf's messages as JSON lines)
+    pub kind: String,
+    /// Its bytes
+    pub size: u64,
+    /// The CRC-32 of its bytes, the CRC of ISO/IEC 3309 and ITU-T V.42 that zlib's `crc32()` and gzip (RFC 1952)
+    /// compute: with its size, it identifies the log as a gzip member's trailer identifies its content
+    pub crc32: u32,
+}
+
 /// A segment table, read and checked ([`SegmentTable::parse`])
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SegmentTable {
     pub sources: Vec<TableSource>,
     pub segments: Vec<TrimSegment>,
+    /// The telemetry log written with the file, which the sources' clocks are of, `None` for a table that names none
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub telemetry_log: Option<TelemetryLog>,
 }
 
 /// The frames a file's video presents, which a table must cover (validity rule 3)
@@ -173,9 +226,8 @@ pub enum VideoFrames {
     Times(VideoFrameTimes),
 }
 
-/// The presentation times of a video's frames, in ticks of `timescale`, in presentation order, as the file's timeline
-/// gives them (ISO/IEC 14496-12 §8.6: a sample's decode time plus its composition offset, less the edit's media time,
-/// plus the edit's empty duration)
+/// The presentation times of a video's frames, in ticks of `timescale`, in presentation order, as the decoders give them
+/// (an ISO base media file's as FFmpeg reads it: `video_frame_times`)
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VideoFrameTimes {
     pub timescale: u64,
@@ -349,7 +401,23 @@ impl SegmentTable {
                 },
             });
         }
-        let table = Self { sources, segments };
+        let telemetry_log = match v.get("telemetry_log") {
+            None => None,
+            Some(l) => {
+                let obj = l.as_object().ok_or("telemetry_log isn't an object")?;
+                let field = |k: &str| obj.get(k).ok_or_else(|| format!("telemetry_log has no {k}"));
+                Some(TelemetryLog {
+                    name: match field("name")? {
+                        Value::Null => None,
+                        n => Some(n.as_str().ok_or("telemetry_log's name isn't a string")?.to_owned()),
+                    },
+                    kind: field("kind")?.as_str().ok_or("telemetry_log's kind isn't a string")?.to_owned(),
+                    size: field("size")?.as_u64().ok_or("telemetry_log's size isn't a whole number")?,
+                    crc32: field("crc32")?.as_u64().and_then(|c| u32::try_from(c).ok()).ok_or("telemetry_log's crc32 isn't a CRC-32")?,
+                })
+            }
+        };
+        let table = Self { sources, segments, telemetry_log };
         table.check()?;
         Ok(table)
     }
@@ -368,6 +436,10 @@ impl SegmentTable {
             }
             if let Some(c) = &s.clock && (c.rate.0 == 0 || c.rate.1 == 0 || c.modulus == Some(0)) {
                 return Err(format!("source {k}'s clock runs at {}/{} ticks per second, wrapping at {:?}", c.rate.0, c.rate.1, c.modulus));
+            }
+            // A table that names its telemetry log has the log's clock on every source
+            if self.telemetry_log.is_some() && s.clock.is_none() {
+                return Err(format!("the table names a telemetry log, and source {k} has no clock"));
             }
         }
         if self.segments.is_empty() {
@@ -479,6 +551,75 @@ pub fn read<R: Read + Seek>(stream: &mut R, size: u64) -> Option<Found> {
     }
 }
 
+// ------------------------------- Telemetry logs -------------------------------
+
+impl SegmentTable {
+    /// The table as one of a telemetry log that isn't known to be at its frames (rule 2 of [Telemetry
+    /// logs](self#telemetry-logs)): its segments, without a clock on any source or a shift on any segment, and naming
+    /// no log
+    fn without_log_clocks(mut self) -> Self {
+        for s in &mut self.sources { s.clock = None; }
+        for e in &mut self.segments { e.clock_shift = None; }
+        self.telemetry_log = None;
+        self
+    }
+}
+
+/// The CRC-32 of the first `size` bytes of `stream` (`TelemetryLog::crc32`), `None` when it has fewer. The stream is
+/// left at its start
+fn crc32_of<R: Read + Seek>(stream: &mut R, size: u64) -> Result<Option<u32>> {
+    stream.seek(SeekFrom::Start(0))?;
+    let mut hasher = crc32fast::Hasher::new();
+    let mut buf = vec![0u8; 1 << 20];
+    let mut left = size;
+    while left > 0 {
+        let want = left.min(buf.len() as u64) as usize;
+        let n = stream.read(&mut buf[..want])?;
+        if n == 0 { break; }
+        hasher.update(&buf[..n]);
+        left -= n as u64;
+    }
+    stream.seek(SeekFrom::Start(0))?;
+    Ok((left == 0).then(|| hasher.finalize()))
+}
+
+/// The segment table a telemetry log takes from the video it is read as the telemetry of ([`read_for_log`])
+#[derive(Debug, Clone)]
+pub struct LogTable {
+    /// The video's table, `Err` with why when it isn't valid for the video: the log's when it names the log, otherwise
+    /// its segments without their clocks and shifts
+    pub found: Found,
+    /// Whether the table names the log (rule 1 of [Telemetry logs](self#telemetry-logs)): the log is the one the
+    /// video was trimmed with, so its readings are at the video's frames. Otherwise (rule 2) where each segment's
+    /// readings are in the log isn't known: its segments are the video's frames' only
+    pub names_log: bool,
+}
+
+/// The segment table of a telemetry log of `log_size` bytes (`log`) read as the telemetry of a video (`video`), by
+/// the rule of [Telemetry logs](self#telemetry-logs): the video's table, valid for the video (a log has no frames of
+/// its own to check it against), which is the log's when it names the log (its size and CRC-32), and otherwise its
+/// segments without their clocks and shifts, with a warning that `log_name` isn't the log the video was trimmed with.
+/// `None` when the video has no table. Both streams are left at their start
+pub fn read_for_log<V: Read + Seek, L: Read + Seek>(video: &mut V, video_size: u64, log: &mut L, log_size: u64, log_name: &str) -> Option<LogTable> {
+    let table = match read(video, video_size)? {
+        Ok(table) => table,
+        Err(e) => return Some(LogTable { found: Err(e), names_log: false }),
+    };
+    let why = match &table.telemetry_log {
+        None => "the video's segment table names none: it was trimmed without its log".to_owned(),
+        Some(named) if named.size != log_size => format!("it has {log_size} bytes, the video's segment table names a log of {} bytes", named.size),
+        Some(named) => match crc32_of(log, log_size) {
+            Ok(Some(crc)) if crc == named.crc32 => return Some(LogTable { found: Ok(table), names_log: true }),
+            Ok(Some(crc)) => format!("its CRC-32 is {crc}, the video's segment table names a log of CRC-32 {}", named.crc32),
+            Ok(None) => format!("it has fewer than its {log_size} bytes"),
+            Err(e) => format!("it can't be read: {e}"),
+        },
+    };
+    let early = table.segments.first().map_or(0.0, |s| s.src_start_us as f64 / 1e6);
+    log::warn!("{log_name} isn't the telemetry log the video was trimmed with ({why}), so it isn't known to be at the video's frames: the video's segments are taken without their clocks (a copy of its source's untrimmed log is read {early:.3} s early)");
+    Some(LogTable { found: Ok(table.without_log_clocks()), names_log: false })
+}
+
 // ------------------------------- ISO base media files -------------------------------
 
 /// The size of a box and of its header, at the start of `data`, `remaining` the bytes from its start to the end of the
@@ -560,9 +701,10 @@ fn read_isobmff<R: Read + Seek>(stream: &mut R, size: u64) -> Result<Option<Foun
 }
 
 /// The presentation times of the frames of an ISO base media file's first video track (its `moov`'s first `trak` whose
-/// handler is `vide`): what a player shows, through the track's edit list. `None` for a file that isn't one, or whose
-/// first video track can't be read or has an edit list of another shape than an optional empty edit followed by one
-/// edit of the media at normal rate (ISO/IEC 14496-12 §8.6.6)
+/// handler is `vide`): what a player shows, through the track's edit list, at the times FFmpeg's demuxer gives them (a
+/// sample's decode time plus its composition offset, the first frame of an edit at the edit's start). `None` for a file
+/// that isn't one, or whose first video track can't be read or has an edit list of another shape than an optional
+/// empty edit followed by one edit of the media at normal rate (ISO/IEC 14496-12 §8.6.6)
 pub fn video_frame_times<R: Read + Seek>(stream: &mut R, size: u64) -> Option<VideoFrameTimes> {
     let moov = read_moov(stream, size).ok().flatten();
     let _ = stream.seek(SeekFrom::Start(0));
@@ -614,19 +756,19 @@ fn video_frame_times_of_moov(moov: &[u8]) -> Option<VideoFrameTimes> {
             at += count;
         }
     }
-    // The samples' composition times and durations, in presentation order
+    // The samples' decode times, composition times and durations, in decode order
     let mut dts = 0i64;
-    let mut frames: Vec<(i64, i64)> = durations.iter().zip(&offsets).map(|(d, o)| {
-        let f = (dts + o, *d);
+    let decoded: Vec<(i64, i64, i64)> = durations.iter().zip(&offsets).map(|(d, o)| {
+        let f = (dts, dts + o, *d);
         dts += d;
         f
     }).collect();
-    frames.sort_by_key(|f| f.0);
 
     // The edit list (§8.6.6): an empty edit (media time -1) first or none, then one edit of the media at rate 1
     let mut empty = 0i64; // movie timescale
     let mut media_time = 0i64;
     let mut media_end = i64::MAX; // media timescale
+    let mut edited = false;
     if let Some(elst) = child(trak, b"edts").and_then(|e| child(e, b"elst")) {
         let (version, elst) = full_box(elst)?;
         let entries = be_u32(elst, 0)? as usize;
@@ -651,6 +793,7 @@ fn video_frame_times_of_moov(moov: &[u8]) -> Option<VideoFrameTimes> {
             let (duration, time, rate) = entry(e)?;
             if time < 0 || rate != 0x0001_0000 { return None; }
             media_time = time;
+            edited = true;
             if duration > 0 {
                 let d = (duration as i128 * timescale as i128 + movie_timescale as i128 / 2) / movie_timescale as i128;
                 media_end = media_time.checked_add(i64::try_from(d).ok()?)?;
@@ -658,10 +801,25 @@ fn video_frame_times_of_moov(moov: &[u8]) -> Option<VideoFrameTimes> {
         }
     }
     let empty_ticks = i64::try_from((empty as i128 * timescale as i128 + movie_timescale as i128 / 2) / movie_timescale as i128).ok()?;
-    let presented: Vec<(i64, i64)> = frames.into_iter().filter(|(cts, _)| *cts >= media_time && *cts < media_end).collect();
+    let in_edit = |cts: i64| cts >= media_time && cts < media_end;
+    // Where the presented frames' times start from, as FFmpeg's mov demuxer has them (`mov_fix_index`), which the
+    // decoders read the file with. Without an edit list, the composition times as they are. With one, the first frame
+    // in the edit in decode order starts at the empty edit's end, the others follow it by their decode times and
+    // composition offsets, and all are moved earlier for the first one presented to start there. That's the edit's media
+    // time only when a frame starts there: the frame an edit starts within isn't presented (FFmpeg drops it), and the
+    // next one starts the edit, not the part of a frame later the timeline of ISO/IEC 14496-12 §8.6.6 has it
+    let origin = if edited {
+        let first_dts = decoded.iter().find(|(_, cts, _)| in_edit(*cts))?.0;
+        let first_cts = decoded.iter().filter(|(_, cts, _)| in_edit(*cts)).map(|(_, cts, _)| *cts).min()?;
+        first_cts.max(first_dts)
+    } else {
+        0
+    };
+    let mut presented: Vec<(i64, i64)> = decoded.iter().filter(|(_, cts, _)| in_edit(*cts)).map(|(_, cts, d)| (*cts, *d)).collect();
+    presented.sort_by_key(|f| f.0);
     let (last_cts, last_duration) = *presented.last()?;
-    let end = (last_cts + last_duration).min(media_end) - media_time + empty_ticks;
-    let starts: Vec<i64> = presented.iter().map(|(cts, _)| cts - media_time + empty_ticks).collect();
+    let end = (last_cts + last_duration).min(media_end) - origin + empty_ticks;
+    let starts: Vec<i64> = presented.iter().map(|(cts, _)| cts - origin + empty_ticks).collect();
     // The most common frame duration, the shorter one on a tie
     let mut sorted = durations;
     sorted.sort_unstable();
@@ -1088,6 +1246,44 @@ mod tests {
 
     fn read_all(file: &[u8]) -> Option<Found> {
         read(&mut Cursor::new(file), file.len() as u64)
+    }
+
+    /// The `moov` of a video track of `frames` frames of 128 ticks of 12800 (100 fps), each `ctts` ticks after its decode
+    /// time when given, through `edits` (movie ticks of 12800, media time) when given
+    fn track(frames: u32, ctts: Option<i32>, edits: Option<&[(u32, i32)]>) -> Vec<u8> {
+        let mvhd = full_bx(b"mvhd", &[&[0; 8], &be(12800), &be(0)]);
+        let mdhd = full_bx(b"mdhd", &[&[0; 8], &be(12800), &be(0)]);
+        let hdlr = full_bx(b"hdlr", &[&[0; 4], b"vide", &[0; 13]]);
+        let mut stbl = full_bx(b"stts", &[&be(1), &be(frames), &be(128)]);
+        if let Some(offset) = ctts {
+            stbl.extend(full_bx(b"ctts", &[&be(1), &be(frames), &offset.to_be_bytes()]));
+        }
+        let mdia = bx(b"mdia", &[mdhd, hdlr, bx(b"minf", &bx(b"stbl", &stbl))].concat());
+        let edts = edits.map(|edits| {
+            let entries: Vec<u8> = edits.iter().flat_map(|(duration, time)| [be(*duration), time.to_be_bytes(), be(0x0001_0000)].concat()).collect();
+            bx(b"edts", &full_bx(b"elst", &[&be(edits.len() as u32), &entries]))
+        }).unwrap_or_default();
+        bx(b"moov", &[mvhd, bx(b"trak", &[edts, mdia].concat())].concat())
+    }
+
+    fn times_of(moov: &[u8]) -> (Vec<i64>, i64) {
+        let times = video_frame_times(&mut Cursor::new(moov), moov.len() as u64).unwrap();
+        (times.starts, times.end)
+    }
+
+    #[test]
+    fn frames_are_at_the_times_ffmpeg_gives_them() {
+        let frames = |from: i64, count: i64| (0..count).map(|k| from + k * 128).collect::<Vec<_>>();
+        // A stream copy cut 7.5 frames in: the frame the edit starts within isn't shown, the next one starts the edit
+        assert_eq!(times_of(&track(20, None, Some(&[(1600, 960)]))), (frames(0, 12), 1536));
+        // And after an empty edit
+        assert_eq!(times_of(&track(20, None, Some(&[(500, -1), (1600, 960)]))), (frames(500, 12), 2036));
+        // An edit from the first frame's composition time
+        assert_eq!(times_of(&track(20, Some(256), Some(&[(2560, 256)]))), (frames(0, 20), 2560));
+        // An edit from 0 of frames composed two frames later: FFmpeg presents the first one at the edit's start too
+        assert_eq!(times_of(&track(20, Some(256), Some(&[(2816, 0)]))), (frames(0, 20), 2560));
+        // Without an edit list, as composed: the first frame two frames late
+        assert_eq!(times_of(&track(20, Some(256), None)), (frames(256, 20), 2816));
     }
 
     #[test]

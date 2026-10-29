@@ -89,7 +89,12 @@ impl Freefly {
                         }
                     }
 
-                    if let Some(v) = v.get_t(TagId::Unknown(u32::from_be_bytes(*b"ACGY"))) as Option<&Vec<Vec<Scalar>>> {
+                    // The packet's readings, a structure item of one entry per reading: the KLV reads an item of more
+                    // entries as their list, and one of a single entry as that entry itself
+                    let acgy = || TagId::Unknown(u32::from_be_bytes(*b"ACGY"));
+                    let readings = (v.get_t(acgy()) as Option<&Vec<Vec<Scalar>>>).map(Vec::as_slice)
+                        .or_else(|| (v.get_t(acgy()) as Option<&Vec<Scalar>>).map(std::slice::from_ref));
+                    if let Some(v) = readings {
                         let first_frame_ts = frame_timestamps.first().cloned().unwrap_or(0) as f64;
                         let last_frame_ts  = frame_timestamps.last() .cloned().unwrap_or(0) as f64;
                         let last_imu_ts    = imu_timestamps  .last() .cloned().unwrap_or(0) as f64;

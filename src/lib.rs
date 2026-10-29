@@ -69,6 +69,8 @@ macro_rules! impl_formats {
             pub samples: Option<Vec<SampleInfo>>,
             /// The file's segment table, `Err` with why it can't be used when the file has one that isn't valid for it
             segment_table: Option<segment_table::Found>,
+            /// Whether the readings are at the frames of the table's segments (`readings_at_table_frames`)
+            readings_at_table_frames: bool,
         }
         impl Input {
             pub fn from_stream<T: Read + Seek, P: AsRef<std::path::Path>, F: Fn(f64)>(stream: &mut T, size: usize, filepath: P, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Input> {
@@ -106,6 +108,7 @@ macro_rules! impl_formats {
                                 samples: x.parse(stream, size, progress_cb, cancel_flag, options).map_err(|e| log::error!("Failed to parse {} as {}: {e}", filepath.as_ref().display(), stringify!($name))).ok(),
                                 inner: SupportedFormats::$name(x),
                                 segment_table: None,
+                                readings_at_table_frames: true,
                             };
                             // A probe reads the start of the data only, which the table can't be checked against
                             if !probe_only {
@@ -128,7 +131,13 @@ macro_rules! impl_formats {
                             for try_ext in ["jsonl", "gcsv", "bbl", "bfl", "csv", "JSONL", "GCSV", "BBL", "BFL", "CSV"] {
                                 if let Some(gyro_path) = filesystem::file_with_extension(path, try_ext) {
                                     if let Ok(mut f) = filesystem::open_file(&gyro_path) {
-                                        return Self::from_stream(&mut f.file, f.size, &gyro_path, progress_cb, cancel_flag);
+                                        let mut input = Self::from_stream(&mut f.file, f.size, &gyro_path, progress_cb, cancel_flag)?;
+                                        // The log is the video's telemetry: its segments are the video's (a
+                                        // probe reads none, as above)
+                                        if !options.probe_only {
+                                            input.read_video_segment_table(stream, size, &mut f.file, f.size, &gyro_path);
+                                        }
+                                        return Ok(input);
                                     }
                                 }
                             }
@@ -154,13 +163,36 @@ macro_rules! impl_formats {
             pub fn unusable_segment_table(&self) -> Option<&str> {
                 self.segment_table.as_ref().and_then(|x| x.as_ref().err()).map(String::as_str)
             }
+            /// Takes the segment table of the video `video` (`video_size` bytes) whose telemetry this was read as: this
+            /// is the telemetry log `log` (`log_size` bytes, at `log_path`), which has no frames, nor a table, of its
+            /// own. Its table is then the video's, by the rule of the table's telemetry logs
+            /// ([`segment_table::read_for_log`]): with the table's clocks when the table names this log, without them
+            /// (and a warning) otherwise
+            pub fn read_video_segment_table<V: Read + Seek, L: Read + Seek, P: AsRef<std::path::Path>>(&mut self, video: &mut V, video_size: usize, log: &mut L, log_size: usize, log_path: P) {
+                let name = filesystem::get_filename(log_path.as_ref().to_str().unwrap_or_default());
+                let table = segment_table::read_for_log(video, video_size as u64, log, log_size as u64, &name);
+                self.readings_at_table_frames = table.as_ref().is_none_or(|t| t.names_log);
+                self.segment_table = table.map(|t| t.found);
+                if let Some(Err(e)) = &self.segment_table {
+                    log::warn!("{}: the segment table of the video it's the telemetry of isn't valid for the video, ignored: {e}", log_path.as_ref().display());
+                }
+            }
+            /// Whether the readings are known to be at the frames of the segment table's segments (`segment_table`): a
+            /// file's own are, and so are a telemetry log's that the table of the video it was read for names
+            /// (`read_video_segment_table`). Another log's aren't: the table's segments are then the video's frames'
+            /// only, and where each one's readings are in the log is found by synchronizing it
+            pub fn readings_at_table_frames(&self) -> bool {
+                self.readings_at_table_frames
+            }
             /// The table of the file read: that of the file the parser read the motion and the frames from, which is the
             /// file's sidecar when it was read through one. A RED clip's is in its RMD sidecar, a MotionCam recording's in
-            /// the `.mcraw` its video was read with, any other file's in the file
+            /// the `.mcraw` its video was read with, a Z CAM file's is read by its parser, any other file's in the file
             fn read_segment_table<T: Read + Seek>(&self, stream: &mut T, size: usize) -> Option<segment_table::Found> {
                 match &self.inner {
                     SupportedFormats::RedR3d(x) => x.segment_table(),
                     SupportedFormats::MotionCam(x) => x.segment_table(stream, size as u64),
+                    // Read before its readings, which it times by (`zcam_imu_origin_us`)
+                    SupportedFormats::Zcam(x) => x.segment_table.clone(),
                     _ => segment_table::read(stream, size as u64),
                 }
             }

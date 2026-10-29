@@ -24,6 +24,7 @@ half = "2.7"
 memchr = "2.8"
 fc-blackbox = { package = "fc-blackbox-patched", version = "0.2.1" }
 csv = "1.4"
+crc32fast = "1.5"
 log = "0.4"
 video-types = { version = "0.1", default-features = false, features = ["serde"] }
 

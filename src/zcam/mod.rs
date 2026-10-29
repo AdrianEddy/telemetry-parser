@@ -63,6 +63,55 @@ pub struct Zcam {
     next_imu_emit_us: Option<f64>,
 
     lens_profile_emitted: bool,
+
+    /// The file's segment table, read before its samples (`crate::segment_table::read`): a file cut from recordings
+    /// times its IMU readings as their source does, by the table (`TableSource::zcam_imu_origin_us`)
+    pub(crate) segment_table: Option<crate::segment_table::Found>,
+    /// How the readings of each of the table's segments are timed (`SourceTiming`), `None` for a segment whose source
+    /// the table gives no IMU origin
+    source_timing: Vec<Option<SourceTiming>>,
+    /// Whether readings of a segment the table can't time were timed from the file's first batch, and reported
+    untimed_reported: bool,
+}
+
+/// How the IMU readings of a segment of a file cut from recordings are timed as its source times them, by the file's
+/// segment table: the source times a reading whose IMU clock value is `c` (its batch's `IMUData.timestamp` plus its
+/// place in the batch) at `c − B₀` µs, `B₀` the source's origin (`zcam_imu_origin_us`, the first batch it times), and
+/// this file's value `c` of the segment is the source's `c + clock_shift`. So the reading is at `c + clock_shift − B₀`
+/// on the source's timeline, which is the file's less `src_capture_start_us` plus `out_capture_start_us`
+#[derive(Debug, Clone, Copy)]
+struct SourceTiming {
+    /// The segment's `clock_shift`, µs of the IMU clock
+    shift_us: i128,
+    /// Where the source's IMU clock wraps, µs, for a clock that does
+    modulus_us: Option<i128>,
+    /// The source's IMU origin `B₀`, µs of its IMU clock
+    origin_us: u64,
+    /// The source's timeline to the file's, µs: `out_capture_start_us − src_capture_start_us`
+    to_file_us: i64,
+}
+
+impl SourceTiming {
+    /// The timing of each segment of `table` whose source has an IMU origin on a µs clock
+    fn of_table(table: &crate::segment_table::SegmentTable) -> Vec<Option<Self>> {
+        table.segments.iter().map(|e| {
+            let source = table.source_of(e);
+            let origin_us = source.zcam_imu_origin_us()?;
+            // The origin and the shift are on the source's IMU clock, µs; a `null` shift is a clock the file has as the
+            // source has it
+            let (shift_us, modulus_us) = match (&source.clock, e.clock_shift) {
+                (None, None) => (0, None),
+                (Some(c), Some(d)) if c.rate.1.checked_mul(1_000_000) == Some(c.rate.0) => (d as i128, c.modulus.map(i128::from)),
+                _ => return None,
+            };
+            Some(Self { shift_us, modulus_us, origin_us, to_file_us: e.out_capture_start_us - e.src_capture_start_us })
+        }).collect()
+    }
+    /// The source's value of this file's IMU clock value `c`
+    fn source_value(&self, c: u64) -> f64 {
+        let v = c as i128 + self.shift_us;
+        self.modulus_us.map_or(v, |m| v.rem_euclid(m)) as f64
+    }
 }
 
 impl Zcam {
@@ -101,6 +150,15 @@ impl Zcam {
     pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         let mut samples = Vec::new();
         let cancel_flag2 = cancel_flag.clone();
+
+        // A file cut from recordings times its readings as its source does, by its segment table: read first. A probe
+        // reads no table
+        if !options.probe_only {
+            self.segment_table = crate::segment_table::read(stream, size as u64);
+            if let Some(Ok(table)) = &self.segment_table {
+                self.source_timing = SourceTiming::of_table(table);
+            }
+        }
 
         util::get_metadata_track_samples(stream, size, true, |mut info: SampleInfo, data: &[u8], file_position: u64, _video_md: Option<&VideoMetadata>| {
             if size > 0 {
@@ -276,6 +334,19 @@ impl Zcam {
         }
     }
 
+    /// How the readings of the sample `info` are timed by the file's segment table: as its segment's source times them
+    /// (the segment that presents the middle of the sample), `None` without a table or for a segment it can't time
+    fn timing_of(&mut self, info: &SampleInfo) -> Option<SourceTiming> {
+        let Some(Ok(table)) = &self.segment_table else { return None };
+        let middle_us = ((info.timestamp_ms + info.duration_ms.max(0.0) / 2.0) * 1000.0).round() as i64;
+        let timing = self.source_timing.get(table.segment_of_time_us(middle_us)).copied().flatten();
+        if timing.is_none() && !self.untimed_reported {
+            self.untimed_reported = true;
+            log::warn!("zcam: the segment table gives no IMU origin (zcam_imu_origin_us on a µs clock) for the source of the segment at {:.3} ms: its readings are timed from the file's first IMU batch", middle_us as f64 / 1000.0);
+        }
+        timing
+    }
+
     fn process_frame_meta(&mut self, frame: &FrameMeta, info: &SampleInfo, tag_map: &mut GroupedTagMap, options: &crate::InputOptions) {
         let frame_ts_us = frame.frame_meta_header.as_ref().map(|h| h.frame_timestamp as f64).unwrap_or(0.0);
 
@@ -382,12 +453,15 @@ impl Zcam {
         // ----------------- IMU data -----------------
         if let Some(ref imu_frame) = frame.frame_meta_of_imu {
             if let Some(ref imu) = imu_frame.imu_data {
-                self.emit_imu_samples(imu, tag_map, options);
+                let timing = if imu.items.is_empty() { None } else { self.timing_of(info) };
+                self.emit_imu_samples(imu, timing, tag_map, options);
             }
         }
     }
 
-    fn emit_imu_samples(&mut self, imu: &ImuData, tag_map: &mut GroupedTagMap, options: &crate::InputOptions) {
+    /// The readings of a batch, timed from the file's first batch, or as their source times them where the file's
+    /// segment table tells how (`timing`)
+    fn emit_imu_samples(&mut self, imu: &ImuData, timing: Option<SourceTiming>, tag_map: &mut GroupedTagMap, options: &crate::InputOptions) {
         let n = imu.items.len();
         if n == 0 { return; }
         if self.imu_sample_rate_hz <= 0.0 {
@@ -414,6 +488,9 @@ impl Zcam {
             self.pts_offset_us = Some(-batch_t0_camera_us);
         }
         let pts_offset_us = self.pts_offset_us.unwrap_or(0.0);
+        // A file cut from recordings: the batch on its source's clock and the source's origin (`SourceTiming`), which
+        // time the readings exactly as the source does, then put on the file's timeline
+        let source = timing.map(|s| (s.source_value(imu.timestamp) - self.imu_time_offset_us, -(s.origin_us as f64 - self.imu_time_offset_us), s.to_file_us as f64));
 
         let mut gyro: Vec<TimeVector3<f64>> = Vec::with_capacity(n);
         let mut acc:  Vec<TimeVector3<f64>> = Vec::with_capacity(n);
@@ -431,7 +508,10 @@ impl Zcam {
                 if t_camera_us < min_t { continue; }
             }
 
-            let t_us = t_camera_us + pts_offset_us;
+            let t_us = match source {
+                Some((batch_t0_source_us, source_offset_us, to_file_us)) => (batch_t0_source_us + (i as f64) * dt_us) + source_offset_us + to_file_us,
+                None => t_camera_us + pts_offset_us,
+            };
             let t_seconds = t_us / 1.0e6;
 
             // Step 1: scale LSB → physical units per the proto's ImuInfo equations.
