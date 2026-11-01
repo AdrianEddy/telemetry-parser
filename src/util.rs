@@ -326,7 +326,7 @@ pub fn read_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, mut ty
                 // }
                 // let duration_ms = sample_delta as f64 * 1000.0 / timescale.0 as f64;
 
-                if let Some(samples) = mp4parse::unstable::create_sample_table(&x, 0.into()) {
+                if let Some(samples) = mp4parse::unstable::create_sample_table(&x, empty_edit_ticks(&ctx, x).into()) {
                     let mut sample_data = Vec::new();
                     // The samples whose bytes aren't in the file, the first of them, and those too large to read at once
                     let (mut missing, mut first_missing, mut too_large, mut largest) = (0usize, None, 0usize, None);
@@ -376,6 +376,22 @@ pub fn read_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, mut ty
         }
     }
     Ok(ctx)
+}
+
+/// How long a track's initial empty edit (`media_time` −1, ISO/IEC 14496-12 §8.6.6) holds its samples back on the file's
+/// timeline, in the track's ticks: 0 without one. The edit is in the movie's timescale, and a sample's time here is on
+/// the track's ticks, the edit rounded to the nearest of them as FFmpeg's demuxer takes it (`mov_build_index`) and as
+/// `segment_table::video_frame_times` does for the video. A track that starts after the file's start (a file cut from
+/// recordings whose first part has no readings, its samples starting with the next part's first frame) has its samples
+/// at their times in the file only with it. The edit's media time isn't taken: a sample keeps its time in its track's
+/// media (a stream copy's `gpmd` edit that starts 75 ms in hides nothing of what its readings are timed by)
+pub(crate) fn empty_edit_ticks(ctx: &MediaContext, track: &mp4parse::Track) -> i64 {
+    match (track.empty_duration, ctx.timescale, track.timescale) {
+        (Some(empty), Some(movie), Some(ticks)) if movie.0 > 0 => {
+            i64::try_from((empty.0 as u128 * ticks.0 as u128 + movie.0 as u128 / 2) / movie.0 as u128).unwrap_or(0)
+        }
+        _ => 0,
+    }
 }
 
 pub fn get_metadata_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, single: bool, callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>

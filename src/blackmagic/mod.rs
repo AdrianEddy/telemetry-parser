@@ -253,7 +253,8 @@ impl BlackmagicBraw {
     // duration, the most common one (the shorter of two as common): each sample holds one reading of the IMU and lasts as
     // long, but a file cut from recordings can lengthen a segment's last one over a gap in its source's readings (its
     // reading is still of the time the sample starts) or shorten one at a junction. Exact, from the samples' times in
-    // their track's ticks and the capture rate. `None` where a reading's sample isn't in its track
+    // their track's ticks, on the file's timeline (a track that starts late, behind an empty edit: `util::empty_edit_ticks`),
+    // and the capture rate. `None` where a reading's sample isn't in its track
     fn reading_frames(ctx: &mp4parse::MediaContext, samples: &[(usize, u64)], rate: CaptureRate) -> Option<Vec<u64>> {
         let mut frames = vec![0u64; samples.len()];
         let mut tracks: Vec<usize> = samples.iter().map(|s| s.0).collect();
@@ -262,7 +263,7 @@ impl BlackmagicBraw {
         for index in tracks {
             let track = ctx.tracks.get(index)?;
             let ticks = track.timescale?.0 as i128;
-            let table = mp4parse::unstable::create_sample_table(track, 0.into())?;
+            let table = mp4parse::unstable::create_sample_table(track, util::empty_edit_ticks(ctx, track).into())?;
             let mut times = Vec::new();
             for (k, &(t, i)) in samples.iter().enumerate() {
                 if t == index {

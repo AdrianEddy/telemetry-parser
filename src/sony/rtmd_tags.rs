@@ -417,7 +417,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
                 return Err(Error::new(ErrorKind::Other, "Invalid OSS table"));
             }
             if count > 0 {
-                let mut ret = Vec::with_capacity(count as usize);
+                let mut ret = with_room(count as usize, d, 16);
                 for _ in 0..count {
                     // XAVC::base_2D_TimeOffset<XAVC::base_3D<int>>
                     ret.push(TimeVector3 {
@@ -439,7 +439,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
                 return Err(Error::new(ErrorKind::Other, "Invalid table"));
             }
             if count > 0 {
-                let mut ret = Vec::with_capacity(count as usize);
+                let mut ret = with_room(count as usize, d, 10);
                 for _ in 0..count {
                     // XAVC::base_2D_TimeOffset<XAVC::base_3D<short>>
                     ret.push(TimeVector3 {
@@ -481,7 +481,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
                 return Err(Error::new(ErrorKind::Other, "Invalid table"));
             }
             if count >= 0 {
-                let mut ret = Vec::with_capacity(count as usize);
+                let mut ret = with_room(count as usize, d, 16);
                 for _ in 0..count {
                     // XAVC::base_2D_TimeOffset<XAVC::base_3D<int>>
                     ret.push(TimeVector3 {
@@ -511,7 +511,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             if elem_count == 0xffffffff {
                 elem_count = 0;
             }
-            let mut ret = Vec::with_capacity(elem_count as usize); // &XAVC::base_Array<unsigned short>
+            let mut ret = with_room(elem_count as usize, d, 2); // &XAVC::base_Array<unsigned short>
             for _ in 0..elem_count {
                 ret.push(d.read_u16::<BigEndian>()?); // confirmed u16
             }
@@ -530,7 +530,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             let cc = d.read_i16::<BigEndian>()?;
             let elem_count = d.read_i32::<BigEndian>()?;
             let _elem_size = d.read_i32::<BigEndian>()?;
-            let mut ret = Vec::with_capacity(elem_count as usize); // XAVC::base_Array<XAVC::base_2D<short>>:
+            let mut ret = with_room(elem_count as usize, d, 4); // XAVC::base_Array<XAVC::base_2D<short>>:
             for _ in 0..elem_count {
                 ret.push((
                     d.read_i16::<BigEndian>()?, // x
@@ -568,6 +568,9 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
             let divisions_y = x.read_u8()? as usize;
 
             let total = divisions_x * divisions_y;
+            if total > xs.len() {
+                return Err(Error::new(ErrorKind::InvalidData, "Invalid mesh"));
+            }
             let mut mesh_2d = Vec::with_capacity(total);
             for y in 0..divisions_y as usize {
                 for x in 0..divisions_x as usize {
@@ -632,7 +635,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
                 return Err(Error::new(ErrorKind::Other, "Invalid gyro data format"));
             }
             if count > 0 {
-                let mut ret = Vec::with_capacity(count as usize);
+                let mut ret = with_room(count as usize, d, 6);
                 for _ in 0..count {
                     ret.push(Vector3 {
                         x: d.read_i16::<BigEndian>()?, // pitch
@@ -727,7 +730,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
                 return Err(Error::new(ErrorKind::Other, "Invalid accel data format"));
             }
             if count > 0 {
-                let mut ret = Vec::with_capacity(count as usize);
+                let mut ret = with_room(count as usize, d, 6);
                 for _ in 0..count {
                     ret.push(Vector3 {
                         x: d.read_i16::<BigEndian>()?, // X
@@ -811,6 +814,12 @@ fn read_f16(d: &mut Cursor::<&[u8]>) -> Result<f32> {
 /// "Half Float (lens serial)" distance format (section 5.1)
 fn read_half_float(d: &mut Cursor::<&[u8]>) -> Result<f32> {
     Ok(half::f16::from_bits(d.read_u16::<BigEndian>()?).to_f32())
+}
+
+/// A vector with room for `count` elements of `size` bytes, or for those the tag's data has left: a damaged count isn't
+/// allocated, and reading them ends at the data's end
+fn with_room<T>(count: usize, d: &Cursor::<&[u8]>, size: usize) -> Vec<T> {
+    Vec::with_capacity(count.min(d.get_ref().len().saturating_sub(d.position() as usize) / size))
 }
 
 fn read_u16_array(d: &mut Cursor::<&[u8]>) -> Result<Vec<u16>> {

@@ -95,8 +95,9 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
 
             //dbg!(year, month, day, hour, minute, second, millisecond);
 
-            let date = chrono::NaiveDate::from_ymd_opt(year as _, month as _, day as _).unwrap();
-            let datetime = date.and_hms_milli_opt(hour as _, minute as _, second as _, millisecond as _).unwrap();
+            let date = chrono::NaiveDate::from_ymd_opt(year as _, month as _, day as _);
+            let datetime = date.and_then(|date| date.and_hms_milli_opt(hour as _, minute as _, second as _, millisecond as _));
+            let datetime = datetime.ok_or_else(|| Error::new(ErrorKind::InvalidData, "Invalid date or time"))?;
 
             Ok(datetime.and_utc().timestamp_millis() as f64)
         }, tag_data),

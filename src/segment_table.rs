@@ -515,6 +515,14 @@ impl SegmentTable {
     pub fn source_of(&self, segment: &TrimSegment) -> &TableSource {
         &self.sources[segment.source]
     }
+    /// Whether segment `r` continues the one before in their source: the same source, its first frame the one after
+    /// that one's last, and the source's camera clock running on between them (the same `clock_shift`, `None` for a
+    /// source without a clock). The two are then one run of the source, whose data is the source's own across the
+    /// junction, as one segment of their frames would hold it, so a reader may take them for one
+    pub fn continues(&self, r: usize) -> bool {
+        let (Some(p), Some(s)) = (r.checked_sub(1).and_then(|p| self.segments.get(p)), self.segments.get(r)) else { return false };
+        p.source == s.source && p.src_first_frame.checked_add(p.frame_count) == Some(s.src_first_frame) && p.clock_shift == s.clock_shift
+    }
 }
 
 /// A table found in a file: `Ok` when it is valid for the file, `Err` with the reason otherwise (a reader must ignore it)
@@ -836,12 +844,19 @@ fn video_frame_times_of_moov(moov: &[u8]) -> Option<VideoFrameTimes> {
 const MXF_PARTITION_PREFIX: [u8; 13] = [0x06, 0x0e, 0x2b, 0x34, 0x02, 0x05, 0x01, 0x01, 0x0d, 0x01, 0x02, 0x01, 0x01];
 const MXF_PRIMER: [u8; 16] = [0x06, 0x0e, 0x2b, 0x34, 0x02, 0x05, 0x01, 0x01, 0x0d, 0x01, 0x02, 0x01, 0x01, 0x05, 0x01, 0x00];
 const MXF_FILL: [u8; 16] = [0x06, 0x0e, 0x2b, 0x34, 0x01, 0x01, 0x01, 0x02, 0x03, 0x01, 0x02, 0x10, 0x01, 0x00, 0x00, 0x00];
+/// The random index pack (ST 377-1 §12)
+const MXF_RIP: [u8; 16] = [0x06, 0x0e, 0x2b, 0x34, 0x02, 0x05, 0x01, 0x01, 0x0d, 0x01, 0x02, 0x01, 0x01, 0x11, 0x01, 0x00];
 /// Picture essence descriptors (SMPTE ST 377-1 Annex B, ST 381, RP 2057): CDCI, RGBA, generic picture, MPEG, VC-1
 const MXF_PICTURE_DESCRIPTORS: [u8; 5] = [0x28, 0x29, 0x27, 0x51, 0x5f];
 /// An MXF file's run-in is at most 64 KiB less one byte (ST 377-1 §6.5)
 const MXF_MAX_RUN_IN: u64 = 65_535;
 /// More header metadata than this isn't read
 const MXF_MAX_HEADER: u64 = 256 << 20;
+/// Of a file's partitions after its header partition, at most this many are read, from its last one back
+const MXF_MAX_PARTITIONS: u64 = 1 << 16;
+
+/// The frames an MXF file's video presents and their edit rate, `(numerator, denominator)`
+type MxfFrames = (u64, (u64, u64));
 
 /// Two MXF keys, without byte 8 (the registry version, ST 336)
 fn same_ul(a: &[u8], b: &[u8]) -> bool {
@@ -860,11 +875,12 @@ fn mxf_header_partition<R: Read + Seek>(stream: &mut R, size: u64) -> Result<Opt
 }
 
 /// A KLV's key, and where its value starts and how long it is (BER length, ST 336 §3.3; an indefinite length isn't one
-/// a header metadata item has)
-fn mxf_klv<R: Read + Seek>(stream: &mut R, at: u64, size: u64) -> Result<([u8; 16], u64, u64)> {
+/// a header metadata item has), the whole KLV before `end`: the end of the file, or of the header metadata it's an item
+/// of
+fn mxf_klv<R: Read + Seek>(stream: &mut R, at: u64, end: u64) -> Result<([u8; 16], u64, u64)> {
     let invalid = |what: &str| Error::new(ErrorKind::InvalidData, format!("{what} at offset {at}"));
     let mut b = [0u8; 25];
-    let n = size.saturating_sub(at).min(25) as usize;
+    let n = end.saturating_sub(at).min(25) as usize;
     if n < 17 { return Err(invalid("no KLV")); }
     stream.seek(SeekFrom::Start(at))?;
     stream.read_exact(&mut b[..n])?;
@@ -878,81 +894,436 @@ fn mxf_klv<R: Read + Seek>(stream: &mut R, at: u64, size: u64) -> Result<([u8; 1
         }
     };
     let value = at + 16 + ll;
-    if value.checked_add(len).is_none_or(|e| e > size) {
-        return Err(invalid("a KLV past the end of the file"));
+    if value.checked_add(len).is_none_or(|e| e > end) {
+        return Err(invalid("a KLV that runs past its end"));
     }
     Ok((b[..16].try_into().unwrap(), value, len))
 }
 
-/// The table of an MXF file: the items of its table key in the header partition's header metadata, which starts with
-/// the primer pack after the partition pack and its fill, and is `HeaderByteCount` bytes long (ST 377-1 §7.1, §9). The
-/// frames it must cover are the edit units of the picture essence: its descriptor's `ContainerDuration` (local tag
-/// 0x3002) at its `SampleRate` (0x3001), the edit rate of frame-wrapped essence
-fn read_mxf<R: Read + Seek>(stream: &mut R, size: u64, start: u64) -> Result<Option<Found>> {
-    let (_, pack, pack_len) = mxf_klv(stream, start, size)?;
-    if pack_len < 40 {
-        return Err(Error::new(ErrorKind::InvalidData, "a header partition pack shorter than its fixed items"));
-    }
-    stream.seek(SeekFrom::Start(pack + 32))?;
-    let header_bytes = stream.read_u64::<BigEndian>()?.min(MXF_MAX_HEADER);
-    let mut at = pack + pack_len;
-    loop {
+/// A partition pack (ST 377-1 §7.1): where it is, where it ends, its kind (byte 14 of its key: 2 the header partition's,
+/// 3 a body partition's, 4 the footer partition's) and its status (byte 15: 1 open and incomplete, 2 closed and
+/// incomplete, 3 open and complete, 4 closed and complete), and its items read here, which are offsets from the header
+/// partition pack's key, a run-in before it not counted (as FFmpeg's demuxer reads them)
+#[derive(Clone, Copy)]
+struct MxfPack {
+    at: u64,
+    end: u64,
+    kind: u8,
+    status: u8,
+    previous: u64,
+    footer: u64,
+    header_bytes: u64,
+    /// Where the next partition of those found starts ([`mxf_copies`]), which header metadata ends before: nothing of a
+    /// file is in two copies, however their `HeaderByteCount`s or a random index pack overlap them
+    next: u64,
+}
+
+impl MxfPack {
+    /// The partition pack at `at` of a file whose header partition pack is at `run_in`: `None` where there's none. One
+    /// found by an offset (another partition's, or the random index pack's) has to say it's there (`ThisPartition`); the
+    /// header partition's is found by its key, wherever its `ThisPartition` says (bmx reads such a file, FFmpeg's demuxer
+    /// refuses it)
+    fn read<R: Read + Seek>(stream: &mut R, at: u64, size: u64, run_in: u64) -> Result<Option<Self>> {
         let (key, value, len) = mxf_klv(stream, at, size)?;
-        if same_ul(&key, &MXF_PRIMER) { break; }
-        if !same_ul(&key, &MXF_FILL) { return Ok(None); }
-        at = value + len;
+        if key[..13] != MXF_PARTITION_PREFIX || !(0x02..=0x04).contains(&key[13]) || !(0x01..=0x04).contains(&key[14]) || key[15] != 0 || len < 40 {
+            return Ok(None);
+        }
+        stream.seek(SeekFrom::Start(value + 8))?;
+        let (this, previous) = (stream.read_u64::<BigEndian>()?, stream.read_u64::<BigEndian>()?);
+        let (footer, header_bytes) = (stream.read_u64::<BigEndian>()?, stream.read_u64::<BigEndian>()?);
+        Ok((at == run_in || this.checked_add(run_in) == Some(at)).then_some(Self { at, end: value + len, kind: key[13], status: key[14], previous, footer, header_bytes, next: size }))
     }
-    let end = at.saturating_add(header_bytes).min(size);
-    let mut tables: Vec<Result<Vec<u8>>> = Vec::new();
-    let (mut duration, mut rate) = (None, None);
-    // The items up to the end of the header metadata, or up to a damaged one, past which nothing can be found
-    let walked = (|| -> Result<()> {
-        while at < end {
+
+    /// Where the partition's primer pack starts: after its pack and the fill that follows it, `None` when something else
+    /// follows
+    fn primer<R: Read + Seek>(&self, stream: &mut R, size: u64) -> Result<Option<u64>> {
+        let mut at = self.end;
+        loop {
             let (key, value, len) = mxf_klv(stream, at, size)?;
-            if same_ul(&key, &MXF_KEY) {
-                tables.push(stream.seek(SeekFrom::Start(value)).and_then(|_| crate::util::read_data(stream, len)));
-            } else if key[..4] == [0x06, 0x0e, 0x2b, 0x34] && key[4] == 0x02 && key[5] == 0x53 && key[8..13] == [0x0d, 0x01, 0x01, 0x01, 0x01]
-                   && key[13] == 0x01 && MXF_PICTURE_DESCRIPTORS.contains(&key[14]) && duration.is_none() {
-                // A local set of 2-byte tags and 2-byte lengths (ST 377-1 §9.6); the two items' tags are static
-                stream.seek(SeekFrom::Start(value))?;
-                let set = crate::util::read_data(stream, len)?;
-                let mut p = 0usize;
-                let (mut d, mut r) = (None, None);
-                while p + 4 <= set.len() {
-                    let tag = u16::from_be_bytes([set[p], set[p + 1]]);
-                    let l = u16::from_be_bytes([set[p + 2], set[p + 3]]) as usize;
-                    let Some(v) = set.get(p + 4..p + 4 + l) else { break };
-                    match (tag, l) {
-                        (0x3001, 8) => r = Some((be_u32(v, 0).unwrap() as u64, be_u32(v, 4).unwrap() as u64)),
-                        (0x3002, 8) => d = Some(be_u64(v, 0).unwrap()),
-                        _ => {}
-                    }
-                    p += 4 + l;
-                }
-                if let (Some(d), Some(r)) = (d, r.filter(|r| r.0 > 0 && r.1 > 0)) {
-                    duration = Some(d);
-                    rate = Some(r);
-                }
-            }
+            if same_ul(&key, &MXF_PRIMER) { return Ok(Some(at)); }
+            if !same_ul(&key, &MXF_FILL) { return Ok(None); }
             at = value + len;
         }
-        Ok(())
-    })();
-    match walked {
-        Err(e) if tables.is_empty() => return Err(e),
-        // Whether the table found is the file's only one can't be told
-        Err(e) => return Ok(Some(Err(format!("the header metadata can't be read after its segment table: {e}")))),
-        Ok(()) => {}
     }
-    let video = match (duration, rate) {
-        (Some(frames), Some(rate)) => Some(VideoFrames::Constant { frames, rate }),
-        _ => None,
-    };
-    Ok(match tables.as_slice() {
+
+    /// Which of a file's copies of its header metadata is read first, the greatest. ST 377-1 §6.2.3: a closed
+    /// partition's header metadata is final, and a complete one's Best Effort values are all known, where an incomplete
+    /// one's may be their distinguished values (a Duration of -1, unknown). FFmpeg's demuxer takes the footer's first
+    /// (a footer partition is closed, its keys a closed one's and a closed complete one's), then a complete partition's,
+    /// then a closed one's, then an open one's, of equals the later one (`mxfdec.c` `partition_score`); bmx takes the last
+    /// one's (`MXFFileReader`), which is the footer's where it has one
+    fn rank(&self) -> (u8, u64) {
+        let class = match (self.kind, self.status) {
+            (0x04, _) => 4,
+            (_, 0x03 | 0x04) => 3,
+            (_, 0x02) => 2,
+            _ => 1,
+        };
+        (class, self.at)
+    }
+}
+
+/// The partitions an MXF file's random index pack lists (ST 377-1 §12: the file's last four bytes are the pack's length,
+/// and it has an entry of a BodySID and an offset for each partition, in the file's order, the header partition's
+/// first), the last `MXF_MAX_PARTITIONS` of them: their offsets, `None` for a file without one, or whose entries aren't
+/// partitions in order from the header partition's to before the pack
+fn mxf_rip<R: Read + Seek>(stream: &mut R, size: u64, run_in: u64) -> Result<Option<Vec<u64>>> {
+    if size < run_in.saturating_add(4) { return Ok(None); }
+    stream.seek(SeekFrom::Start(size - 4))?;
+    let n = stream.read_u32::<BigEndian>()? as u64;
+    let Some(at) = size.checked_sub(n).filter(|at| *at > run_in) else { return Ok(None) };
+    let Ok((key, value, len)) = mxf_klv(stream, at, size) else { return Ok(None) };
+    if !same_ul(&key, &MXF_RIP) || value + len != size || len < 16 || (len - 4) % 12 != 0 { return Ok(None); }
+    let count = (len - 4) / 12;
+    let read = count.min(MXF_MAX_PARTITIONS);
+    stream.seek(SeekFrom::Start(value + (count - read) * 12))?;
+    let entries = crate::util::read_data(stream, read * 12)?;
+    let offsets: Vec<u64> = entries.as_chunks::<12>().0.iter().map(|e| u64::from_be_bytes(e[4..].try_into().unwrap())).collect();
+    let partitions = offsets.windows(2).all(|w| w[0] < w[1]) && offsets.last().is_some_and(|o| run_in.saturating_add(*o) < at)
+                     && (read < count || offsets.first() == Some(&0));
+    Ok(partitions.then_some(offsets))
+}
+
+/// The partitions of an MXF file whose header partition's pack is `header` that hold header metadata, in the order their
+/// copies of it are read ([`MxfPack::rank`]). The partitions are those its random index pack lists ([`mxf_rip`]), else
+/// those from its footer partition (the header partition's `FooterPartition`) back, by each one's `PreviousPartition`,
+/// as FFmpeg's demuxer finds them (`mxf_read_random_index_pack`, `mxf_seek_to_previous_partition`): each a partition
+/// pack where it's said to be, at most `MXF_MAX_PARTITIONS` from the last one back, up to one that isn't
+fn mxf_copies<R: Read + Seek>(stream: &mut R, size: u64, header: MxfPack) -> Vec<MxfPack> {
+    let run_in = header.at;
+    let pack = |stream: &mut R, offset: u64| run_in.checked_add(offset).and_then(|at| MxfPack::read(stream, at, size, run_in).ok().flatten());
+    let listed = mxf_rip(stream, size, run_in).ok().flatten().and_then(|offsets| {
+        let mut packs = Vec::new();
+        for offset in offsets.into_iter().rev().filter(|o| *o > 0) {
+            match pack(stream, offset) {
+                Some(p) => packs.push(p),
+                // A last entry that isn't a partition is a pack that doesn't list the file's
+                None if packs.is_empty() => return None,
+                None => break,
+            }
+        }
+        Some(packs)
+    });
+    let later = listed.unwrap_or_else(|| {
+        let (mut packs, mut offset) = (Vec::new(), header.footer);
+        while offset > 0 && (packs.len() as u64) < MXF_MAX_PARTITIONS && let Some(p) = pack(stream, offset) {
+            packs.push(p);
+            if p.previous >= offset { break; }
+            offset = p.previous;
+        }
+        packs
+    });
+    let mut copies: Vec<MxfPack> = std::iter::once(header).chain(later).collect();
+    let mut starts: Vec<u64> = copies.iter().map(|p| p.at).collect();
+    starts.sort_unstable();
+    for p in &mut copies {
+        p.next = starts.get(starts.partition_point(|at| *at <= p.at)).copied().unwrap_or(size);
+    }
+    copies.retain(|p| p.header_bytes > 0);
+    copies.sort_by_key(|p| std::cmp::Reverse(p.rank()));
+    copies
+}
+
+/// A structural metadata set of an MXF file's header metadata (ST 377-1 §9.5, Annexes A, B, F): its kind (byte 15 of
+/// its key: 0x36 a material package, 0x0f a sequence, 0x28 a CDCI descriptor, …) and its value, a local set of 2-byte
+/// tags and 2-byte lengths (ST 377-1 §9.6) whose items all fit in it. The items read here are all of static tags (ST
+/// 377-1 Annex A), which a primer pack doesn't remap
+#[derive(Clone, Copy)]
+struct MxfSet<'a> {
+    kind: u8,
+    value: &'a [u8],
+}
+
+impl<'a> MxfSet<'a> {
+    /// The items of a local set, while there's room for an item's tag and length
+    fn items(value: &[u8]) -> impl Iterator<Item = Option<(u16, &[u8])>> + '_ {
+        let mut p = 0usize;
+        std::iter::from_fn(move || {
+            let head = value.get(p..p + 4)?;
+            let l = u16::from_be_bytes([head[2], head[3]]) as usize;
+            let item = value.get(p + 4..p + 4 + l).map(|v| (u16::from_be_bytes([head[0], head[1]]), v));
+            p = if item.is_some() { p + 4 + l } else { value.len() };
+            Some(item)
+        })
+    }
+    /// Whether every item fits in the set. One that runs past its end is damage: such a set isn't used, and the copy of
+    /// the header metadata it's in isn't whole
+    fn fits(value: &[u8]) -> bool {
+        Self::items(value).all(|item| item.is_some())
+    }
+    fn item(&self, tag: u16) -> Option<&'a [u8]> {
+        Self::items(self.value).flatten().find(|(t, _)| *t == tag).map(|(_, v)| v)
+    }
+    /// A strong reference: the InstanceUID of the set it is to
+    fn reference(&self, tag: u16) -> Option<[u8; 16]> {
+        self.item(tag)?.try_into().ok()
+    }
+    /// A batch or an array of strong references: a count, an element size of 16, the InstanceUIDs (ST 377-1 §9.6)
+    fn references(&self, tag: u16) -> Vec<[u8; 16]> {
+        let Some(v) = self.item(tag) else { return Vec::new() };
+        let (Some(count), Some(16)) = (be_u32(v, 0), be_u32(v, 4)) else { return Vec::new() };
+        v[8..].as_chunks::<16>().0.iter().take(count as usize).copied().collect()
+    }
+    fn uint32(&self, tag: u16) -> Option<u32> {
+        self.item(tag).filter(|v| v.len() == 4).and_then(|v| be_u32(v, 0))
+    }
+    /// A Length (Int64): `None` for a negative one, the distinguished value of a best effort Length, unknown (ST 377-1
+    /// Annex B.8: -1)
+    fn length(&self, tag: u16) -> Option<u64> {
+        self.item(tag).filter(|v| v.len() == 8).and_then(|v| be_u64(v, 0)).and_then(|v| u64::try_from(v as i64).ok())
+    }
+    /// A Rational of a positive numerator and denominator
+    fn rate(&self, tag: u16) -> Option<(u64, u64)> {
+        let v = self.item(tag).filter(|v| v.len() == 8)?;
+        let (n, d) = (be_u32(v, 0)? as i32, be_u32(v, 4)? as i32);
+        (n > 0 && d > 0).then_some((n as u64, d as u64))
+    }
+}
+
+/// Kinds of the structural sets read here (byte 15 of their keys, ST 377-1 Tables 17 and 19, Annex F)
+mod mxf_set {
+    pub const PREFACE: u8 = 0x2f;
+    pub const CONTENT_STORAGE: u8 = 0x18;
+    pub const MATERIAL_PACKAGE: u8 = 0x36;
+    pub const SOURCE_PACKAGE: u8 = 0x37;
+    pub const TIMELINE_TRACK: u8 = 0x3b;
+    pub const SEQUENCE: u8 = 0x0f;
+    pub const SOURCE_CLIP: u8 = 0x11;
+    pub const MULTIPLE_DESCRIPTOR: u8 = 0x44;
+}
+
+/// The picture essence's data definition (SMPTE RP 224 "Picture Essence Track"), compared on its first 13 bytes without
+/// byte 8, and the one Avid's MXF files have (`LegacyPicture`, AAF's), as FFmpeg's MXF demuxer takes them
+/// (`ff_mxf_data_definition_uls`)
+fn is_picture(ul: &[u8]) -> bool {
+    const PICTURE: [u8; 13] = [0x06, 0x0e, 0x2b, 0x34, 0x04, 0x01, 0x01, 0x01, 0x01, 0x03, 0x02, 0x02, 0x01];
+    const LEGACY_PICTURE: [u8; 16] = [0x80, 0x7d, 0x00, 0x60, 0x08, 0x14, 0x3e, 0x6f, 0x6f, 0x3c, 0x8c, 0xe1, 0x6c, 0xef, 0x11, 0xd2];
+    ul.len() == 16 && ((ul[..7] == PICTURE[..7] && ul[8..13] == PICTURE[8..]) || ul == LEGACY_PICTURE)
+}
+
+/// A copy of an MXF file's header metadata, a partition's: the values of its items of the table's key, and its
+/// structural sets in order, by their InstanceUIDs (the first set of each), as far as its items can be read: `walked` an
+/// error where one past them couldn't be, `sets_fit` whether every set read was one ([`MxfSet::fits`])
+struct MxfHeader {
+    tables: Vec<Result<Vec<u8>>>,
+    /// The sets' kinds and where their values are in `values`
+    sets: Vec<(u8, std::ops::Range<usize>)>,
+    values: Vec<u8>,
+    by_uid: std::collections::HashMap<[u8; 16], usize>,
+    walked: Result<()>,
+    sets_fit: bool,
+}
+
+impl MxfHeader {
+    /// The header metadata of the partition `p` (ST 377-1 §7.1, §9): after its pack and the fill that follows it, the
+    /// primer pack, then items up to `HeaderByteCount` bytes from the primer's start, each one within them (an item
+    /// running past them is damaged, and nothing past it can be found). A writer that counts them from the end of the
+    /// pack, the fill after it included, ends them that much sooner: where the items up to there are whole and one past
+    /// them isn't within the count from the primer, the header metadata ends there. `None` when the pack isn't followed
+    /// by a primer pack
+    fn read<R: Read + Seek>(stream: &mut R, size: u64, p: &MxfPack) -> Result<Option<Self>> {
+        let Some(mut at) = p.primer(stream, size)? else { return Ok(None) };
+        let end = at.saturating_add(p.header_bytes.min(MXF_MAX_HEADER)).min(p.next);
+        let from_pack = p.end.saturating_add(p.header_bytes);
+        let (mut tables, mut sets, mut values, mut sets_fit, mut through_from_pack) = (Vec::new(), Vec::new(), Vec::new(), true, false);
+        let mut walked = (|| -> Result<()> {
+            while at < end {
+                through_from_pack |= at == from_pack;
+                let (key, value, len) = mxf_klv(stream, at, end)?;
+                if same_ul(&key, &MXF_KEY) {
+                    tables.push((at, stream.seek(SeekFrom::Start(value)).and_then(|_| crate::util::read_data(stream, len))));
+                } else if key[..4] == [0x06, 0x0e, 0x2b, 0x34] && key[4] == 0x02 && key[5] == 0x53 && key[8..13] == [0x0d, 0x01, 0x01, 0x01, 0x01] && key[13] == 0x01 {
+                    // A structural set, its value within the header metadata
+                    let start = values.len();
+                    let n = usize::try_from(len).map_err(|_| Error::from(ErrorKind::OutOfMemory))?;
+                    values.try_reserve_exact(n).map_err(|_| Error::from(ErrorKind::OutOfMemory))?;
+                    values.resize(start + n, 0);
+                    stream.seek(SeekFrom::Start(value))?;
+                    stream.read_exact(&mut values[start..])?;
+                    if MxfSet::fits(&values[start..]) {
+                        sets.push((at, key[14], start..values.len()));
+                    } else {
+                        values.truncate(start);
+                        sets_fit = false;
+                    }
+                }
+                at = value + len;
+            }
+            Ok(())
+        })();
+        if walked.is_err() && through_from_pack && from_pack < end {
+            // Counted from the end of the pack
+            tables.retain(|(at, _)| *at < from_pack);
+            sets.retain(|(at, _, _)| *at < from_pack);
+            walked = Ok(());
+        } else if walked.is_ok() && p.header_bytes > MXF_MAX_HEADER {
+            walked = Err(Error::new(ErrorKind::InvalidData, format!("{} bytes of header metadata, more than are read", p.header_bytes)));
+        }
+        let mut by_uid = std::collections::HashMap::new();
+        for (i, (_, kind, range)) in sets.iter().enumerate() {
+            if let Some(uid) = (MxfSet { kind: *kind, value: &values[range.clone()] }).reference(0x3c0a) {
+                by_uid.entry(uid).or_insert(i);
+            }
+        }
+        Ok(Some(Self {
+            tables: tables.into_iter().map(|(_, t)| t).collect(),
+            sets: sets.into_iter().map(|(_, kind, range)| (kind, range)).collect(),
+            values, by_uid, walked, sets_fit,
+        }))
+    }
+
+    fn sets(&self) -> impl Iterator<Item = MxfSet<'_>> {
+        self.sets.iter().map(|(kind, range)| MxfSet { kind: *kind, value: &self.values[range.clone()] })
+    }
+    /// Whether every item was read, and every set read was one
+    fn whole(&self) -> bool {
+        self.walked.is_ok() && self.sets_fit
+    }
+    /// The set a strong reference is to, when it's of `kind` (of any kind without one). A reference to none is to a set
+    /// that isn't there in a copy read whole, and to one that can't be told of in another (`Err`)
+    fn set(&self, uid: Option<[u8; 16]>, kind: Option<u8>) -> std::result::Result<Option<MxfSet<'_>>, ()> {
+        let Some(uid) = uid else { return Ok(None) };
+        match self.by_uid.get(&uid) {
+            Some(&i) => {
+                let (k, range) = &self.sets[i];
+                Ok(kind.is_none_or(|kind| kind == *k).then(|| MxfSet { kind: *k, value: &self.values[range.clone()] }))
+            }
+            None if self.whole() => Ok(None),
+            None => Err(()),
+        }
+    }
+
+    /// The frames the file's video presents: those of the material package's first picture track, which defines the
+    /// file's output timeline at its playout edit rate (ST 377-1 §9.5.3). The track plays its sequence's first source
+    /// clip (an OP1a file's only one), whose `Duration` (0x0202) at the track's `EditRate` (0x4b01) FFmpeg's MXF demuxer
+    /// (`mxf_parse_structural_metadata`) and bmx (`MXFFileReader`) give the stream: no more than the essence container
+    /// holds, where the clip's file descriptor states that in its optional `ContainerDuration` (0x3002, ST 377-1
+    /// Annex F; FFmpeg takes the lesser), a count of the same edit units where its `SampleRate` is the track's. A
+    /// `Duration` of -1 (the distinguished value of a timeline track's best effort `Duration`, Annex B.8) leaves the
+    /// frames unknown, as it does to FFmpeg and bmx. Header metadata without a material package, which has no output
+    /// timeline, presents the essence container's frames: its first picture descriptor's `ContainerDuration` at its
+    /// `SampleRate`. Of a copy that isn't whole, the sets read before the damage (as FFmpeg's demuxer keeps them) tell
+    /// the frames where every set they're found by is among them, and otherwise they can't be told (`Err`)
+    fn video_frames(&self) -> std::result::Result<Option<MxfFrames>, ()> {
+        use mxf_set::*;
+        let preface = self.sets().find(|s| s.kind == PREFACE);
+        if preface.is_none() && !self.whole() { return Err(()); }
+        let storage = match preface { Some(p) => self.set(p.reference(0x3b03), Some(CONTENT_STORAGE))?, None => None };
+        let packages = storage.map_or_else(Vec::new, |c| c.references(0x1901));
+        let mut material = None;
+        for uid in &packages {
+            if let Some(m) = self.set(Some(*uid), Some(MATERIAL_PACKAGE))? { material = Some(m); break; }
+        }
+        let Some(material) = material else {
+            if !self.whole() { return Err(()); }
+            let descriptor = self.sets().find(|s| MXF_PICTURE_DESCRIPTORS.contains(&s.kind) && s.length(0x3002).is_some() && s.rate(0x3001).is_some());
+            return Ok(descriptor.and_then(|d| Some((d.length(0x3002)?, d.rate(0x3001)?))));
+        };
+        // The first timeline track whose sequence (or the component in its place) is of picture essence, and the first
+        // source clip it plays
+        let mut played = None;
+        for uid in material.references(0x4403) {
+            let Some(track) = self.set(Some(uid), Some(TIMELINE_TRACK))? else { continue };
+            let Some(component) = self.set(track.reference(0x4803), None)? else { continue };
+            if !component.item(0x0201).is_some_and(is_picture) { continue; }
+            let clip = match component.kind {
+                SOURCE_CLIP => Some(component),
+                SEQUENCE => {
+                    let mut clip = None;
+                    for uid in component.references(0x1001) {
+                        if let Some(c) = self.set(Some(uid), Some(SOURCE_CLIP))? { clip = Some(c); break; }
+                    }
+                    clip
+                }
+                _ => None,
+            };
+            if let Some(clip) = clip { played = Some((track, clip)); break; }
+        }
+        let Some((track, clip)) = played else { return Ok(None) };
+        let (Some(rate), Some(duration)) = (track.rate(0x4b01), clip.length(0x0202)) else { return Ok(None) };
+        // The clip's file descriptor: the descriptor of the top-level file package it plays, or the one of a multiple
+        // descriptor that is linked to the package's track the clip plays
+        let mut package = None;
+        if let Some(id) = clip.item(0x1101) {
+            for uid in &packages {
+                if let Some(p) = self.set(Some(*uid), Some(SOURCE_PACKAGE))? && p.item(0x4401) == Some(id) { package = Some(p); break; }
+            }
+        }
+        let mut descriptor = match package { Some(p) => self.set(p.reference(0x4701), None)?, None => None };
+        if let Some(d) = descriptor && d.kind == MULTIPLE_DESCRIPTOR {
+            descriptor = None;
+            for uid in d.references(0x3f01) {
+                if let Some(s) = self.set(Some(uid), None)? && s.uint32(0x3006).is_some() && s.uint32(0x3006) == clip.uint32(0x1102) { descriptor = Some(s); break; }
+            }
+        }
+        let container = descriptor.filter(|d| d.rate(0x3001).is_some_and(|r| r.0 as u128 * rate.1 as u128 == rate.0 as u128 * r.1 as u128)).and_then(|d| d.length(0x3002));
+        Ok(Some((container.map_or(duration, |container| container.min(duration)), rate)))
+    }
+}
+
+/// Of the copies of an MXF file's header metadata, in their order ([`mxf_copies`]), the frames the first one that tells
+/// them says the file's video presents ([`MxfHeader::video_frames`])
+fn mxf_frames_of<R: Read + Seek>(stream: &mut R, size: u64, copies: &[MxfPack]) -> Option<MxfFrames> {
+    copies.iter().find_map(|copy| MxfHeader::read(stream, size, copy).ok().flatten()?.video_frames().ok()).flatten()
+}
+
+/// The frames an MXF file's video presents and their edit rate, as its header metadata states them: of its copies in
+/// their order ([`mxf_copies`]: the footer partition's first, the copy FFmpeg's demuxer and bmx read), the first one's
+/// that tells them ([`MxfHeader::video_frames`]). `None` for a file that isn't one, or whose header metadata doesn't
+/// say
+pub(crate) fn mxf_video_frames<R: Read + Seek>(stream: &mut R, size: u64) -> Option<MxfFrames> {
+    let start = mxf_header_partition(stream, size).ok()??;
+    let header = MxfPack::read(stream, start, size, start).ok()??;
+    let copies = mxf_copies(stream, size, header);
+    mxf_frames_of(stream, size, &copies)
+}
+
+/// Where the copies of an MXF file's header metadata lie, in their order ([`mxf_copies`]): each from the end of its
+/// partition pack, to `HeaderByteCount` bytes from its primer pack (from the end of the pack without one that can be
+/// read), at most `MXF_MAX_HEADER`, and before the next partition
+pub(crate) fn mxf_header_metadata<R: Read + Seek>(stream: &mut R, size: u64) -> Vec<std::ops::Range<u64>> {
+    let Some(header) = mxf_header_partition(stream, size).ok().flatten().and_then(|start| MxfPack::read(stream, start, size, start).ok().flatten()) else { return Vec::new() };
+    let copies = mxf_copies(stream, size, header);
+    copies.iter().map(|p| {
+        let from = p.primer(stream, size).ok().flatten().unwrap_or(p.end);
+        p.end..from.saturating_add(p.header_bytes.min(MXF_MAX_HEADER)).min(p.next)
+    }).collect()
+}
+
+/// Whether a key is a picture essence descriptor's ([`MXF_PICTURE_DESCRIPTORS`]), without byte 8 (the registry version,
+/// ST 336)
+pub(crate) fn mxf_is_picture_descriptor(key: &[u8; 16]) -> bool {
+    const DESCRIPTOR: [u8; 16] = [0x06, 0x0e, 0x2b, 0x34, 0x02, 0x53, 0x01, 0x01, 0x0d, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00];
+    let mut kind = *key;
+    kind[14] = 0;
+    same_ul(&kind, &DESCRIPTOR) && MXF_PICTURE_DESCRIPTORS.contains(&key[14])
+}
+
+/// The table of an MXF file: the items of its table key in its header metadata, of the first of its copies
+/// ([`mxf_copies`]) that is read whole, else of the first one. The frames it must cover are those the file's video
+/// presents, as [`mxf_video_frames`] reads them
+fn read_mxf<R: Read + Seek>(stream: &mut R, size: u64, start: u64) -> Result<Option<Found>> {
+    let header = MxfPack::read(stream, start, size, start)?.ok_or_else(|| Error::new(ErrorKind::InvalidData, "the header partition pack can't be read"))?;
+    let copies = mxf_copies(stream, size, header);
+    let mut first = None;
+    for copy in &copies {
+        match MxfHeader::read(stream, size, copy) {
+            Ok(Some(h)) if h.walked.is_ok() => { first = Some(Ok(Some(h))); break; }
+            other => { first.get_or_insert(other); }
+        }
+    }
+    let Some(mut header) = first.transpose()?.flatten() else { return Ok(None) };
+    if let Err(e) = std::mem::replace(&mut header.walked, Ok(())) {
+        if header.tables.is_empty() { return Err(e); }
+        // Whether the table found is the file's only one can't be told
+        return Ok(Some(Err(format!("the header metadata can't be read after its segment table: {e}"))));
+    }
+    let video = mxf_frames_of(stream, size, &copies).map(|(frames, rate)| VideoFrames::Constant { frames, rate });
+    Ok(match header.tables.as_slice() {
         [] => None,
         [Ok(text)] => Some(check_text(text, video.as_ref())),
         [Err(e)] => Some(Err(format!("the segment table can't be read: {e}"))),
-        _ => Some(Err(format!("the header metadata has {} segment tables", tables.len()))),
+        _ => Some(Err(format!("the header metadata has {} segment tables", header.tables.len()))),
     })
 }
 

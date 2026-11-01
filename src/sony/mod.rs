@@ -202,36 +202,48 @@ impl Sony {
     }
 
     pub fn parse_metadata(data: &[u8], options: &crate::InputOptions, map: &mut GroupedTagMap) -> Result<()> {
-        let mut slice = Cursor::new(data);
-        let datalen = data.len() as usize;
+        // The ends of the containers being read, the innermost last: a stack of its own, as a file can nest them as deep as
+        // its bytes allow
+        let mut ends = vec![data.len()];
+        let mut pos = 0;
 
-        while slice.position() < datalen as u64 {
+        while let Some(&datalen) = ends.last() {
+            if pos >= datalen {
+                pos = datalen;
+                ends.pop();
+                continue;
+            }
+            let mut slice = Cursor::new(&data[pos..datalen]);
             let tag = slice.read_u16::<BigEndian>()?;
             if tag == 0x060e {
-                /*let uuid = &data[slice.position() as usize - 2..slice.position() as usize + 14];
+                /*let uuid = &data[pos..pos + 16];
                 log::debug!("--- {} ---", match &uuid[..16] {
                     &hex_literal::hex!("060E2B34 02530101 0C020101 01010000") => "LensUnitMetadata",
                     &hex_literal::hex!("060E2B34 02530101 0C020101 02010000") => "CameraUnitMetadata",
                     &hex_literal::hex!("060E2B34 02530101 0C020101 7F010000") => "UserDefinedAcquisitionMetadata",
                     _ => "Unknown"
                 });*/
-                slice.seek(SeekFrom::Current(14))?;
+                pos += 16;
                 continue;
             }
-            if tag == 0 || tag == 0xffff { break; }
+            if tag == 0 || tag == 0xffff {
+                pos = datalen;
+                continue;
+            }
             let len = slice.read_u16::<BigEndian>()? as usize;
-            let pos = slice.position() as usize;
+            pos += 4;
             if pos + len > datalen {
                 log::warn!("Invalid tag: {:02x}, len: {}, Available: {}", tag, len, datalen - pos);
                 // log::warn!("{}", crate::util::to_hex(&data[pos-4..]));
-                break;
-            }
-            let tag_data = &data[pos..(pos + len)];
-            slice.seek(SeekFrom::Current(len as i64))?;
-            if tag == 0x8300 { // Container
-                Self::parse_metadata(tag_data, options, map)?;
+                pos = datalen;
                 continue;
             }
+            if tag == 0x8300 { // Container
+                ends.push(pos + len);
+                continue;
+            }
+            let tag_data = &data[pos..(pos + len)];
+            pos += len;
             let mut tag_info = get_tag(tag, tag_data);
             tag_info.native_id = Some(tag as u32);
 

@@ -92,20 +92,35 @@ struct SourceTiming {
 }
 
 impl SourceTiming {
-    /// The timing of each segment of `table` whose source has an IMU origin on a µs clock
+    /// The timing of each segment of `table` whose source has an IMU origin on a µs clock. A segment that continues the
+    /// one before in their source (`SegmentTable::continues`) is one run of the source with it, and is timed as that
+    /// one is, so that the run's readings are where one segment of its frames puts them: its `clock_shift` is that
+    /// one's, and the source's timeline is to the file's as at the run's first segment. The capture times of each
+    /// segment are rounded to the µs on their own, which would move a continuing segment's readings by that rounding
+    /// where its first frame isn't on a whole µs of both timelines
     fn of_table(table: &crate::segment_table::SegmentTable) -> Vec<Option<Self>> {
-        table.segments.iter().map(|e| {
-            let source = table.source_of(e);
-            let origin_us = source.zcam_imu_origin_us()?;
-            // The origin and the shift are on the source's IMU clock, µs; a `null` shift is a clock the file has as the
-            // source has it
-            let (shift_us, modulus_us) = match (&source.clock, e.clock_shift) {
-                (None, None) => (0, None),
-                (Some(c), Some(d)) if c.rate.1.checked_mul(1_000_000) == Some(c.rate.0) => (d as i128, c.modulus.map(i128::from)),
-                _ => return None,
+        let mut timings: Vec<Option<Self>> = Vec::with_capacity(table.segments.len());
+        for (r, e) in table.segments.iter().enumerate() {
+            let timing = match timings.last() {
+                Some(run) if table.continues(r) => *run,
+                _ => Self::of_segment(table, e),
             };
-            Some(Self { shift_us, modulus_us, origin_us, to_file_us: e.out_capture_start_us - e.src_capture_start_us })
-        }).collect()
+            timings.push(timing);
+        }
+        timings
+    }
+    /// The timing of a segment of `table` on its own, when its source has an IMU origin on a µs clock
+    fn of_segment(table: &crate::segment_table::SegmentTable, e: &crate::segment_table::TrimSegment) -> Option<Self> {
+        let source = table.source_of(e);
+        let origin_us = source.zcam_imu_origin_us()?;
+        // The origin and the shift are on the source's IMU clock, µs; a `null` shift is a clock the file has as the
+        // source has it
+        let (shift_us, modulus_us) = match (&source.clock, e.clock_shift) {
+            (None, None) => (0, None),
+            (Some(c), Some(d)) if c.rate.1.checked_mul(1_000_000) == Some(c.rate.0) => (d as i128, c.modulus.map(i128::from)),
+            _ => return None,
+        };
+        Some(Self { shift_us, modulus_us, origin_us, to_file_us: e.out_capture_start_us - e.src_capture_start_us })
     }
     /// The source's value of this file's IMU clock value `c`
     fn source_value(&self, c: u64) -> f64 {

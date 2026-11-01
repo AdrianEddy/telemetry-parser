@@ -224,29 +224,41 @@ fn read_ber<T: Read + Seek>(stream: &mut T) -> Result<usize> {
 
 
 pub fn parse_tags(data: &[u8], options: &crate::InputOptions, map: &mut GroupedTagMap) -> Result<()> {
-    let mut slice = Cursor::new(data);
-    let datalen = data.len() as usize;
+    // The ends of the containers being read, the innermost last: a stack of its own, as a file can nest them as deep as
+    // its bytes allow
+    let mut ends = vec![data.len()];
+    let mut pos = 0;
 
-    while slice.position() < datalen as u64 {
-        let tag = slice.read_u16::<BigEndian>()?;
-        if tag == 0x060e {
-            slice.seek(SeekFrom::Current(14))?;
+    while let Some(&datalen) = ends.last() {
+        if pos >= datalen {
+            pos = datalen;
+            ends.pop();
             continue;
         }
-        if tag == 0 || tag == 0xffff { break; }
+        let mut slice = Cursor::new(&data[pos..datalen]);
+        let tag = slice.read_u16::<BigEndian>()?;
+        if tag == 0x060e {
+            pos += 16;
+            continue;
+        }
+        if tag == 0 || tag == 0xffff {
+            pos = datalen;
+            continue;
+        }
         let len = slice.read_u16::<BigEndian>()? as usize;
-        let pos = slice.position() as usize;
+        pos += 4;
         if pos + len > datalen {
             log::warn!("Invalid tag: {:02x}, len: {}, Available: {}", tag, len, datalen - pos);
             // log::warn!("{}", crate::util::to_hex(&data[pos-4..]));
-            break;
-        }
-        let tag_data = &data[pos..(pos + len)];
-        slice.seek(SeekFrom::Current(len as i64))?;
-        if tag == 0x8300 { // Container
-            parse_tags(tag_data, options, map)?;
+            pos = datalen;
             continue;
         }
+        if tag == 0x8300 { // Container
+            ends.push(pos + len);
+            continue;
+        }
+        let tag_data = &data[pos..(pos + len)];
+        pos += len;
         let mut tag_info = if tag > 0xe000 { //
             get_tag(tag, tag_data)
         } else {
