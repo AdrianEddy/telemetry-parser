@@ -91,6 +91,22 @@ fn raw_imu_orientation(three_sixty: bool) -> &'static str {
     if three_sixty { "zyx" } else { "zYX" }
 }
 
+/// The frame's aperture, focal length and exposure value. Of the three schemas,
+/// only the Eagle 4 layout records them in its per-frame camera metadata.
+fn insert_wa530_camera_tags(camera: &dvtm_eagle4_wa530::FrameMetaOfCamera, tag_map: &mut GroupedTagMap, options: &crate::InputOptions) {
+    // [0, 0] is an invalid or unknown F-number
+    if let Some(ref f) = camera.f_number && let &[num, den] = f.f_number.as_slice() && num > 0 && den > 0 {
+        insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::IrisFStop, "Iris F-stop", f32, |v| format!("f/{:.1}", v), num as f32 / den as f32, vec![]), options);
+    }
+    // 0 is an invalid or unknown focal length
+    if let Some(ref f) = camera.focal_length && let &[num, den] = f.focal_length.as_slice() && num > 0 && den > 0 {
+        insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::FocalLength, "Focal length", f32, |v| format!("{:.2} mm", v), num as f32 / den as f32, vec![]), options);
+    }
+    if let Some(ref ev) = camera.exposure_value {
+        insert_tag(tag_map, tag!(parsed GroupId::Exposure, TagId::Custom("ExposureValue".into()), "Exposure value", f32, |v| format!("{:.1}", v), ev.exposure_value, vec![]), options);
+    }
+}
+
 impl Dji {
     pub fn camera_type(&self) -> String {
         "DJI".to_owned()
@@ -198,6 +214,19 @@ impl Dji {
                     let (first_frame_ts, _) = *first_timestamp.get_or_insert((frame_ts, $info.timestamp_ms));
                     let frame_relative_ts = frame_ts - first_frame_ts;
                     frames.push(timing::Frame { sample: $info.sample_index, ms: $info.timestamp_ms, us: frame_relative_ts });
+
+                    if let Some(ref camera) = frame.camera_frame_meta {
+                        if let Some(ref iso) = camera.iso {
+                            insert_tag(&mut tag_map, tag!(parsed GroupId::Exposure, TagId::ISOValue, "ISO", u16, |v| v.to_string(), iso.iso.round() as u16, vec![]), &options);
+                        }
+                        // A rational of seconds: 1/50 s is [1, 50]
+                        if let Some(ref t) = camera.exposure_time && let &[num, den] = t.exposure_time.as_slice() && num > 0 && den > 0 {
+                            insert_tag(&mut tag_map, tag!(parsed GroupId::Exposure, TagId::ShutterSpeed, "Shutter speed", u32x2, |v| format!("{}/{}s", v.0, v.1), (num as u32, den as u32), vec![]), &options);
+                        }
+                        if let Some(ref wb) = camera.white_balance_cct {
+                            insert_tag(&mut tag_map, tag!(parsed GroupId::Colors, TagId::WhiteBalance, "White balance", u16, |v| format!("{}K", v), wb.white_balance_cct.min(u16::MAX as u32) as u16, vec![]), &options);
+                        }
+                    }
 
                     let mut held_attitude = None;
                     let mut held_raw = None;
@@ -345,6 +374,12 @@ impl Dji {
                                 .or_else(|| imu.imu_attitude_after_fusion.as_ref().and_then(|m| m.current_frame.as_ref())),
                                 imu.imu_raw_attitude.as_ref().filter(|r| !r.imu_raw_data.is_empty()).map(|r| (r.timestamp, r.imu_raw_data.iter()
                                     .map(|s| [s.gyro_x, s.gyro_y, s.gyro_z, s.acc_x, s.acc_y, s.acc_z]).collect())));
+                            // `handle_parsed!` pushed this frame's sample last
+                            if let Some(camera) = parsed.frame_meta.as_ref().and_then(|f| f.camera_frame_meta.as_ref())
+                                && let Some(tag_map) = samples.last_mut().and_then(|s| s.tag_map.as_mut())
+                            {
+                                insert_wa530_camera_tags(camera, tag_map, &options);
+                            }
                         },
                         Err(e) => { log::warn!("Failed to parse protobuf: {:?}", e); }
                     },
