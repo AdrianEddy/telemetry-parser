@@ -56,7 +56,7 @@ fn main() {
     let opts: Opts = argh::from_env();
 
     let mut stream = std::fs::File::open(&opts.file).unwrap();
-    let filesize = stream.metadata().unwrap().len() as usize;
+    let filesize = stream.metadata().unwrap().len();
 
     match opts {
         Opts { csv: true, .. } => {

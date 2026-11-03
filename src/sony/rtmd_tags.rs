@@ -432,7 +432,7 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
                 Ok(vec![])
             }
         }, tag_data),
-        0xe450 => tag!(IBIS, Data2, "IBIS TimeOffset table 2", Vec_TimeVector3_i32, "{:?}", |d| {
+        0xe450 => tag!(IBIS, Data2, "IBIS rotation table: z = sensor roll angle (z / e402 in the unit of e401, by default millidegrees); x and y unused", Vec_TimeVector3_i32, "{:?}", |d| {
             let count  = d.read_i32::<BigEndian>()?;
             let length = d.read_i32::<BigEndian>()?;
             if length != 10 {
@@ -444,9 +444,9 @@ pub fn get_tag(tag: u16, tag_data: &[u8]) -> TagDescription {
                     // XAVC::base_2D_TimeOffset<XAVC::base_3D<short>>
                     ret.push(TimeVector3 {
                         t: d.read_i32::<BigEndian>()?, // time offset
-                        x: d.read_i16::<BigEndian>()? as i32, // x, confirmed i16
-                        y: d.read_i16::<BigEndian>()? as i32, // y, confirmed i16
-                        z: d.read_i16::<BigEndian>()? as i32  // z, confirmed i16
+                        x: d.read_i16::<BigEndian>()? as i32, // x, confirmed i16, unused
+                        y: d.read_i16::<BigEndian>()? as i32, // y, confirmed i16, unused
+                        z: d.read_i16::<BigEndian>()? as i32  // z, confirmed i16: the sensor's roll angle
                     });
                 }
                 Ok(ret)

@@ -11,7 +11,7 @@ pub fn detect(buffer: &[u8]) -> bool {
     memmem::find(buffer, b"time,seconds_elapsed").is_some()
 }
 
-pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize, path: &str, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+pub fn parse<T: Read + Seek>(stream: &mut T, _size: u64, path: &str, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
     let mut gyro = Vec::new();
     let mut accl = Vec::new();
     let mut magn = Vec::new();

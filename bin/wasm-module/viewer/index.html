@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gyroflow Telemetry Viewer</title>
+<meta name="description" content="Open a camera file and see its motion data and metadata over time, next to the video. Files are read in place, in the browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+
+<header id="top">
+    <div class="brand">
+        <img class="brand-mark" src="icon.svg" alt="" width="24" height="24">
+        <span class="brand-name">Telemetry Viewer</span>
+    </div>
+    <div class="file-chips" data-show="ready">
+        <span id="file-name" class="chip chip-file"></span>
+        <span id="file-camera" class="chip"></span>
+        <span id="file-parser" class="chip chip-quiet"></span>
+        <span id="read-stats" class="chip chip-quiet chip-mono"></span>
+    </div>
+    <label class="btn open-btn" data-show="ready error" title="Open a folder: a RED clip, a CinemaDNG sequence, a card">
+        <input type="file" class="file-input" id="open-folder-top" webkitdirectory>
+        Open folder
+    </label>
+    <label class="btn btn-primary open-btn" data-show="ready error">
+        <input type="file" class="file-input" id="open-input-top" multiple>
+        Open file
+    </label>
+</header>
+
+<!-- No file yet -->
+<main id="empty" data-show="empty">
+    <section class="empty-card">
+        <div class="empty-main">
+            <h1>Open a camera file to see what it recorded</h1>
+            <p class="lede">Gyroscope, accelerometer, lens, exposure, GPS and every other tag telemetry-parser can read, on one timeline with the video.</p>
+            <label class="drop-target" for="open-input-empty">
+                <input type="file" class="file-input" id="open-input-empty" multiple>
+                <span class="drop-icon" aria-hidden="true">
+                    <svg viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="12" width="36" height="26" rx="3"/><path d="M6 31 L16 23 L23 29 L31 19 L42 28"/><path d="M24 4 v10 M19 9 l5 5 5-5"/></g></svg>
+                </span>
+                <span class="drop-title">Drop a file here, or <u>choose one</u></span>
+                <span class="drop-sub">Several files go together: a video and its log, a RED clip's parts, a CinemaDNG sequence, or a whole folder.</span>
+            </label>
+            <label class="folder-link" for="open-folder-empty">
+                <input type="file" class="file-input" id="open-folder-empty" webkitdirectory>
+                or choose a folder
+            </label>
+            <ul class="facts">
+                <li><strong>Stays on your computer.</strong> Nothing is uploaded; the parser runs in this tab.</li>
+                <li><strong>Reads only what it needs.</strong> The parser seeks to the file's headers and metadata samples, and the video plays straight from the disk, so a 100 GB clip is never loaded whole.</li>
+                <li><strong>Plays what the browser decodes.</strong> RAW and other files without a playable picture still get the timeline and the views.</li>
+            </ul>
+        </div>
+        <aside class="empty-side">
+            <h2>Reads files from</h2>
+            <ul class="formats">
+                <li>GoPro <span>HERO5 and later</span></li>
+                <li>Sony <span>XAVC, MXF</span></li>
+                <li>DJI <span>Avata, Action, O3/O4, Neo</span></li>
+                <li>Insta360 <span>.insv, .mp4</span></li>
+                <li>Canon <span>.mp4, .mxf, .crm</span></li>
+                <li>Blackmagic RAW <span>.braw</span></li>
+                <li>RED <span>.r3d</span></li>
+                <li>ARRI <span>.mxf, .ari</span></li>
+                <li>Z CAM <span>.mov, .zraw</span></li>
+                <li>Nikon, Freefly, XTRA, Kandao, Vuze</li>
+                <li>MotionCam Pro <span>.mcraw</span></li>
+                <li>Betaflight blackbox <span>.bbl, .bfl, .csv</span></li>
+                <li>ArduPilot <span>.bin, .log</span></li>
+                <li>Gyroflow <span>.gcsv, protobuf</span></li>
+                <li>Phone sensor apps, WitMotion, CAMM</li>
+            </ul>
+        </aside>
+    </section>
+</main>
+
+<!-- Parsing -->
+<main id="loading" data-show="loading">
+    <div class="load-card">
+        <div class="load-head"><span id="load-name"></span><span id="load-size" class="muted"></span></div>
+        <div id="load-bar" class="bar"><i></i></div>
+        <div class="load-foot"><span>Reading the metadata</span><span id="load-pct" class="mono"></span></div>
+    </div>
+</main>
+
+<!-- The file couldn't be read -->
+<main id="error" data-show="error">
+    <div class="load-card">
+        <h2 id="error-title"></h2>
+        <p id="error-text"></p>
+        <pre id="error-log" hidden></pre>
+        <button id="error-back" class="btn">Back</button>
+    </div>
+</main>
+
+<!-- The viewer -->
+<main id="viewer" data-show="ready">
+    <section id="stage">
+        <div id="tile-toggles" class="toggles" aria-label="Views"></div>
+        <div id="wall"></div>
+    </section>
+
+    <div id="transport">
+        <div class="transport-group">
+            <button id="step-back" class="icon-btn" title="Previous frame (←)" aria-label="Previous frame"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3v10M13 3 6 8l7 5z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg></button>
+            <button id="play" class="play-btn" title="Play (Space)" aria-label="Play"><svg class="i-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9.5-5.5z" fill="currentColor"/></svg><svg class="i-pause" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5h3v11H4zM9 2.5h3v11H9z" fill="currentColor"/></svg></button>
+            <button id="step-fwd" class="icon-btn" title="Next frame (→)" aria-label="Next frame"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M12 3v10M3 3l7 5-7 5z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg></button>
+        </div>
+        <div class="timecode"><span id="tc-now">0:00.000</span><span class="tc-sep">/</span><span id="tc-end">0:00</span><span id="tc-frame" class="tc-frame"></span></div>
+        <div class="transport-group transport-right">
+            <button id="loop" class="toggle toggle-icon" aria-pressed="false" title="Play again from the start at the end (L)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 9.5V7a3 3 0 0 1 3-3h6.5M10.5 1.8 12.8 4l-2.3 2.2M13 6.5V9a3 3 0 0 1-3 3H3.5M5.5 14.2 3.2 12l2.3-2.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Loop</button>
+            <select id="rate" class="mini-select" aria-label="Playback speed" title="Playback speed">
+                <option value="0.1">0.1×</option><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+            </select>
+            <span class="divider"></span>
+            <button id="follow" class="toggle on" aria-pressed="true" title="Scroll the charts with the playhead">Follow</button>
+            <button id="zoom-out" class="icon-btn" title="Zoom out (−)" aria-label="Zoom out">−</button>
+            <button id="zoom-in" class="icon-btn" title="Zoom in (+)" aria-label="Zoom in">+</button>
+            <button id="zoom-fit" class="btn btn-small" title="Show the whole file (F, or double-click the charts)">Fit</button>
+        </div>
+    </div>
+
+    <div id="splitter" role="separator" aria-orientation="horizontal" aria-label="Resize the charts" title="Drag to resize the charts"></div>
+
+    <section id="timeline-wrap">
+        <div id="timeline"></div>
+    </section>
+
+    <aside id="sidebar" data-tab="tags">
+        <div class="tabs" role="tablist">
+            <button class="tab" id="tab-tags" data-tab="tags" role="tab" aria-controls="panel-tags">Tags</button>
+            <button class="tab" id="tab-file" data-tab="file" role="tab" aria-controls="panel-file">File <span class="badge"></span></button>
+        </div>
+        <section id="panel-tags" class="panel" role="tabpanel" aria-labelledby="tab-tags">
+            <div class="filter-row">
+                <input id="tag-filter" type="search" placeholder="Filter tags" aria-label="Filter tags" autocomplete="off" spellcheck="false">
+            </div>
+            <div id="inspector-list"></div>
+            <p id="inspector-empty" class="muted pad">No tags at this time.</p>
+        </section>
+        <section id="panel-file" class="panel" role="tabpanel" aria-labelledby="tab-file" hidden>
+            <dl id="file-info" class="kvs"></dl>
+            <div class="export-row">
+                <button id="export-imu" class="btn">Motion data as CSV</button>
+                <button id="export-json" class="btn">Telemetry as JSON</button>
+            </div>
+            <section id="file-log-section" hidden>
+                <h3>Parser messages</h3>
+                <ul id="file-log" class="log"></ul>
+            </section>
+        </section>
+    </aside>
+</main>
+
+<div id="drop-overlay" aria-hidden="true"><div>Drop to open</div></div>
+
+<dialog id="json-dialog">
+    <header class="dlg-head">
+        <div class="dlg-titles"><h3 id="json-title"></h3><p id="json-sub" class="muted"></p></div>
+        <div class="dlg-actions">
+            <button id="json-follow" class="toggle on" aria-pressed="true" title="Show the value at the playhead as it moves">Follow playhead</button>
+            <div class="seg" role="group" aria-label="Show as">
+                <button id="json-as-tree" class="seg-btn on" aria-pressed="true">Tree</button>
+                <button id="json-as-text" class="seg-btn" aria-pressed="false">Text</button>
+            </div>
+            <button id="json-copy" class="btn btn-small">Copy all</button>
+            <button id="json-close" class="btn btn-small">Close</button>
+        </div>
+    </header>
+    <div class="dlg-tools">
+        <input id="json-search" type="search" placeholder="Search keys and values" aria-label="Search keys and values" autocomplete="off" spellcheck="false">
+        <span id="json-count" class="muted mono"></span>
+        <span class="dlg-spacer"></span>
+        <button id="json-expand" class="btn btn-small">Expand all</button>
+        <button id="json-collapse" class="btn btn-small">Collapse</button>
+    </div>
+    <div id="json-tree" class="jv"></div>
+    <pre id="json-body" hidden></pre>
+    <footer class="dlg-foot">
+        <code id="json-path" class="mono">Select a value to see its path</code>
+        <span class="dlg-spacer"></span>
+        <button id="json-copy-path" class="btn btn-small" hidden>Copy path</button>
+        <button id="json-copy-node" class="btn btn-small" hidden>Copy value</button>
+    </footer>
+</dialog>
+
+<div id="toast" role="status" hidden></div>
+
+</body>
+</html>

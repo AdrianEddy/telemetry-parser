@@ -65,7 +65,7 @@ pub fn detect(_buffer: &[u8], filepath: &str, options: &crate::InputOptions) -> 
     !get_possible_paths(filepath).is_empty()
 }
 
-pub fn parse<T: Read + Seek>(_stream: &mut T, _size: usize, filepath: &str, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+pub fn parse<T: Read + Seek>(_stream: &mut T, _size: u64, filepath: &str, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
     let paths = get_possible_paths(filepath);
 
     let mut gyro = Vec::new();

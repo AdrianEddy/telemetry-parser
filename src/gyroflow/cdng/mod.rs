@@ -179,7 +179,7 @@ fn read_frame<T: Read + Seek>(stream: &mut T, size: u64) -> Result<FrameFile> {
 
 fn read_frame_at(path: &str) -> Result<FrameFile> {
     let mut file = filesystem::open_file(path)?;
-    let size = file.size as u64;
+    let size = file.size;
     read_frame(&mut file.file, size)
 }
 
@@ -262,7 +262,7 @@ fn frame_json(file: &FrameFile, path: &str, record: Option<&fsg2::Record>) -> se
 
 /// The messages of the sequence from `path` (open in `stream`) on, in order, and what the frames' DNGs add to them, by
 /// position in the sequence
-pub fn read_sequence<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, path: &str, progress_cb: F, cancel_flag: &AtomicBool, probe_only: bool) -> Result<(Vec<pb::Main>, BTreeMap<usize, FrameExtras>)> {
+pub fn read_sequence<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: u64, path: &str, progress_cb: F, cancel_flag: &AtomicBool, probe_only: bool) -> Result<(Vec<pb::Main>, BTreeMap<usize, FrameExtras>)> {
     // The folder is listed once, for the frames from `path` on and for the take's first frame: a take is tens of
     // thousands of files, and the folder can hold others
     let files = sequence_files(path);
@@ -276,7 +276,7 @@ pub fn read_sequence<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, pa
     for (position, frame_path) in paths.iter().enumerate() {
         if cancel_flag.load(Relaxed) { break; }
         let file = if position == 0 {
-            read_frame(stream, size as u64)?
+            read_frame(stream, size)?
         } else {
             match read_frame_at(frame_path) {
                 Ok(x) => x,
@@ -487,7 +487,7 @@ mod tests {
 
     fn parse(path: &str) -> crate::Input {
         let mut file = std::fs::File::open(path).unwrap();
-        let size = file.metadata().unwrap().len() as usize;
+        let size = file.metadata().unwrap().len();
         crate::Input::from_stream(&mut file, size, path, |_| (), std::sync::Arc::new(AtomicBool::new(false))).unwrap()
     }
 
@@ -641,7 +641,7 @@ mod tests {
         names.sort();
         for (label, path) in [("first", &names[0]), ("middle", &names[names.len() / 2])] {
             let mut file = std::fs::File::open(path).unwrap();
-            let size = file.metadata().unwrap().len() as usize;
+            let size = file.metadata().unwrap().len();
             let started = std::time::Instant::now();
             let input = crate::Input::from_stream(&mut file, size, path, |_| (), std::sync::Arc::new(AtomicBool::new(false))).unwrap();
             let samples = input.samples.as_ref().unwrap();

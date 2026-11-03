@@ -6,7 +6,7 @@ use std::io::*;
 use crate::tags_impl::*;
 use crate::*;
 
-pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+pub fn parse<T: Read + Seek>(stream: &mut T, _size: u64, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
     let mut headers = None;
 
     let mut gyro = Vec::new();

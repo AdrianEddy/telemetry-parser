@@ -158,7 +158,7 @@ fn load(input: &Path) -> std::io::Result<Vec<proto::Main>> {
 /// samples in that track are already the binary messages we want.
 fn load_mp4(input: &Path) -> std::io::Result<Vec<proto::Main>> {
     let mut stream = std::fs::File::open(input)?;
-    let size = stream.metadata()?.len() as usize;
+    let size = stream.metadata()?.len();
 
     let mut out = Vec::new();
     let mut skipped = 0usize;

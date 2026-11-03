@@ -463,7 +463,7 @@ impl GyroflowProtobuf {
         MARKERS.iter().any(|m| memmem::find(probe, m).is_some())
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         if self.is_jsonl {
             return self.parse_jsonl(stream, progress_cb, cancel_flag, options);
         }
@@ -618,7 +618,7 @@ impl GyroflowProtobuf {
     /// Reads the messages of a CinemaDNG sequence's frames (see cdng/mod.rs),
     /// which are the stream, and adds each frame's raw metadata (its DNG tags
     /// and, for the SIGMA fp, its gyro record) under `FrameMetadata`.
-    fn parse_dng_sequence<T: Read + Seek, F: Fn(f64)>(&mut self, path: &str, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+    fn parse_dng_sequence<T: Read + Seek, F: Fn(f64)>(&mut self, path: &str, stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         let (messages, mut raw) = super::cdng::read_sequence(stream, size, path, |p| progress_cb(p * 0.5), &cancel_flag, options.probe_only)?;
         let mut samples = self.parse_messages(messages, |p| progress_cb(0.5 + p * 0.5), cancel_flag, options.clone());
         let frame = self.clip().map(|c| (c.frame_width, c.frame_height));

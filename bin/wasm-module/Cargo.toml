@@ -13,5 +13,7 @@ crate-type = ["cdylib"]
 telemetry-parser = { path = "../../" }
 wasm-bindgen = "0.2.129"
 serde-wasm-bindgen = "0.6"
+js-sys = "0.3"
+log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }

@@ -365,9 +365,9 @@ impl ArriRaw {
     /// it, as FFmpeg reads an image sequence from the frame picked (`cdng::sequence`): frame k of them is frame k of the
     /// video, at k over the frame rate. A frame whose header can't be read is a gap, the frames after it keep their place.
     /// A probe reads the frame picked only
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         if self.is_mxf {
-            return self.parse_mxf(stream, size as u64, progress_cb, &cancel_flag, &options);
+            return self.parse_mxf(stream, size, progress_cb, &cancel_flag, &options);
         }
         let mut header = [0u8; HEADER_SIZE];
         stream.seek(SeekFrom::Start(0))?;

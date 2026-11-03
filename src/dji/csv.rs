@@ -7,7 +7,7 @@ use crate::*;
 
 // WARNING: Flight logs from DJI FPV are not usable in Gyroflow due to low sampling rate and lack of camera angle information.
 
-pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+pub fn parse<T: Read + Seek>(stream: &mut T, _size: u64, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
     let mut headers = None;
 
     let mut gyro = Vec::new();

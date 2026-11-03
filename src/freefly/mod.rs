@@ -40,7 +40,7 @@ impl Freefly {
         }
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         let mut samples = Vec::new();
 
         let mut acc_cal  = (0.00024414808, 0.00024414808, 0.00024414808);
@@ -55,7 +55,7 @@ impl Freefly {
         // the stamps of one run are the camera's own, while a later run's were moved back by the cut (its `clock_shift`)
         // to follow the run before by about a frame, to the µs. Each frame's run, by its sample's middle, as the segments
         // present them
-        let runs = (!options.probe_only).then(|| crate::segment_table::read(stream, size as u64)).flatten().and_then(|t| t.ok()).map(|table| {
+        let runs = (!options.probe_only).then(|| crate::segment_table::read(stream, size)).flatten().and_then(|t| t.ok()).map(|table| {
             let mut run = 0;
             let of_segment: Vec<u64> = (0..table.segments.len()).map(|r| { if r > 0 && !table.continues(r) { run += 1; } run }).collect();
             (table, of_segment)

@@ -47,7 +47,7 @@ pub struct LogItem {
     data: BTreeMap<String, Field>
 }
 
-pub fn parse_full<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<LogItem>> {
+pub fn parse_full<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Vec<LogItem>> {
     let mut units = BTreeMap::from([
         ( '-', ""             .to_owned() ), // no units e.g. Pi, or a string
         ( '?', "UNKNOWN"      .to_owned() ), // Units which haven't been worked out yet....
@@ -239,7 +239,7 @@ pub fn parse_full<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progr
     Ok(log)
 }
 
-pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
     let log = parse_full(stream, size, progress_cb, cancel_flag)?;
 
     let mut gyro = BTreeMap::from([ ("VSTB", vec![]), ("IMU", vec![]), ("GYR", vec![]) ]);

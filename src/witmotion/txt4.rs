@@ -6,7 +6,7 @@ use std::io::*;
 use crate::tags_impl::*;
 use crate::*;
 
-pub fn parse<T: Read + Seek>(stream: &mut T, size: usize, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+pub fn parse<T: Read + Seek>(stream: &mut T, size: u64, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
     let mut headers: Option<Vec<String>> = None;
 
     let mut gyro = Vec::new();
@@ -18,7 +18,7 @@ pub fn parse<T: Read + Seek>(stream: &mut T, size: usize, options: crate::InputO
     let mut last_timestamp = 0.0;
     let mut first_timestamp = 0.0;
 
-    let mut buffer = Vec::with_capacity(size);
+    let mut buffer = Vec::with_capacity(crate::util::in_memory(size)?);
     stream.read_to_end(&mut buffer).unwrap();
 
     // Fix the buffer encoding

@@ -107,6 +107,8 @@ fn insert_wa530_camera_tags(camera: &dvtm_eagle4_wa530::FrameMetaOfCamera, tag_m
     }
 }
 
+use crate::util::message_tag;
+
 impl Dji {
     pub fn camera_type(&self) -> String {
         "DJI".to_owned()
@@ -140,7 +142,7 @@ impl Dji {
         }
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         if self.model.is_some() {
             return csv::parse(stream, size, options);
         }
@@ -202,6 +204,7 @@ impl Dji {
                         if let Some(ref meta) = stream.video_stream_meta {
                             fps = meta.framerate as f64;
                         }
+                        insert_tag(&mut tag_map, message_tag("StreamMetadata", "Stream metadata", stream), &options);
                     }
                 }
 
@@ -214,6 +217,8 @@ impl Dji {
                     let (first_frame_ts, _) = *first_timestamp.get_or_insert((frame_ts, $info.timestamp_ms));
                     let frame_relative_ts = frame_ts - first_frame_ts;
                     frames.push(timing::Frame { sample: $info.sample_index, ms: $info.timestamp_ms, us: frame_relative_ts });
+                    // The whole frame, raw: its camera and IMU metadata beyond the tags below (Gyroflow skips the group)
+                    insert_tag(&mut tag_map, message_tag("FrameMetadata", "Frame metadata", frame), &options);
 
                     if let Some(ref camera) = frame.camera_frame_meta {
                         if let Some(ref iso) = camera.iso {

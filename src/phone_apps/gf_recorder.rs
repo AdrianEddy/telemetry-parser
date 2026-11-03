@@ -20,7 +20,7 @@ pub fn detect(buffer: &[u8]) -> bool {
     memmem::find(hdr, b"Yaw").is_some()
 }
 
-pub fn parse<T: Read + Seek>(stream: &mut T, size: usize, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+pub fn parse<T: Read + Seek>(stream: &mut T, size: u64, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
     let mut gyro = Vec::new();
     let mut accl = Vec::new();
 
@@ -28,9 +28,9 @@ pub fn parse<T: Read + Seek>(stream: &mut T, size: usize, options: crate::InputO
     let mut first_timestamp = 0.0;
 
     // Replace all repeating whitespace with a single space
-    let mut buffer = Vec::with_capacity(size);
+    let mut buffer = Vec::with_capacity(crate::util::in_memory(size)?);
     let mut prev_chr = '\0';
-    while (stream.stream_position()? as usize) < size {
+    while stream.stream_position()? < size {
         let chr = stream.read_u8()? as char;
         if !(prev_chr.is_ascii_whitespace() && chr.is_ascii_whitespace()) || chr == '\n' {
             buffer.push(chr as u8);

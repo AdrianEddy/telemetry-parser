@@ -9,6 +9,85 @@ use crate::*;
 use byteorder::{ ReadBytesExt, LittleEndian, BigEndian };
 use memchr::memmem;
 
+/// A frame's recording settings from its metadata (`parse_per_frame_meta`) as tags of their own, as the other cameras'
+/// are (what Gyroflow shows of a clip's settings is taken from these): ISO, the shutter as an angle ("45°") or a speed
+/// ("1/50"), the iris ("f1.8", or a T-stop), white balance and its tint, focus distance, ND, analog gain and the
+/// exposure adjustment. A field the camera leaves empty or 0 where 0 means unset gets no tag
+fn insert_frame_settings(md: &serde_json::Value, map: &mut GroupedTagMap, options: &crate::InputOptions) {
+    let num = |k: &str| md.get(k).and_then(|v| v.as_f64());
+    let text = |k: &str| md.get(k).and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty());
+
+    if let Some(iso) = num("iso").filter(|v| *v > 0.0) {
+        util::insert_tag(map, tag!(parsed GroupId::Exposure, TagId::ISOValue, "ISO", u16, |v| v.to_string(), iso.round().min(u16::MAX as f64) as u16, vec![]), options);
+    }
+    if let Some(s) = text("shutter_value") {
+        if let Some(angle) = s.strip_suffix('°').and_then(|a| a.trim().parse::<f32>().ok()) {
+            util::insert_tag(map, tag!(parsed GroupId::Exposure, TagId::ShutterAngle, "Shutter angle", f32, |v| format!("{:.1}°", v), angle, vec![]), options);
+        } else if let Some((n, d)) = s.trim_end_matches('s').split_once('/') {
+            if let (Ok(n), Ok(d)) = (n.trim().parse::<u32>(), d.trim().parse::<u32>()) && n > 0 && d > 0 {
+                util::insert_tag(map, tag!(parsed GroupId::Exposure, TagId::ShutterSpeed, "Shutter speed", u32x2, |v| format!("{}/{}s", v.0, v.1), (n, d), vec![]), options);
+            }
+        }
+    }
+    if let Some(s) = text("aperture") {
+        let t_stop = s.starts_with(['T', 't']);
+        if let Ok(v) = s.trim_start_matches(['f', 'F', 'T', 't', '/']).trim().parse::<f32>() && v > 0.0 {
+            if t_stop {
+                util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::IrisTStop, "Iris T-stop", f32, |v| format!("T{:.1}", v), v, vec![]), options);
+            } else {
+                util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::IrisFStop, "Iris F-stop", f32, |v| format!("f/{:.1}", v), v, vec![]), options);
+            }
+        }
+    }
+    if let Some(k) = num("white_balance_kelvin").filter(|v| *v > 0.0) {
+        util::insert_tag(map, tag!(parsed GroupId::Colors, TagId::WhiteBalance, "White balance", u16, |v| format!("{}K", v), k.round().min(u16::MAX as f64) as u16, vec![]), options);
+        if let Some(t) = num("white_balance_tint") {
+            util::insert_tag(map, tag!(parsed GroupId::Colors, TagId::Custom("WhiteBalanceTint".into()), "White balance tint", i16, |v| v.to_string(), t.round() as i16, vec![]), options);
+        }
+    }
+    if let Some(k) = num("as_shot_kelvin").filter(|v| *v > 0.0) {
+        util::insert_tag(map, tag!(parsed GroupId::Colors, TagId::Custom("AsShotWhiteBalance".into()), "As-shot white balance", u16, |v| format!("{}K", v), k.round().min(u16::MAX as f64) as u16, vec![]), options);
+        if let Some(t) = num("as_shot_tint") {
+            util::insert_tag(map, tag!(parsed GroupId::Colors, TagId::Custom("AsShotTint".into()), "As-shot tint", i16, |v| v.to_string(), t.round() as i16, vec![]), options);
+        }
+    }
+    // A distance ("1500mm"), or the range the lens's focus position is in ("4120mm to Inf"), which isn't one distance
+    if let Some(s) = text("distance") {
+        if s.contains(" to ") {
+            util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::Custom("FocusDistanceRange".into()), "Focus distance range", String, |v| v.to_string(), s.to_string(), vec![]), options);
+        } else if let Some(mm) = s.strip_suffix("mm").and_then(|v| v.trim().parse::<f32>().ok()) {
+            util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::FocusDistance, "Focus distance", f32, |v| format!("{:.2} m", v), mm / 1000.0, vec![]), options);
+        }
+    }
+    if let Some(nd) = num("internal_nd") {
+        util::insert_tag(map, tag!(parsed GroupId::Exposure, TagId::NDFilterSetting, "Internal ND filter", f32, |v| if *v == 0.0 { "Clear".into() } else { format!("{} stops", v) }, nd as f32, vec![]), options);
+    }
+    if let Some(g) = num("analog_gain") {
+        util::insert_tag(map, tag!(parsed GroupId::Exposure, TagId::Custom("AnalogGain".into()), "Analog gain", f32, |v| format!("{:.2}", v), g as f32, vec![]), options);
+    }
+    if let Some(e) = num("exposure") {
+        util::insert_tag(map, tag!(parsed GroupId::Exposure, TagId::Custom("ExposureValue".into()), "Exposure adjustment", f32, |v| format!("{:+.2} stops", v), e as f32, vec![]), options);
+    }
+}
+
+/// The clip's camera and lens from its metadata (`parse_meta`) as tags of their own
+fn insert_clip_settings(meta: &serde_json::Value, map: &mut GroupedTagMap, options: &crate::InputOptions) {
+    let text = |k: &str| meta.get(k).and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+    if let Some(v) = text("camera_id") {
+        util::insert_tag(map, tag!(parsed GroupId::Default, TagId::SerialNumber, "Camera serial number", String, |v| v.to_string(), v, vec![]), options);
+    }
+    if let Some(v) = text("firmware_version") {
+        util::insert_tag(map, tag!(parsed GroupId::Default, TagId::Custom("Firmware".into()), "Camera firmware", String, |v| v.to_string(), v, vec![]), options);
+    }
+    if let Some(v) = text("lens_type") {
+        util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::DisplayName, "Lens", String, |v| v.to_string(), v, vec![]), options);
+    }
+    // An integer (a `u16`), 1 when the stabilization is on
+    if let Some(v) = meta.get("ois_enable").and_then(|v| v.as_bool().or_else(|| v.as_u64().map(|x| x != 0))) {
+        util::insert_tag(map, tag!(parsed GroupId::Lens, TagId::ImageStabilizer, "Lens image stabilization", bool, |v| v.to_string(), v, vec![]), options);
+    }
+}
+
 // The rate the frames were captured at, frames per second as a numerator and a denominator (`CaptureRate::of`)
 #[derive(Clone, Copy)]
 struct CaptureRate {
@@ -81,7 +160,7 @@ impl BlackmagicBraw {
         }
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         let mut gyro = Vec::new();
         let mut accl = Vec::new();
         // The sample of each reading, its track's index and its index in the track, for the frame it was taken during
@@ -129,6 +208,7 @@ impl BlackmagicBraw {
                 _ => { }
             }
 
+            insert_clip_settings(&meta, &mut map, &options);
             util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), meta, vec![]), &options);
         }
 
@@ -150,6 +230,7 @@ impl BlackmagicBraw {
                         util::insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::FocalLength, "Focal length", f32, |v| format!("{v:.2} mm"), v, vec![]), &options);
                     }
                 }
+                insert_frame_settings(&md, &mut map, &options);
 
                 util::insert_tag(&mut map, tag!(parsed GroupId::Default, TagId::Metadata, "Metadata", Json, |v| serde_json::to_string(v).unwrap(), md, vec![]), &options);
                 info.tag_map = Some(map);
@@ -350,8 +431,8 @@ impl BlackmagicBraw {
     // boxes and then `moov`'s, as the Blackmagic RAW SDK reads it. Not by its bytes: the stale data of a card after a
     // clip's last box can hold an earlier recording's `moov`, its metadata among them, partly overwritten, and a clip's
     // own `moov` isn't always in the file's last megabytes
-    pub fn parse_meta<T: Read + Seek>(&mut self, stream: &mut T, size: usize) -> Result<serde_json::Value> {
-        let meta = Self::read_movie_meta(stream, size as u64)?;
+    pub fn parse_meta<T: Read + Seek>(&mut self, stream: &mut T, size: u64) -> Result<serde_json::Value> {
+        let meta = Self::read_movie_meta(stream, size)?;
         stream.seek(SeekFrom::Start(0))?;
 
         if let Some(meta) = meta.as_deref() {

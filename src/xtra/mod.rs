@@ -92,7 +92,7 @@ impl Xtra {
         }
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         // The product schema the whole file declares, for a clip whose first sample doesn't
         let declared_proto_file = Self::declared_proto_file(stream, size);
         stream.seek(SeekFrom::Start(0))?;
@@ -304,8 +304,8 @@ impl Xtra {
     ///
     /// The box's entries are read one at a time (`xtra_strings`), and one longer than `MAX_XTRA_ENTRY` is skipped: a
     /// damaged size of the box, or of the boxes it is in, can't make it read more than one entry of text
-    fn declared_proto_file<T: Read + Seek>(stream: &mut T, size: usize) -> Option<String> {
-        let moov = find_box(stream, 0, size as u64, util::fourcc("moov"))?;
+    fn declared_proto_file<T: Read + Seek>(stream: &mut T, size: u64) -> Option<String> {
+        let moov = find_box(stream, 0, size, util::fourcc("moov"))?;
         let udta = find_box(stream, moov.0, moov.1, util::fourcc("udta"))?;
         let (mut pos, end) = find_box(stream, udta.0, udta.1, util::fourcc("Xtra"))?;
         while end.saturating_sub(pos) >= 4 {
@@ -447,7 +447,7 @@ mod tests {
         let category = entry("WM/Category", 8, &text);
         // A picture tag too long for an entry of text, which isn't read
         let picture = entry("WM/Picture", 1, &vec![0x5A; MAX_XTRA_ENTRY as usize]);
-        let read = |data: Vec<u8>| { let size = data.len(); Xtra::declared_proto_file(&mut Cursor::new(data), size) };
+        let read = |data: Vec<u8>| { let size = data.len() as u64; Xtra::declared_proto_file(&mut Cursor::new(data), size) };
         let file = boxed(b"moov", &boxed(b"udta", &boxed(b"Xtra", &[picture, category.clone()].concat())));
         let declared = read(file);
         assert_eq!(declared.as_deref(), Some("dvtm_ae2504.proto"));

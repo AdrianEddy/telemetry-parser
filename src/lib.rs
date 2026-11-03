@@ -75,17 +75,17 @@ macro_rules! impl_formats {
             readings_at_table_frames: bool,
         }
         impl Input {
-            pub fn from_stream<T: Read + Seek, P: AsRef<std::path::Path>, F: Fn(f64)>(stream: &mut T, size: usize, filepath: P, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Input> {
+            pub fn from_stream<T: Read + Seek, P: AsRef<std::path::Path>, F: Fn(f64)>(stream: &mut T, size: u64, filepath: P, progress_cb: F, cancel_flag: Arc<AtomicBool>) -> Result<Input> {
                 Self::from_stream_with_options(stream, size, filepath, progress_cb, cancel_flag, InputOptions::default())
             }
-            pub fn from_stream_with_options<T: Read + Seek, P: AsRef<std::path::Path>, F: Fn(f64)>(stream: &mut T, size: usize, filepath: P, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: InputOptions) -> Result<Input> {
-                let read_mb = if size as u64 > 100u64*1024*1024*1024 { // If file is greater than 100 GB, read 500 MB header/footer
+            pub fn from_stream_with_options<T: Read + Seek, P: AsRef<std::path::Path>, F: Fn(f64)>(stream: &mut T, size: u64, filepath: P, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: InputOptions) -> Result<Input> {
+                let read_mb = if size > 100u64*1024*1024*1024 { // If file is greater than 100 GB, read 500 MB header/footer
                     500
-                } else if size as u64 > 60u64*1024*1024*1024 { // If file is greater than 60 GB, read 220 MB header/footer
+                } else if size > 60u64*1024*1024*1024 { // If file is greater than 60 GB, read 220 MB header/footer
                     220
-                } else if size as u64 > 30u64*1024*1024*1024 { // If file is greater than 30 GB, read 180 MB header/footer
+                } else if size > 30u64*1024*1024*1024 { // If file is greater than 30 GB, read 180 MB header/footer
                     180
-                } else if size as u64 > 5u64*1024*1024*1024 { // If file is greater than 5 GB, read 50 MB header/footer
+                } else if size > 5u64*1024*1024*1024 { // If file is greater than 5 GB, read 50 MB header/footer
                     50
                 } else {
                     5
@@ -105,6 +105,8 @@ macro_rules! impl_formats {
                     }
                     if check {
                         if let Some(mut x) = <$class>::detect(&buf, &filepath, &options) {
+                            // The file's two ends read for detecting its format, up to 2 × 500 MB, aren't kept for its parse
+                            drop(buf);
                             let probe_only = options.probe_only;
                             let mut input = Input {
                                 samples: x.parse(stream, size, progress_cb, cancel_flag, options).map_err(|e| log::error!("Failed to parse {} as {}: {e}", filepath.as_ref().display(), stringify!($name))).ok(),
@@ -170,9 +172,9 @@ macro_rules! impl_formats {
             /// own. Its table is then the video's, by the rule of the table's telemetry logs
             /// ([`segment_table::read_for_log`]): with the table's clocks when the table names this log, without them
             /// (and a warning) otherwise
-            pub fn read_video_segment_table<V: Read + Seek, L: Read + Seek, P: AsRef<std::path::Path>>(&mut self, video: &mut V, video_size: usize, log: &mut L, log_size: usize, log_path: P) {
+            pub fn read_video_segment_table<V: Read + Seek, L: Read + Seek, P: AsRef<std::path::Path>>(&mut self, video: &mut V, video_size: u64, log: &mut L, log_size: u64, log_path: P) {
                 let name = filesystem::get_filename(log_path.as_ref().to_str().unwrap_or_default());
-                let table = segment_table::read_for_log(video, video_size as u64, log, log_size as u64, &name);
+                let table = segment_table::read_for_log(video, video_size, log, log_size, &name);
                 self.readings_at_table_frames = table.as_ref().is_none_or(|t| t.names_log);
                 self.segment_table = table.map(|t| t.found);
                 if let Some(Err(e)) = &self.segment_table {
@@ -189,13 +191,13 @@ macro_rules! impl_formats {
             /// The table of the file read: that of the file the parser read the motion and the frames from, which is the
             /// file's sidecar when it was read through one. A RED clip's is in its RMD sidecar, a MotionCam recording's in
             /// the `.mcraw` its video was read with, a Z CAM file's is read by its parser, any other file's in the file
-            fn read_segment_table<T: Read + Seek>(&self, stream: &mut T, size: usize) -> Option<segment_table::Found> {
+            fn read_segment_table<T: Read + Seek>(&self, stream: &mut T, size: u64) -> Option<segment_table::Found> {
                 match &self.inner {
                     SupportedFormats::RedR3d(x) => x.segment_table(),
-                    SupportedFormats::MotionCam(x) => x.segment_table(stream, size as u64),
+                    SupportedFormats::MotionCam(x) => x.segment_table(stream, size),
                     // Read before its readings, which it times by (`zcam_imu_origin_us`)
                     SupportedFormats::Zcam(x) => x.segment_table.clone(),
-                    _ => segment_table::read(stream, size as u64),
+                    _ => segment_table::read(stream, size),
                 }
             }
             pub fn parser_name(&self) -> &'static str {

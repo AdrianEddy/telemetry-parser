@@ -12,7 +12,7 @@ pub fn detect(buffer: &[u8]) -> bool {
     memmem::find(buffer, b"mettapplication/gyro").is_some()
 }
 
-pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
     // Determine which track is which
     let mut gyro_track = 2;
     let mut accel_track = 3;

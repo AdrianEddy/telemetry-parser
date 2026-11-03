@@ -52,7 +52,7 @@ impl QoocamEgo {
     }
 
     /// The entries of a `kfix` or `kvar` box, in the file's order
-    fn parse_data<T: Read + Seek>(stream: &mut T, _size: usize) -> Result<Vec<(String, Value)>> {
+    fn parse_data<T: Read + Seek>(stream: &mut T, _size: u64) -> Result<Vec<(String, Value)>> {
         let mut map = Vec::new();
         let count = stream.read_u32::<LittleEndian>()?;
         for _ in 0..count {
@@ -133,7 +133,7 @@ impl QoocamEgo {
         md.iter().rev().find(|(k, _)| k == name).map(|(_, v)| v)
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, _size: usize, _progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, _size: u64, _progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         let mut gyro = Vec::new();
         let mut accl = Vec::new();
         let mut exp = Vec::new();
@@ -152,7 +152,7 @@ impl QoocamEgo {
             if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) { break; }
 
             if typ == fourcc("kfix") { // Fixed metadata
-                let md = Self::parse_data(stream, size as usize - header_size as usize)?;
+                let md = Self::parse_data(stream, size - header_size as u64)?;
                 for (k, v) in md.iter() {
                     if let Value::Json(v) = v {
                         metadata.insert(k.clone(), v.clone());
@@ -165,7 +165,7 @@ impl QoocamEgo {
                 }
             }
             if typ == fourcc("kvar") { // Variable metadata
-                let md = Self::parse_data(stream, size as usize - header_size as usize)?;
+                let md = Self::parse_data(stream, size - header_size as u64)?;
                 //println!("Variable metadata: {:#?}", md);
 
                 let mut g_range = 2000.0;

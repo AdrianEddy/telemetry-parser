@@ -23,7 +23,7 @@ impl Parser {
     #[new]
     fn new(path: &str) -> PyResult<Self> {
         let mut stream = std::fs::File::open(&path)?;
-        let filesize = stream.metadata()?.len() as usize;
+        let filesize = stream.metadata()?.len();
 
         let input = Input::from_stream(&mut stream, filesize, &path, |_|(), Arc::new(AtomicBool::new(false)))?;
 

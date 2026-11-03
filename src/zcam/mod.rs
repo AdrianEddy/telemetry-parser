@@ -63,6 +63,10 @@ pub struct Zcam {
     next_imu_emit_us: Option<f64>,
 
     lens_profile_emitted: bool,
+    /// The clip's and the stream's metadata last exposed, as their bytes: every sample repeats them, and they're exposed
+    /// again only when they change
+    last_clip_meta: Vec<u8>,
+    last_stream_meta: Vec<u8>,
 
     /// The file's segment table, read before its samples (`crate::segment_table::read`): a file cut from recordings
     /// times its IMU readings as their source does, by the table (`TableSource::zcam_imu_origin_us`)
@@ -162,14 +166,14 @@ impl Zcam {
         }
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         let mut samples = Vec::new();
         let cancel_flag2 = cancel_flag.clone();
 
         // A file cut from recordings times its readings as its source does, by its segment table: read first. A probe
         // reads no table
         if !options.probe_only {
-            self.segment_table = crate::segment_table::read(stream, size as u64);
+            self.segment_table = crate::segment_table::read(stream, size);
             if let Some(Ok(table)) = &self.segment_table {
                 self.source_timing = SourceTiming::of_table(table);
             }
@@ -189,11 +193,24 @@ impl Zcam {
 
             let mut tag_map = GroupedTagMap::new();
 
+            // Each message also whole, raw: its fields beyond the tags taken from it, as the camera wrote them (a frame's
+            // IMU batch, empty when an earlier batch has its readings). The clip's and the stream's, which every sample
+            // repeats, where they change. Gyroflow skips FrameMetadata
             if let Some(ref clip) = parsed.clip_meta {
                 self.process_clip_meta(clip, &mut tag_map, &options);
+                let raw = clip.encode_to_vec();
+                if raw != self.last_clip_meta {
+                    insert_tag(&mut tag_map, util::message_tag("ClipMetadata", "Clip metadata", clip), &options);
+                    self.last_clip_meta = raw;
+                }
             }
             if let Some(ref stream) = parsed.stream_meta {
                 self.process_stream_meta(stream, &mut tag_map, &options);
+                let raw = stream.encode_to_vec();
+                if raw != self.last_stream_meta {
+                    insert_tag(&mut tag_map, util::message_tag("StreamMetadata", "Stream metadata", stream), &options);
+                    self.last_stream_meta = raw;
+                }
             }
             if let Some(ref frame) = parsed.frame_meta {
                 if let Some(ref h) = frame.frame_meta_header {
@@ -202,6 +219,7 @@ impl Zcam {
                     }
                 }
                 self.process_frame_meta(frame, &info, &mut tag_map, &options);
+                insert_tag(&mut tag_map, util::message_tag("FrameMetadata", "Frame metadata", frame), &options);
             }
 
             // Build the lens-profile JSON once, after BOTH:

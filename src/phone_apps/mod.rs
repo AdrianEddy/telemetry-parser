@@ -52,7 +52,7 @@ impl PhoneApps {
         None
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         match self.model.as_deref() {
             Some("Sensor Logger")           => sensor_logger        ::parse(stream, size, options),
             Some("GF Recorder")             => gf_recorder          ::parse(stream, size, options),

@@ -84,20 +84,20 @@ impl MotionCam {
         Some(Self { sidecar: Some(sidecar), ..Default::default() })
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         if let Some(path) = self.sidecar.clone() {
             let mut file = filesystem::open_file(&path)?;
-            let size = file.size as u64;
+            let size = file.size;
             return self.parse_container(&mut file.file, size, progress_cb, cancel_flag, &options);
         }
-        self.parse_container(stream, size as u64, progress_cb, cancel_flag, &options)
+        self.parse_container(stream, size, progress_cb, cancel_flag, &options)
     }
 
     /// The segment table of the recording read ([`crate::segment_table::read`]): that of the sidecar the motion and the
     /// frames are read from when there's one, otherwise that of `stream`
     pub(crate) fn segment_table<T: Read + Seek>(&self, stream: &mut T, size: u64) -> Option<crate::segment_table::Found> {
         match &self.sidecar {
-            Some(path) => filesystem::open_file(path).ok().and_then(|mut file| crate::segment_table::read(&mut file.file, file.size as u64)),
+            Some(path) => filesystem::open_file(path).ok().and_then(|mut file| crate::segment_table::read(&mut file.file, file.size)),
             None => crate::segment_table::read(stream, size),
         }
     }

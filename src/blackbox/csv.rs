@@ -9,7 +9,7 @@ use std::sync::{ Arc, atomic::AtomicBool, atomic::Ordering::Relaxed };
 use crate::tags_impl::*;
 use crate::*;
 
-pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: usize, _progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+pub fn parse<T: Read + Seek, F: Fn(f64)>(stream: &mut T, _size: u64, _progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
     let gyro_only = options.blackbox_gyro_only;
 
     let mut metadata = BTreeMap::new();

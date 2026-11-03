@@ -229,7 +229,7 @@ impl RedR3d {
         }
         Ok(ret)
     }
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, _stream: &mut T, _size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, _stream: &mut T, _size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         // The IMU samples and the camera timestamp of each, by which they're timed once all the clip's frames are read
         let mut gyro: Vec<TimeVector3<f64>> = Vec::new();
         let mut accl: Vec<TimeVector3<f64>> = Vec::new();
@@ -872,7 +872,7 @@ impl RedR3d {
     /// frames once it's parsed. `None` when the clip has no RMD or the RMD no table
     pub(crate) fn segment_table(&self) -> Option<crate::segment_table::Found> {
         let rmd = self.all_parts.iter().find(|x| filesystem::get_extension(x) == "rmd")?;
-        let bytes = match filesystem::open_file(rmd).and_then(|mut f| util::read_data(&mut f.file, f.size as u64)) {
+        let bytes = match filesystem::open_file(rmd).and_then(|mut f| util::read_data(&mut f.file, f.size)) {
             Ok(bytes) => bytes,
             Err(e) => return Some(Err(format!("the RMD sidecar {rmd} can't be read: {e}"))),
         };

@@ -40,7 +40,7 @@ fn box_end(pos: u64, size: u64, header_size: u64) -> Option<u64> {
 // A box of size 0 extends to the end of the file, so it's the last one (ISO/IEC 14496-12 §4.2). A recording that was
 // never finished is left that way: FFmpeg writes its `mdat` with size 0 and only sets it when it writes the `moov` after
 // it. Any other size that can't be stepped past (`box_end`) is garbage, like a box past the end of the file
-pub fn get_mp4_good_size<T: Read + Seek>(stream: &mut T, size: u64) -> Result<usize> {
+pub fn get_mp4_good_size<T: Read + Seek>(stream: &mut T, size: u64) -> Result<u64> {
     let mut good_size = 0;
     while stream.stream_position()? < size {
         let start_pos = stream.stream_position()?;
@@ -57,7 +57,7 @@ pub fn get_mp4_good_size<T: Read + Seek>(stream: &mut T, size: u64) -> Result<us
         }
         let end_pos = box_end(start_pos, len, header_size).filter(|end_pos| size >= *end_pos);
         if let (true, Some(end_pos)) = (name_good, end_pos) {
-            good_size = end_pos as usize;
+            good_size = end_pos;
             stream.seek(SeekFrom::Start(end_pos))?;
         } else {
             break;
@@ -107,17 +107,18 @@ pub fn patch_mdhd_timescale(all: &mut [u8]) {
 
 pub struct PatchingLimitingStream<R: Read + Seek> {
     pub inner: R,
-    pub stream_size: usize,
-    pub total: usize,
-    pub limit: usize
+    pub stream_size: u64,
+    pub total: u64,
+    pub limit: u64
 }
 impl<R: Read + Seek> Read for PatchingLimitingStream<R> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         let read = self.inner.read(buf)?;
         patch_mdhd_timescale(buf);
-        self.total += read;
+        self.total += read as u64;
         if self.total > self.limit {
-            return Ok(read.saturating_sub(self.total - self.limit));
+            // At most `read`, so it fits a `usize`
+            return Ok((read as u64).saturating_sub(self.total - self.limit) as usize);
         }
         Ok(read)
     }
@@ -127,27 +128,27 @@ impl<R: Read + Seek> Seek for PatchingLimitingStream<R> {
         let res = self.inner.seek(pos);
         if res.is_ok() {
             self.total = match pos {
-                SeekFrom::Start(pos) => pos as usize,
-                SeekFrom::End(pos) => self.stream_size.saturating_add(pos as usize),
-                SeekFrom::Current(pos) => self.total.saturating_add(pos as usize),
+                SeekFrom::Start(pos) => pos,
+                SeekFrom::End(pos) => self.stream_size.saturating_add_signed(pos),
+                SeekFrom::Current(pos) => self.total.saturating_add_signed(pos),
             };
         }
         res
     }
 }
 
-pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Result<mp4parse::MediaContext> {
+pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: u64) -> mp4parse::Result<mp4parse::MediaContext> {
     if size > 10*1024*1024 {
         // With large files we can save a lot of time by only parsing actual MP4 box structure, skipping track data itself.
         // We do that by reading 15 MB from each end of the file, then patching `mdat` box to make the 30 MB buffer a correct MP4 file.
         // This is hacky, but it's worth a try and if we fail we fallback to full parsing anyway.
-        let mut read_mb = if size as u64 > 100u64*1024*1024*1024 { // If file is greater than 100 GB, read 500 MB header/footer
+        let mut read_mb = if size > 100u64*1024*1024*1024 { // If file is greater than 100 GB, read 500 MB header/footer
             500
-        } else if size as u64 > 60u64*1024*1024*1024 { // If file is greater than 60 GB, read 220 MB header/footer
+        } else if size > 60u64*1024*1024*1024 { // If file is greater than 60 GB, read 220 MB header/footer
             220
-        } else if size as u64 > 30u64*1024*1024*1024 { // If file is greater than 30 GB, read 180 MB header/footer
+        } else if size > 30u64*1024*1024*1024 { // If file is greater than 30 GB, read 180 MB header/footer
             180
-        } else if size as u64 > 5u64*1024*1024*1024 { // If file is greater than 5 GB, read 40 MB header/footer
+        } else if size > 5u64*1024*1024*1024 { // If file is greater than 5 GB, read 40 MB header/footer
             40
         } else {
             15
@@ -167,7 +168,7 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
 
         let mut all = read_beginning_and_end(stream, size, read_mb*1024*1024)?;
         if let Some(pos) = memchr::memmem::find(&all, b"mdat").filter(|pos| *pos >= 4) { // after its size
-            let how_much_less = (size - all.len()) as u64;
+            let how_much_less = size - all.len() as u64;
             let mut len = (&all[pos-4..]).read_u32::<BigEndian>()? as u64;
             let is_large_box = len == 1;
             if is_large_box {
@@ -176,7 +177,7 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
             if how_much_less > len {
                 // Something went wrong, we need the full data
                 log::warn!("Reading full mp4 {how_much_less} {len} {size} {}", all.len());
-                if let Ok(good_size) = get_mp4_good_size(stream, size as u64) {
+                if let Ok(good_size) = get_mp4_good_size(stream, size) {
                     let mut limited_stream = BufReader::with_capacity(512 * 1024, PatchingLimitingStream { inner: stream, stream_size: size, total: 0, limit: good_size });
                     return mp4parse::read_mp4(&mut limited_stream, mp4parse::ParseStrictness::Permissive);
                 }
@@ -191,9 +192,10 @@ pub fn parse_mp4<T: Read + Seek>(stream: &mut T, size: usize) -> mp4parse::Resul
             }
 
             if let Ok(good_size) = get_mp4_good_size(&mut std::io::Cursor::new(&all), all.len() as u64) {
-                if all.len() > good_size {
-                    log::warn!("Garbage found at the end of the file, removing {} bytes from the end.", all.len() - good_size);
-                    all.resize(good_size, 0);
+                // A size within the buffer, so one smaller than it fits a `usize`
+                if (all.len() as u64) > good_size {
+                    log::warn!("Garbage found at the end of the file, removing {} bytes from the end.", all.len() as u64 - good_size);
+                    all.resize(good_size as usize, 0);
                 }
             }
             patch_mdhd_timescale(&mut all);
@@ -273,7 +275,7 @@ impl<T: Read + Seek> TrackSample<'_, T> {
 
 /// Calls `callback` with each sample longer than 4 bytes of the tracks of type `typ` (the first of them when `single`):
 /// the sample whole, or its first `max_sample_size` bytes when the caller reads no more of one (`read_track_samples`)
-pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp4parse::TrackType, single: bool, max_sample_size: Option<usize>, mut callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
+pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: u64, typ: mp4parse::TrackType, single: bool, max_sample_size: Option<usize>, mut callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
     where F: FnMut(SampleInfo, &[u8], u64, Option<&VideoMetadata>)
 {
     read_track_samples(stream, size, typ, single, |info, sample, video_md| {
@@ -290,7 +292,7 @@ pub fn get_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, typ: mp
 /// whose parser reads the parts of it it needs (`TrackSample::read`). A sample a read leaves out (its bytes aren't in the
 /// file: a recording cut short, or a damaged sample table; or more than `MAX_SAMPLE_SIZE` of them at once) is one its
 /// parser uses nothing of: a track's samples left out are reported (a warning), and its other samples are read
-pub fn read_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, mut typ: mp4parse::TrackType, single: bool, mut callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
+pub fn read_track_samples<F, T: Read + Seek>(stream: &mut T, size: u64, mut typ: mp4parse::TrackType, single: bool, mut callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
     where F: FnMut(SampleInfo, &mut TrackSample<T>, Option<&VideoMetadata>) -> Result<()>
 {
 
@@ -394,23 +396,29 @@ pub(crate) fn empty_edit_ticks(ctx: &MediaContext, track: &mp4parse::Track) -> i
     }
 }
 
-pub fn get_metadata_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, single: bool, callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
+pub fn get_metadata_track_samples<F, T: Read + Seek>(stream: &mut T, size: u64, single: bool, callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
     where F: FnMut(SampleInfo, &[u8], u64, Option<&VideoMetadata>)
 {
     get_track_samples(stream, size, mp4parse::TrackType::Metadata, single, None, callback, cancel_flag)
 }
-pub fn get_other_track_samples<F, T: Read + Seek>(stream: &mut T, size: usize, single: bool, callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
+pub fn get_other_track_samples<F, T: Read + Seek>(stream: &mut T, size: u64, single: bool, callback: F, cancel_flag: Arc<AtomicBool>) -> Result<MediaContext>
     where F: FnMut(SampleInfo, &[u8], u64, Option<&VideoMetadata>)
 {
     get_track_samples(stream, size, mp4parse::TrackType::Unknown, single, None, callback, cancel_flag)
 }
 
-pub fn read_beginning_and_end<T: Read + Seek>(stream: &mut T, stream_size: usize, read_size: usize) -> Result<Vec<u8>> {
+/// `size` bytes of a stream as a length in memory, for a parser that reads all of them into it: an error when a `usize`
+/// can't hold it (a file larger than 4 GiB on a 32-bit target, like wasm32), rather than reading part of them
+pub(crate) fn in_memory(size: u64) -> Result<usize> {
+    usize::try_from(size).map_err(|_| Error::new(ErrorKind::FileTooLarge, format!("{size} bytes are too many to read into memory on this target")))
+}
+
+pub fn read_beginning_and_end<T: Read + Seek>(stream: &mut T, stream_size: u64, read_size: usize) -> Result<Vec<u8>> {
     let mut all = vec![0u8; read_size*2];
 
     stream.seek(SeekFrom::Start(0))?;
 
-    if stream_size > read_size * 2 {
+    if stream_size > read_size as u64 * 2 {
         let read1 = stream.read(&mut all[..read_size])?;
 
         stream.seek(SeekFrom::End(-(read_size as i64)))?;
@@ -1024,6 +1032,19 @@ pub fn find_from_to(buffer: &[u8], from: &[u8], to: &[u8]) -> Option<String> {
     Some(String::from_utf8_lossy(&buffer[pos..pos+from.len()+end+to.len()]).into())
 }
 
+/// A protobuf message as JSON, decoded from its bytes when the tag is read (`message_tag`)
+fn message_json<M: prost::Message + Default + serde::Serialize>(d: &mut Cursor<&[u8]>) -> Result<serde_json::Value> {
+    let bytes = &d.get_ref()[d.position() as usize..];
+    let message = M::decode(bytes).map_err(|e| Error::new(ErrorKind::InvalidData, e))?;
+    serde_json::to_value(&message).map_err(|e| Error::new(ErrorKind::InvalidData, e))
+}
+
+/// All of a protobuf message, `group / Data`, so the fields that have no tag of their own are exposed too. It's kept as
+/// the message's bytes and decoded when read: a frame's JSON is many times its bytes
+pub(crate) fn message_tag<M: prost::Message + Default + serde::Serialize>(group: &str, description: &str, message: &M) -> TagDescription {
+    crate::tag!(GroupId::Custom(group.to_owned().into()), TagId::Data, description, Json, |v| serde_json::to_string(v).unwrap_or_default(), message_json::<M>, message.encode_to_vec())
+}
+
 pub fn insert_tag(map: &mut GroupedTagMap, tag: TagDescription, options: &crate::InputOptions) {
     use crate::TagFilter;
     let match_tag = |x: &TagFilter| -> bool {
@@ -1128,7 +1149,7 @@ pub fn get_video_metadata_from_track(track: &mp4parse::Track) -> Result<VideoMet
     }
 }
 
-pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: usize) -> Result<VideoMetadata> { // -> (width, height, fps, duration_s, rotation)
+pub fn get_video_metadata<T: Read + Seek>(stream: &mut T, filesize: u64) -> Result<VideoMetadata> { // -> (width, height, fps, duration_s, rotation)
     let mut header = [0u8; 4];
     stream.read_exact(&mut header)?;
     stream.seek(SeekFrom::Start(0))?;

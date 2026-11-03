@@ -41,7 +41,7 @@ impl Cooke {
     /// The first sample holds the header records, then there's a sample per Kdi poll of the lens: the accelerometer and gyro
     /// samples it read out, its magnetometer sample and its lens data. The sensor samples are timed on one timeline of the lens clock
     /// and calibrated with the lens's calibration of each sensor: a sensor without one is left out
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, _size: usize, _progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, _size: u64, _progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         let mut all_data = String::new();
         stream.read_to_string(&mut all_data)?;
 

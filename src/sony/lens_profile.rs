@@ -14,8 +14,8 @@ const MASK: [u32; 16] = [
     0xdadadada, 0xebebebeb, 0xadadadad, 0xbebebebe, 0xcacacaca, 0xdbdbdbdb, 0xecececec, 0xaeaeaeae,
 ];
 
-pub fn read<T: Read + Seek>(stream: &mut T, size: usize) -> Option<serde_json::Value> {
-    let read_size = size.min(2 * 1024 * 1024);
+pub fn read<T: Read + Seek>(stream: &mut T, size: u64) -> Option<serde_json::Value> {
+    let read_size = size.min(2 * 1024 * 1024) as usize;
     stream.seek(SeekFrom::End(-(read_size as i64))).ok()?;
     let mut buf = vec![0u8; read_size];
     stream.read_exact(&mut buf).ok()?;

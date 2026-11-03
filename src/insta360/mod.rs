@@ -30,12 +30,12 @@ use crate::util::*;
 /// The size of the trailer that `footer`, the last [`HEADER_SIZE`] bytes of a file of `file_size` bytes, closes: `None`
 /// when it isn't a trailer's footer, or when the size it states, which covers the whole trailer with the footer, doesn't
 /// fit the file.
-pub(crate) fn trailer_size(footer: &[u8], file_size: usize) -> Option<usize> {
+pub(crate) fn trailer_size(footer: &[u8], file_size: u64) -> Option<u64> {
     if footer.len() != HEADER_SIZE || &footer[HEADER_SIZE-32..] != MAGIC {
         return None;
     }
-    let size = (&footer[32..]).read_u32::<LittleEndian>().ok()? as usize;
-    (HEADER_SIZE..=file_size).contains(&size).then_some(size)
+    let size = (&footer[32..]).read_u32::<LittleEndian>().ok()? as u64;
+    (HEADER_SIZE as u64..=file_size).contains(&size).then_some(size)
 }
 
 #[derive(Default)]
@@ -84,13 +84,13 @@ impl Insta360 {
         None
     }
 
-    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+    pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         let mut tag_map = self.parse_file(stream, size, progress_cb, cancel_flag, &options)?;
         self.process_map(&mut tag_map, &options);
         Ok(vec![SampleInfo { tag_map: Some(tag_map), ..std::default::Default::default() }])
     }
 
-    fn parse_file<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: &crate::InputOptions) -> Result<GroupedTagMap> {
+    fn parse_file<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: &crate::InputOptions) -> Result<GroupedTagMap> {
         let mut buf = vec![0u8; HEADER_SIZE];
         stream.seek(SeekFrom::End(-(HEADER_SIZE as i64)))?;
         stream.read_exact(&mut buf)?;
@@ -152,7 +152,7 @@ impl Insta360 {
                             continue;
                         }
 
-                        stream.seek(SeekFrom::Start(extra_start as u64 + *offset as u64))?;
+                        stream.seek(SeekFrom::Start(extra_start + *offset as u64))?;
                         buf.resize(*record_size as usize, 0);
                         stream.read_exact(&mut buf)?;
 

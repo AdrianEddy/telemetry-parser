@@ -145,6 +145,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
+name = "crc32fast"
+version = "1.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f97d3416d5337d15c4b0d78c8c91df922ca143f57ec20e2d1c188333047ef04"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "crunchy"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -269,12 +278,6 @@ name = "hex-literal"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e712f64ec3850b98572bffac52e2c6f282b29fe6c5fa6d42334b30be438d95c1"
-
-[[package]]
-name = "human-sort"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "140a09c9305e6d5e557e2ed7cbc68e05765a7d4213975b87cb04920689cc6219"
 
 [[package]]
 name = "iana-time-zone"
@@ -420,9 +423,9 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "mp4parse-patched"
-version = "0.17.1"
+version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "efb66b21af9170c4bac2f8d84df3d2eec4ce87b14ac9db273bb7af35c8e2de16"
+checksum = "e716c09d8cbadaf594442c48e3762d4091f5a3f632783d1f7361a64e152c53c0"
 dependencies = [
  "bitreader",
  "byteorder",
@@ -719,16 +722,16 @@ dependencies = [
 
 [[package]]
 name = "telemetry-parser"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "argh",
  "byteorder",
  "chrono",
+ "crc32fast",
  "csv",
  "fc-blackbox-patched",
  "half",
  "hex-literal",
- "human-sort",
  "jni",
  "log",
  "memchr",
@@ -745,8 +748,10 @@ dependencies = [
 
 [[package]]
 name = "telemetry-parser-wasm"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
+ "js-sys",
+ "log",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",

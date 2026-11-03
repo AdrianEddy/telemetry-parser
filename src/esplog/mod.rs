@@ -49,7 +49,7 @@ impl EspLog {
     pub fn parse<T: Read + Seek, F: Fn(f64)>(
         &mut self,
         stream: &mut T,
-        size: usize,
+        size: u64,
         progress_cb: F,
         cancel_flag: Arc<AtomicBool>,
         options: crate::InputOptions

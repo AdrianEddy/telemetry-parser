@@ -19,10 +19,10 @@ const ANCILLARY: [u8; 16] = [0x06, 0x0e, 0x2b, 0x34, 0x01, 0x02, 0x01, 0x01, 0x0
 const ANCILLARY_MAX: u64 = 2 + 65535 * (14 + 348);
 const BUFFER_SIZE: usize = 128 * 1024;
 
-pub fn parse<T: Read + Seek, F: Fn(f64), P>(stream: &mut T, size: usize, progress_cb: F, cancel_flag: Arc<AtomicBool>, metadata_only: Option<&mut util::VideoMetadata>, options: &crate::InputOptions, parse_fn: P) -> Result<Vec<SampleInfo>>
+pub fn parse<T: Read + Seek, F: Fn(f64), P>(stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, metadata_only: Option<&mut util::VideoMetadata>, options: &crate::InputOptions, parse_fn: P) -> Result<Vec<SampleInfo>>
 where P: Fn(&[u8], &crate::InputOptions, &mut GroupedTagMap) -> Result<()> {
     let start = stream.stream_position()?;
-    let size = if size > 0 { size as u64 } else { stream.seek(SeekFrom::End(0))? };
+    let size = if size > 0 { size } else { stream.seek(SeekFrom::End(0))? };
 
     // The video's descriptor is an item of the file's header metadata, and nothing else is read for its metadata
     let descriptor = picture_descriptor(stream, size, &cancel_flag);

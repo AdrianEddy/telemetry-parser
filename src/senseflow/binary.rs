@@ -5,7 +5,7 @@ use crate::*;
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use std::io::*;
 
-pub fn parse<T: Read + Seek>(stream: &mut T, _size: usize, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
+pub fn parse<T: Read + Seek>(stream: &mut T, _size: u64, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
     let mut stream = std::io::BufReader::new(stream);
 
     let mut gyro = Vec::new();
