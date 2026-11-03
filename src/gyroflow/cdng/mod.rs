@@ -193,7 +193,7 @@ fn numbered(filename: &str) -> Option<(&str, u64, usize, &str)> {
 
 /// The frame files of `path`'s folder that are numbered like it, by number. Of two names of a number (`1.dng` and
 /// `0001.dng`) the one written like `path`'s.
-fn sequence_files(path: &str) -> BTreeMap<u64, String> {
+pub(crate) fn sequence_files(path: &str) -> BTreeMap<u64, String> {
     let mut files = BTreeMap::new();
     let Some((prefix, _, digits, ext)) = numbered(&filesystem::get_filename(path)).map(|(p, n, d, e)| (p.to_owned(), n, d, e.to_owned())) else { return files };
     for (name, file) in filesystem::list_folder(&filesystem::get_folder(path)) {
@@ -208,7 +208,7 @@ fn sequence_files(path: &str) -> BTreeMap<u64, String> {
 /// The frames of the sequence from `path` on, of its folder's `files` (`sequence_files`): it, and the files numbered
 /// after it up to the first missing number. That is the clip Gyroflow opens (FFmpeg reads an image sequence from the
 /// frame the user picked up to a gap).
-fn sequence(path: &str, files: &BTreeMap<u64, String>) -> Vec<String> {
+pub(crate) fn sequence(path: &str, files: &BTreeMap<u64, String>) -> Vec<String> {
     let mut out = vec![path.to_owned()];
     if let Some((_, first, _, _)) = numbered(&filesystem::get_filename(path)) {
         out.extend((first + 1..).map_while(|n| files.get(&n).cloned()));

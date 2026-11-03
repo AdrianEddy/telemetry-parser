@@ -83,6 +83,7 @@ declare_ids! {
     PixelHeight,
     RollingShutterCorrection,
     SerialNumber,
+    TiltRoll,
 
     Name,
     DisplayName,

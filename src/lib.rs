@@ -25,12 +25,14 @@ mod canon;
 mod nikon;
 mod zcam;
 mod motioncam;
+mod arri;
 
 pub mod rig;
 pub mod segment_table;
 pub mod tags_impl;
 pub mod util;
 pub mod filesystem;
+mod mxf;
 
 use std::io::*;
 use std::sync::{ Arc, atomic::AtomicBool };
@@ -244,6 +246,7 @@ impl_formats! {
     BlackmagicBraw => blackmagic::BlackmagicBraw,
     RedR3d    => red::RedR3d,
     MotionCam => motioncam::MotionCam,
+    ArriRaw   => arri::ArriRaw,
     Runcam    => runcam::Runcam,
     WitMotion => witmotion::WitMotion,
     PhoneApps => phone_apps::PhoneApps,

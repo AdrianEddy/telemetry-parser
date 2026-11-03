@@ -77,6 +77,8 @@ use std::io::{ Read, Seek, SeekFrom, Result, Error, ErrorKind };
 use byteorder::{ BigEndian, LittleEndian, ReadBytesExt };
 use serde_json::Value;
 
+use crate::mxf::{ same_ul, KEY_START, PARTITION_PREFIX, PRIMER };
+
 /// The box type of the table in `moov/udta`, and the item type of a MotionCam recording's table
 pub const BOX_TYPE: [u8; 4] = *b"MTRM";
 
@@ -841,8 +843,6 @@ fn video_frame_times_of_moov(moov: &[u8]) -> Option<VideoFrameTimes> {
 
 // ------------------------------- MXF -------------------------------
 
-const MXF_PARTITION_PREFIX: [u8; 13] = [0x06, 0x0e, 0x2b, 0x34, 0x02, 0x05, 0x01, 0x01, 0x0d, 0x01, 0x02, 0x01, 0x01];
-const MXF_PRIMER: [u8; 16] = [0x06, 0x0e, 0x2b, 0x34, 0x02, 0x05, 0x01, 0x01, 0x0d, 0x01, 0x02, 0x01, 0x01, 0x05, 0x01, 0x00];
 const MXF_FILL: [u8; 16] = [0x06, 0x0e, 0x2b, 0x34, 0x01, 0x01, 0x01, 0x02, 0x03, 0x01, 0x02, 0x10, 0x01, 0x00, 0x00, 0x00];
 /// The random index pack (ST 377-1 §12)
 const MXF_RIP: [u8; 16] = [0x06, 0x0e, 0x2b, 0x34, 0x02, 0x05, 0x01, 0x01, 0x0d, 0x01, 0x02, 0x01, 0x01, 0x11, 0x01, 0x00];
@@ -858,9 +858,12 @@ const MXF_MAX_PARTITIONS: u64 = 1 << 16;
 /// The frames an MXF file's video presents and their edit rate, `(numerator, denominator)`
 type MxfFrames = (u64, (u64, u64));
 
-/// Two MXF keys, without byte 8 (the registry version, ST 336)
-fn same_ul(a: &[u8], b: &[u8]) -> bool {
-    a.len() == 16 && b.len() == 16 && a[..7] == b[..7] && a[8..] == b[8..]
+/// An MXF file's video as a copy of its header metadata states it ([`MxfHeader::video`]): its edit rate,
+/// `(numerator, denominator)`, and the frames it presents, `None` where they're unknown
+#[derive(Clone, Copy)]
+struct MxfVideo {
+    rate: (u64, u64),
+    frames: Option<u64>,
 }
 
 /// Where an MXF file's header partition pack starts: at the start of the file, or after a run-in
@@ -870,7 +873,7 @@ fn mxf_header_partition<R: Read + Seek>(stream: &mut R, size: u64) -> Result<Opt
     stream.read_exact(&mut head)?;
     Ok((0..head.len().saturating_sub(15)).find(|&i| {
         let k = &head[i..i + 16];
-        k[..13] == MXF_PARTITION_PREFIX && k[13] == 0x02 && (0x01..=0x04).contains(&k[14]) && k[15] == 0
+        k[..13] == PARTITION_PREFIX && k[13] == 0x02 && (0x01..=0x04).contains(&k[14]) && k[15] == 0
     }).map(|i| i as u64))
 }
 
@@ -925,7 +928,7 @@ impl MxfPack {
     /// refuses it)
     fn read<R: Read + Seek>(stream: &mut R, at: u64, size: u64, run_in: u64) -> Result<Option<Self>> {
         let (key, value, len) = mxf_klv(stream, at, size)?;
-        if key[..13] != MXF_PARTITION_PREFIX || !(0x02..=0x04).contains(&key[13]) || !(0x01..=0x04).contains(&key[14]) || key[15] != 0 || len < 40 {
+        if key[..13] != PARTITION_PREFIX || !(0x02..=0x04).contains(&key[13]) || !(0x01..=0x04).contains(&key[14]) || key[15] != 0 || len < 40 {
             return Ok(None);
         }
         stream.seek(SeekFrom::Start(value + 8))?;
@@ -940,7 +943,7 @@ impl MxfPack {
         let mut at = self.end;
         loop {
             let (key, value, len) = mxf_klv(stream, at, size)?;
-            if same_ul(&key, &MXF_PRIMER) { return Ok(Some(at)); }
+            if same_ul(&key, &PRIMER) { return Ok(Some(at)); }
             if !same_ul(&key, &MXF_FILL) { return Ok(None); }
             at = value + len;
         }
@@ -1132,7 +1135,7 @@ impl MxfHeader {
                 let (key, value, len) = mxf_klv(stream, at, end)?;
                 if same_ul(&key, &MXF_KEY) {
                     tables.push((at, stream.seek(SeekFrom::Start(value)).and_then(|_| crate::util::read_data(stream, len))));
-                } else if key[..4] == [0x06, 0x0e, 0x2b, 0x34] && key[4] == 0x02 && key[5] == 0x53 && key[8..13] == [0x0d, 0x01, 0x01, 0x01, 0x01] && key[13] == 0x01 {
+                } else if key[..4] == KEY_START.to_be_bytes() && key[4] == 0x02 && key[5] == 0x53 && key[8..13] == [0x0d, 0x01, 0x01, 0x01, 0x01] && key[13] == 0x01 {
                     // A structural set, its value within the header metadata
                     let start = values.len();
                     let n = usize::try_from(len).map_err(|_| Error::from(ErrorKind::OutOfMemory))?;
@@ -1193,18 +1196,19 @@ impl MxfHeader {
         }
     }
 
-    /// The frames the file's video presents: those of the material package's first picture track, which defines the
-    /// file's output timeline at its playout edit rate (ST 377-1 §9.5.3). The track plays its sequence's first source
-    /// clip (an OP1a file's only one), whose `Duration` (0x0202) at the track's `EditRate` (0x4b01) FFmpeg's MXF demuxer
-    /// (`mxf_parse_structural_metadata`) and bmx (`MXFFileReader`) give the stream: no more than the essence container
-    /// holds, where the clip's file descriptor states that in its optional `ContainerDuration` (0x3002, ST 377-1
-    /// Annex F; FFmpeg takes the lesser), a count of the same edit units where its `SampleRate` is the track's. A
-    /// `Duration` of -1 (the distinguished value of a timeline track's best effort `Duration`, Annex B.8) leaves the
-    /// frames unknown, as it does to FFmpeg and bmx. Header metadata without a material package, which has no output
-    /// timeline, presents the essence container's frames: its first picture descriptor's `ContainerDuration` at its
-    /// `SampleRate`. Of a copy that isn't whole, the sets read before the damage (as FFmpeg's demuxer keeps them) tell
-    /// the frames where every set they're found by is among them, and otherwise they can't be told (`Err`)
-    fn video_frames(&self) -> std::result::Result<Option<MxfFrames>, ()> {
+    /// The file's video: the material package's first picture track, which defines the file's output timeline at its
+    /// playout edit rate (ST 377-1 §9.5.3). The track plays its sequence's first source clip (an OP1a file's only one),
+    /// whose `Duration` (0x0202) at the track's `EditRate` (0x4b01) FFmpeg's MXF demuxer (`mxf_parse_structural_metadata`)
+    /// and bmx (`MXFFileReader`) give the stream: no more than the essence container holds, where the clip's file
+    /// descriptor states that in its optional `ContainerDuration` (0x3002, ST 377-1 Annex F; FFmpeg takes the lesser), a
+    /// count of the same edit units where its `SampleRate` is the track's. A `Duration` of -1 (the distinguished value of
+    /// a timeline track's best effort `Duration`, Annex B.8, as a header partition written before its recording ended
+    /// can have it) leaves the frames unknown, as it does to FFmpeg and bmx, but not the edit rate. Header metadata
+    /// without a material package, which has no output timeline, presents the essence container's frames: its first
+    /// picture descriptor's `ContainerDuration` at its `SampleRate`, else the first one's `SampleRate` without them. Of a
+    /// copy that isn't whole, the sets read before the damage (as FFmpeg's demuxer keeps them) tell the video where every
+    /// set it's found by is among them, and otherwise it can't be told (`Err`)
+    fn video(&self) -> std::result::Result<Option<MxfVideo>, ()> {
         use mxf_set::*;
         let preface = self.sets().find(|s| s.kind == PREFACE);
         if preface.is_none() && !self.whole() { return Err(()); }
@@ -1216,8 +1220,9 @@ impl MxfHeader {
         }
         let Some(material) = material else {
             if !self.whole() { return Err(()); }
-            let descriptor = self.sets().find(|s| MXF_PICTURE_DESCRIPTORS.contains(&s.kind) && s.length(0x3002).is_some() && s.rate(0x3001).is_some());
-            return Ok(descriptor.and_then(|d| Some((d.length(0x3002)?, d.rate(0x3001)?))));
+            let pictures = || self.sets().filter(|s| MXF_PICTURE_DESCRIPTORS.contains(&s.kind) && s.rate(0x3001).is_some());
+            let descriptor = pictures().find(|s| s.length(0x3002).is_some()).or_else(|| pictures().next());
+            return Ok(descriptor.and_then(|d| Some(MxfVideo { rate: d.rate(0x3001)?, frames: d.length(0x3002) })));
         };
         // The first timeline track whose sequence (or the component in its place) is of picture essence, and the first
         // source clip it plays
@@ -1240,7 +1245,8 @@ impl MxfHeader {
             if let Some(clip) = clip { played = Some((track, clip)); break; }
         }
         let Some((track, clip)) = played else { return Ok(None) };
-        let (Some(rate), Some(duration)) = (track.rate(0x4b01), clip.length(0x0202)) else { return Ok(None) };
+        let Some(rate) = track.rate(0x4b01) else { return Ok(None) };
+        let Some(duration) = clip.length(0x0202) else { return Ok(Some(MxfVideo { rate, frames: None })) };
         // The clip's file descriptor: the descriptor of the top-level file package it plays, or the one of a multiple
         // descriptor that is linked to the package's track the clip plays
         let mut package = None;
@@ -1257,25 +1263,36 @@ impl MxfHeader {
             }
         }
         let container = descriptor.filter(|d| d.rate(0x3001).is_some_and(|r| r.0 as u128 * rate.1 as u128 == rate.0 as u128 * r.1 as u128)).and_then(|d| d.length(0x3002));
-        Ok(Some((container.map_or(duration, |container| container.min(duration)), rate)))
+        Ok(Some(MxfVideo { rate, frames: Some(container.map_or(duration, |container| container.min(duration))) }))
     }
 }
 
 /// Of the copies of an MXF file's header metadata, in their order ([`mxf_copies`]), the frames the first one that tells
-/// them says the file's video presents ([`MxfHeader::video_frames`])
+/// them says the file's video presents ([`MxfHeader::video`])
 fn mxf_frames_of<R: Read + Seek>(stream: &mut R, size: u64, copies: &[MxfPack]) -> Option<MxfFrames> {
-    copies.iter().find_map(|copy| MxfHeader::read(stream, size, copy).ok().flatten()?.video_frames().ok()).flatten()
+    let video = copies.iter().find_map(|copy| MxfHeader::read(stream, size, copy).ok().flatten()?.video().ok()).flatten()?;
+    Some((video.frames?, video.rate))
 }
 
 /// The frames an MXF file's video presents and their edit rate, as its header metadata states them: of its copies in
 /// their order ([`mxf_copies`]: the footer partition's first, the copy FFmpeg's demuxer and bmx read), the first one's
-/// that tells them ([`MxfHeader::video_frames`]). `None` for a file that isn't one, or whose header metadata doesn't
-/// say
+/// that tells them ([`MxfHeader::video`]). `None` for a file that isn't one, or whose header metadata doesn't say
 pub(crate) fn mxf_video_frames<R: Read + Seek>(stream: &mut R, size: u64) -> Option<MxfFrames> {
     let start = mxf_header_partition(stream, size).ok()??;
     let header = MxfPack::read(stream, start, size, start).ok()??;
     let copies = mxf_copies(stream, size, header);
     mxf_frames_of(stream, size, &copies)
+}
+
+/// The edit rate of an MXF file's video, `(numerator, denominator)`, as its header metadata states it: the first of its
+/// copies in their order ([`mxf_copies`]) that tells it ([`MxfHeader::video`]), also where the frames the video presents
+/// are unknown (a header partition left open, its `Duration` -1). `None` for a file that isn't one, or whose header
+/// metadata doesn't say
+pub(crate) fn mxf_video_rate<R: Read + Seek>(stream: &mut R, size: u64) -> Option<(u64, u64)> {
+    let start = mxf_header_partition(stream, size).ok()??;
+    let header = MxfPack::read(stream, start, size, start).ok()??;
+    let copies = mxf_copies(stream, size, header);
+    copies.iter().find_map(|copy| MxfHeader::read(stream, size, copy).ok().flatten()?.video().ok().flatten()).map(|video| video.rate)
 }
 
 /// Where the copies of an MXF file's header metadata lie, in their order ([`mxf_copies`]): each from the end of its
@@ -1678,11 +1695,11 @@ mod tests {
 
     /// An MXF file: its header partition pack, then its header metadata, the primer pack and `items`
     fn mxf(items: &[Vec<u8>]) -> Vec<u8> {
-        let primer = klv(&MXF_PRIMER, &[0; 8]);
+        let primer = klv(&PRIMER, &[0; 8]);
         let mut pack = [0u8; 88];
         pack[32..40].copy_from_slice(&((primer.len() + items.concat().len()) as u64).to_be_bytes());
         let mut key = [0u8; 16];
-        key[..13].copy_from_slice(&MXF_PARTITION_PREFIX);
+        key[..13].copy_from_slice(&PARTITION_PREFIX);
         key[13] = 0x02;
         key[14] = 0x04;
         [klv(&key, &pack), primer, items.concat()].concat()
@@ -1692,6 +1709,40 @@ mod tests {
     fn descriptor(frames: u64, rate: (u32, u32)) -> Vec<u8> {
         let key = [0x06, 0x0e, 0x2b, 0x34, 0x02, 0x53, 0x01, 0x01, 0x0d, 0x01, 0x01, 0x01, 0x01, 0x01, 0x28, 0x00];
         klv(&key, &[&[0x30, 0x01, 0x00, 0x08][..], &rate.0.to_be_bytes(), &rate.1.to_be_bytes(), &[0x30, 0x02, 0x00, 0x08], &frames.to_be_bytes()].concat())
+    }
+
+    /// A structural set of `kind` (byte 15 of its key) whose InstanceUID is 16 bytes `uid`, with `items`
+    fn set(kind: u8, uid: u8, items: &[(u16, Vec<u8>)]) -> Vec<u8> {
+        let key = [0x06, 0x0e, 0x2b, 0x34, 0x02, 0x53, 0x01, 0x01, 0x0d, 0x01, 0x01, 0x01, 0x01, 0x01, kind, 0x00];
+        let items: Vec<u8> = std::iter::once(&(0x3c0a, vec![uid; 16])).chain(items).flat_map(|(tag, v)| [&tag.to_be_bytes()[..], &(v.len() as u16).to_be_bytes(), v].concat()).collect();
+        klv(&key, &items)
+    }
+
+    /// The header metadata of a material package whose picture track at `rate` plays a source clip of `duration` frames
+    fn material(rate: (u32, u32), duration: i64) -> Vec<Vec<u8>> {
+        use mxf_set::*;
+        let references = |uid: u8| [&1u32.to_be_bytes()[..], &16u32.to_be_bytes(), &[uid; 16]].concat();
+        let picture = vec![0x06, 0x0e, 0x2b, 0x34, 0x04, 0x01, 0x01, 0x01, 0x01, 0x03, 0x02, 0x02, 0x01, 0x00, 0x00, 0x00];
+        vec![
+            set(PREFACE, 1, &[(0x3b03, vec![2; 16])]),
+            set(CONTENT_STORAGE, 2, &[(0x1901, references(3))]),
+            set(MATERIAL_PACKAGE, 3, &[(0x4403, references(4))]),
+            set(TIMELINE_TRACK, 4, &[(0x4b01, [rate.0.to_be_bytes(), rate.1.to_be_bytes()].concat()), (0x4803, vec![5; 16])]),
+            set(SEQUENCE, 5, &[(0x0201, picture.clone()), (0x1001, references(6))]),
+            set(SOURCE_CLIP, 6, &[(0x0201, picture), (0x0202, duration.to_be_bytes().to_vec())]),
+        ]
+    }
+
+    #[test]
+    fn an_mxf_files_edit_rate_is_known_without_its_frames() {
+        let video = |file: &[u8]| (mxf_video_frames(&mut Cursor::new(file), file.len() as u64), mxf_video_rate(&mut Cursor::new(file), file.len() as u64));
+        assert_eq!(video(&mxf(&material((24000, 1001), 480))), (Some((480, (24000, 1001))), Some((24000, 1001))));
+        // A Duration of -1, unknown, as a header partition left open has it
+        assert_eq!(video(&mxf(&material((24000, 1001), -1))), (None, Some((24000, 1001))));
+        // Without a material package, the picture descriptor's, with a ContainerDuration of -1
+        assert_eq!(video(&mxf(&[descriptor(480, (25, 1))])), (Some((480, (25, 1))), Some((25, 1))));
+        assert_eq!(video(&mxf(&[descriptor(u64::MAX, (25, 1))])), (None, Some((25, 1))));
+        assert_eq!(video(&mxf(&[])), (None, None));
     }
 
     #[test]
