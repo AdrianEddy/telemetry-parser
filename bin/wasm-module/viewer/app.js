@@ -158,16 +158,23 @@ const CLIP_EXT = ['r3d', 'braw', 'mcraw', 'dng', 'ari', 'arx', 'zraw', 'crm', 'm
 const LOG_EXT = ['gcsv', 'jsonl', 'bbl', 'bfl', 'bin', 'log', 'csv', 'txt', 'rmd'];
 
 /// Opens what was picked or dropped: a file, several (a video and its log, a RED clip's parts), or a folder. All of them
-/// are given to the parser, which opens a clip's other files by name next to the one it parses; a playable video among
-/// them plays along (a RED clip's proxy, the video of a log)
+/// are given to the parser, which opens a clip's other files by name next to the one it parses. A log goes with the
+/// video of its name, and plays it; a lone video plays with whatever was parsed (a RED clip's proxy, a flight log named
+/// otherwise), and of several others none does: no picture is better than another clip's. A file that looked like a log
+/// but isn't one (a folder's notes.txt) gives way to the video
 async function openFiles(input) {
     const entries = [...input].map(x => (x instanceof File ? { file: x, path: '/' + (x.webkitRelativePath || x.name) } : x)).filter(e => e?.file);
     if (!entries.length) return;
     entries.sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
     const first = list => { for (const e of list) { const hit = entries.find(x => ext(x.file.name) === e); if (hit) return hit; } return null; };
-    const video = entries.find(e => PLAYABLE_GUESS.has(ext(e.file.name))) || null;
-    const main = first(CLIP_EXT) || first(LOG_EXT) || video || entries.find(e => VIDEO_EXT.has(ext(e.file.name))) || entries[0];
-    await openFile(main.file, video?.file || null, main.path, entries);
+    const stem = e => e.file.name.replace(/\.[^.]+$/, '').toLowerCase();
+    const videos = entries.filter(e => PLAYABLE_GUESS.has(ext(e.file.name)));
+    const logs = LOG_EXT.flatMap(l => entries.filter(e => ext(e.file.name) === l));
+    const log = logs.find(l => videos.some(v => stem(v) === stem(l))) || logs[0];
+    const main = first(CLIP_EXT) || log || videos[0] || entries.find(e => VIDEO_EXT.has(ext(e.file.name))) || entries[0];
+    const video = videos.find(v => stem(v) === stem(main)) || (videos.length === 1 ? videos[0] : null);
+    const opened = await openFile(main.file, video?.file || null, main.path, entries);
+    if (opened === false && main === log && video) await openFile(video.file, video.file, video.path, entries);
 }
 
 async function openFile(file, videoFile, path = '/' + file.name, entries = [{ file, path: '/' + file.name }]) {
@@ -190,7 +197,7 @@ async function openFile(file, videoFile, path = '/' + file.name, entries = [{ fi
         opened = await app.rpc.call('open', { file, path, files: entries.map(e => ({ path: e.path, file: e.file })) });
     } catch (e) {
         showError(file, e);
-        return;
+        return false;
     }
     app.info = opened.info;
     app.tags = opened.tags;

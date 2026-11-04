@@ -22,7 +22,7 @@
 //!
 //! Only the TIFF metadata is read, never the image.
 
-mod tiff;
+pub(crate) mod tiff;
 mod fsg2;
 mod lensfit;
 

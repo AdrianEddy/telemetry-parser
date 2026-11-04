@@ -17,10 +17,19 @@ const ANCILLARY: [u8; 16] = [0x06, 0x0e, 0x2b, 0x34, 0x01, 0x02, 0x01, 0x01, 0x0
 /// and checksum, in the coding that needs the most, 3 10-bit samples in 4 bytes (as FFmpeg's
 /// `AV_SMPTE_436M_CODED_ANC_PAYLOAD_CAPACITY`)
 const ANCILLARY_MAX: u64 = 2 + 65535 * (14 + 348);
+/// The longest value of the KLVs of [`parse_with_klvs`]: its keys are of small sets, a frame's system item at the most
+const KLV_MAX: u64 = 1024 * 1024;
 const BUFFER_SIZE: usize = 128 * 1024;
 
 pub fn parse<T: Read + Seek, F: Fn(f64), P>(stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, metadata_only: Option<&mut util::VideoMetadata>, options: &crate::InputOptions, parse_fn: P) -> Result<Vec<SampleInfo>>
 where P: Fn(&[u8], &crate::InputOptions, &mut GroupedTagMap) -> Result<()> {
+    parse_with_klvs(stream, size, progress_cb, cancel_flag, metadata_only, options, parse_fn, &[], |_, _, _, _| ())
+}
+
+/// As [`parse`], and the KLVs with the keys `keys` are given to `klv_fn` too, for the tags of the frame they come before.
+/// `parse_fn`'s tags replace them
+pub fn parse_with_klvs<T: Read + Seek, F: Fn(f64), P, K>(stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, metadata_only: Option<&mut util::VideoMetadata>, options: &crate::InputOptions, parse_fn: P, keys: &[[u8; 16]], klv_fn: K) -> Result<Vec<SampleInfo>>
+where P: Fn(&[u8], &crate::InputOptions, &mut GroupedTagMap) -> Result<()>, K: Fn(&[u8; 16], &[u8], &crate::InputOptions, &mut GroupedTagMap) {
     let start = stream.stream_position()?;
     let size = if size > 0 { size } else { stream.seek(SeekFrom::End(0))? };
 
@@ -51,10 +60,18 @@ where P: Fn(&[u8], &crate::InputOptions, &mut GroupedTagMap) -> Result<()> {
     let mut frame_rate = sample_rate.unwrap_or(25.0);
 
     let mut index = 0;
+    let mut klv_tags = GroupedTagMap::new();
     let progress = |position: u64| progress_cb(position as f64 / size as f64);
     // The essence is anywhere in the file's body, so all of the file is walked
     while let Some((id, length)) = next_klv(&mut stream, size, &cancel_flag, &progress)? {
         // log::debug!("{}: {}", util::to_hex(&id), length);
+
+        if length <= KLV_MAX && keys.iter().any(|key| crate::mxf::same_ul(key, &id)) {
+            let mut data = vec![0; length as usize];
+            if stream.read_exact(&mut data).is_err() { break; }
+            klv_fn(&id, &data, options, &mut klv_tags);
+            continue;
+        }
 
         if id != ANCILLARY {
             // Each KLV's value is read or stepped over once, so the next key is where this one ends
@@ -76,7 +93,7 @@ where P: Fn(&[u8], &crate::InputOptions, &mut GroupedTagMap) -> Result<()> {
         if stream.read_exact(&mut data).is_err() { break; }
         let data = parse_ancillary(&data);
 
-        let mut map = GroupedTagMap::new();
+        let mut map = std::mem::take(&mut klv_tags);
         if parse_fn(&data, options, &mut map).is_ok() {
             if let Some(group) = map.get(&GroupId::Default) {
                 if let Some(val) = group.get(&TagId::FrameRate) {
