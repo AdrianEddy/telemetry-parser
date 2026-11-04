@@ -49,15 +49,17 @@ pub struct Insta360 {
     pub gyro_timestamp: Option<f64>,
     /// Every generation of the `offset` calibration string the clip carries.
     offsets: rig::Offsets,
-    /// `ExtraMetadata.stream_type` — which video track holds which lens.
+    /// `ExtraMetadata.stream_type` — whether the lenses share a file.
     stream_type: i32,
+    /// `ExtraMetadata.pano_record_multi_track_order` — which track holds which lens.
+    multi_track_order: i32,
     bullet_time: bool,
     /// The other file of a two-file body, when the clip declares a pair.
     sibling: Option<crate::rig::SiblingHint>,
     /// The coded size of one video track.
     dimension: Option<(u32, u32)>,
-    /// The vendor's window crop, `(src, dst)`.
-    window_crop: Option<((u32, u32), (u32, u32))>,
+    /// The part of the sensor window the pictures hold.
+    window_crop: Option<rig::WindowCrop>,
 }
 
 impl Insta360 {
@@ -249,8 +251,8 @@ impl Insta360 {
         }
 
         if let Some(dimension) = self.dimension {
-            if let Some((_src, dst)) = self.window_crop {
-                self.insert_lens_profile(tag_map, dimension, dst, options);
+            if let Some(crop) = self.window_crop {
+                self.insert_lens_profile(tag_map, dimension, crop, options);
             }
             // The rig goes at its own tag and never at `Lens/Data`: that one is
             // the single-lens JSON profile above, tags are last-wins per (group,
@@ -259,11 +261,12 @@ impl Insta360 {
             if let Some(camera_rig) = rig::camera_rig(
                 self.model.as_deref().unwrap_or_default(),
                 &self.offsets,
-                rig::StreamLayout::from_stream_type(self.stream_type),
+                rig::StreamLayout::of(self.model.as_deref().unwrap_or_default(), self.stream_type, self.multi_track_order),
                 self.sibling.clone(),
                 dimension,
                 self.bullet_time,
                 crate::rig::readout(self.frame_readout_time),
+                self.window_crop,
             ) {
                 insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::Rig, "Camera rig", CameraRig, |v: &crate::rig::CameraRig| serde_json::to_string(v).unwrap_or_default(), camera_rig, vec![]), options);
             }
@@ -313,20 +316,16 @@ impl Insta360 {
     /// **Not** from the newest string the clip carries: the profile names the
     /// `insta360` distortion model, which is the v3 Brown block, and a v6 or
     /// v2 coefficient list under that name is a different lens.
-    fn insert_lens_profile(&self, tag_map: &mut GroupedTagMap, size: (u32, u32), dst: (u32, u32), options: &crate::InputOptions) {
+    fn insert_lens_profile(&self, tag_map: &mut GroupedTagMap, size: (u32, u32), crop: rig::WindowCrop, options: &crate::InputOptions) {
         let model = self.model.clone().unwrap_or_default().replace("Insta360 ", "");
-        let Some(offset) = self.offsets.v3.as_ref() else { return };
+        let Some(offset) = self.offsets.v3.as_ref().map(|o| o.windowed(crop)) else { return };
         let Some(lens) = offset.lenses.first() else { return };
         let (Some(&[k1, k2, k3]), Some(&[p1, p2])) = (lens.coeffs.get(..3), lens.coeffs.get(3..5)) else { return };
         let (xi, [fx, fy], [cx, cy]) = (lens.xi, lens.focal, lens.centre);
 
-        let c_ratio = (
+        let ratio = (
             size.0 as f64 / (lens.width / offset.lenses.len() as f64),
             size.1 as f64 / lens.height
-        );
-        let f_ratio = (
-            dst.0 as f64 / size.0 as f64,
-            dst.1 as f64 / size.1 as f64
         );
 
         let output_size = Self::get_output_size(size.0, size.1);
@@ -343,8 +342,8 @@ impl Insta360 {
             "asymmetrical": true,
             "fisheye_params": {
               "camera_matrix": [
-                [ fx / f_ratio.0,   0.0,              cx * c_ratio.0 ],
-                [ 0.0,              fy / f_ratio.1,   cy * c_ratio.1 ],
+                [ fx * ratio.0,     0.0,              cx * ratio.0 ],
+                [ 0.0,              fy * ratio.1,     cy * ratio.1 ],
                 [ 0.0,              0.0,              1.0 ]
               ],
               "distortion_coeffs": [k1, k2, k3, p1, p2, xi]

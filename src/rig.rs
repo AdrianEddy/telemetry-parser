@@ -12,7 +12,7 @@ pub use crate::insta360::Insta360MaskProfile;
 
 use geometry::{BlendMode, Projection, ProjectionKind};
 
-/// A vendor's stated frame readout as the shared descriptor's [`Readout`].
+/// A vendor's stated frame readout as the shared descriptor's [`geometry::Readout`].
 ///
 /// The **sign carries the direction**. That is the convention every producer of
 /// this number already writes and no vendor in the corpus states separately: a

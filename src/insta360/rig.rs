@@ -19,25 +19,26 @@
 //!
 //! | `R` | ∞ | 10 m | 5 m | 2 m | 1 m | 0.5 m |
 //! |---|---|---|---|---|---|---|
-//! | disparity, 2048-wide layer px | +13.12 | +12.07 | +11.03 | +7.88 | +2.69 | −7.67 |
+//! | disparity, 2048-wide layer px | +0.47 | −0.60 | −1.65 | −4.74 | −9.95 | −20.35 |
 //!
-//! — a straight line in `1/R` (worst rung 0.024 px off it) whose slope is
-//! **−10.396 px per m⁻¹** against the **−10.397** that `‖t‖` and the layer's own
-//! pixels-per-radian predict, i.e. **0.02 %**. So the plain path is NOT where
-//! this body's hemispheres agree, and a finite convergence distance is what
-//! brings them together: these intrinsics are not pre-compensated for a
-//! reference distance, the sphere does not over-correct, and zeroing
-//! [`Lens::translation`] (the DJI shape) would throw away a real 13-pixel
-//! correction.
+//! — a straight line in `1/R` (worst rung 0.019 px off it) whose slope is
+//! **−10.397 px per m⁻¹** against the **−10.397** that `‖t‖` and the layer's own
+//! pixels-per-radian predict. The distant content registers at the plain path
+//! (−0.1, +0.4 and +1.6 px over the three views that hold it) and the near
+//! content does not (+21.7 px over the one view of the handlebar), so these
+//! intrinsics are not pre-compensated for a reference distance, the sphere does
+//! not over-correct, and zeroing [`Lens::translation`] (the DJI shape) would
+//! leave every near subject doubled.
 //!
 //! **It does not pin a default `R`, and this module goes on stating
 //! `convergence_m: None`.** The zero crossing is the CLIP's content, not the
-//! camera's: 0.79 m on this clip, and within one X5 clip it runs 0.42 m over
-//! the road below to 0.83 m over the horizon above. Two different X5 bodies,
-//! two scenes and five months apart both read 0.79 m pooled, so the number is
-//! stable enough to be worth reporting and content-driven enough not to be a
-//! constant. The stitching distance is a host's slider, and the vendor states
+//! camera's: 23 m pooled on this clip, the distant field outweighing the one
+//! near view. The stitching distance is a host's slider, and the vendor states
 //! none.
+//!
+//! This table read +13.12 px at `∞` and a crossing at 0.79 m until the rig was
+//! resolved onto the sensor window ([`WindowCrop`]): that was the calibration
+//! 1.2 % too narrow, which no stitching distance corrects, and not the scene.
 
 use std::f64::consts::{FRAC_PI_2, PI};
 
@@ -138,6 +139,70 @@ impl Offset {
     fn lens_frame(&self) -> [f64; 2] {
         let first = &self.lenses[0];
         [first.width / self.lenses.len() as f64, first.height]
+    }
+
+    /// The same calibration stated against the window the pictures hold, which
+    /// is what the vendor resolves before anything renders:
+    /// `ins::OffsetConvert::convertOffset(src, dst, dst, -crop_offset)`.
+    ///
+    /// The window is scaled from the calibration frame by one factor, about
+    /// pixel centres, which the focal and the image circle follow; the crop then
+    /// only moves the principal point, and everything else optical stays as
+    /// measured. The factor is 1 on every body that writes a window today. A
+    /// window whose aspect is not the calibration frame's is no window of it,
+    /// and the vendor hands such a string back unconverted.
+    pub(crate) fn windowed(&self, crop: WindowCrop) -> Offset {
+        let [frame_w, frame_h] = self.lens_frame();
+        let [src_w, src_h, dst_w, dst_h] =
+            [crop.src.0, crop.src.1, crop.dst.0, crop.dst.1].map(f64::from);
+        if frame_w * src_h != frame_h * src_w {
+            return self.clone();
+        }
+        let scale = src_w / frame_w;
+        let moved = |c: f64, src: f64, dst: f64, offset: i32| {
+            scale * (c + 0.5) - 0.5 - (src - dst) * 0.5 - f64::from(offset)
+        };
+        let mut out = self.clone();
+        let num = out.lenses.len() as f64;
+        for (i, lens) in out.lenses.iter_mut().enumerate() {
+            let side = i as f64;
+            lens.centre = [
+                moved(lens.centre[0] - frame_w * side, src_w, dst_w, crop.offset.0) + dst_w * side,
+                moved(lens.centre[1], src_h, dst_h, crop.offset.1),
+            ];
+            lens.focal = lens.focal.map(|f| f * scale);
+            lens.radius *= scale;
+            lens.width = dst_w * num;
+            lens.height = dst_h;
+        }
+        out
+    }
+}
+
+/// `ExtraMetadata.window_crop_info`: the sensor window a calibration describes
+/// and the part of it the camera recorded.
+///
+/// **A rig has to go through this.** An `offset` string is measured on the
+/// sensor's window and the coded picture is the crop of it: 5376² down to 5312²
+/// on an X5, 8000×6000 down to 5760² on an X4, nothing on an Antigravity A1.
+/// Scaling the string straight onto the picture magnifies it by the ratio of the
+/// two, which pulls every ray towards its lens axis: 1.2 % on an X5 is 23 pixels
+/// of false parallax across a 4096-wide seam.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct WindowCrop {
+    pub src: (u32, u32),
+    pub dst: (u32, u32),
+    pub offset: (i32, i32),
+}
+
+impl WindowCrop {
+    /// `None` for a message with a zero side, which states no window.
+    pub(crate) fn of(info: &super::extra_info::extra_metadata::WindowCropInfo) -> Option<Self> {
+        (info.src_width > 0 && info.src_height > 0 && info.dst_width > 0 && info.dst_height > 0).then_some(Self {
+            src: (info.src_width, info.src_height),
+            dst: (info.dst_width, info.dst_height),
+            offset: (info.crop_offset_x, info.crop_offset_y),
+        })
     }
 }
 
@@ -446,12 +511,18 @@ fn lens(
     let offset_x = frame[0] * index as f64;
     let centre = [raw.centre[0] - offset_x, raw.centre[1]];
 
-    // Uniform, and taken from the width: the calibration space and the coded
-    // picture have the same aspect on every body in the corpus, and a
-    // non-uniform map would turn the image circle into an ellipse in a space
-    // where everything — the circle, the masks, the mirror — is evaluated
-    // before it.
-    let scale = f64::from(picture_dim.0) / f64::from(calib_dim[0]);
+    // Uniform, and taken from the width: a calibration resolved onto its window
+    // has the coded picture's aspect, and a non-uniform map would turn the
+    // image circle into an ellipse in a space where everything — the circle,
+    // the masks, the mirror — is evaluated before it.
+    //
+    // Over `width − 1`, because a calibration counts pixel centres from zero:
+    // the vendor rescales it by `(w′ − 1)/(w − 1)` and normalises by `w′ − 1`
+    // (`resetResolution`, `createStaticDewarpMap`), so a calibration pixel lands
+    // at `x/(w − 1)` of the texture. Over `width` the principal point sits a
+    // third of a picture pixel away on an X5, and the two lenses tilt apart by
+    // 0.04° about the seam axis.
+    let scale = f64::from(picture_dim.0) / (f64::from(calib_dim[0]) - 1.0);
 
     Some(Lens {
         picture: Picture::whole(input),
@@ -597,32 +668,47 @@ impl Offsets {
     }
 }
 
-/// How the camera spread its lenses over files and tracks, as the clip states
-/// it (`ExtraMetadata.stream_type`).
+/// How the camera spread its lenses over files and tracks.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum StreamLayout {
     /// One video track per lens, in lens order. Also the answer for a body that
     /// states nothing, which is every one before the X-series.
     TrackOrder,
-    /// One video track per lens, in the opposite order — what the X5 declares.
-    ///
-    /// The enum VALUE is the vendor's own (`DUAL_STREAM_TRACK_REVERSE = 4`,
-    /// read out of its embedded schema); what "reverse" does to the binding is
-    /// the reading it plainly states, and it has not been confirmed against a
-    /// front/back picture. On a near-symmetric back-to-back rig the difference
-    /// is a swapped hemisphere plus each lens's sub-degree correction applied
-    /// to the other one — visible in a stitch, not in a descriptor.
+    /// One video track per lens, in the opposite order.
     TrackReversed,
     /// One lens per file.
     PerFile,
 }
 
+/// The bodies whose two-track files the vendor binds by
+/// `pano_record_multi_track_order` (`InstaCameraX4`, `X5`, `X4Air`, `C9`, `DE`,
+/// `DM`); every other body's tracks are in lens order.
+const TRACK_ORDER_BODIES: [&str; 6] =
+    ["Insta360 X4", "Insta360 X5", "Insta360 X4 Air", "Insta360 X6", "Antigravity A1", "Insta360 DM"];
+
 impl StreamLayout {
-    pub(crate) fn from_stream_type(stream_type: i32) -> Self {
-        match stream_type {
-            2 => Self::PerFile,
-            4 => Self::TrackReversed,
-            _ => Self::TrackOrder,
+    /// Studio's own rule (`CreateMediaClips`, `SetReverseVideoTrackOrder`): a
+    /// listed body with more than one video track is reversed exactly when the
+    /// clip states `TRACK0_STREAM10`. `stream_type` only says whether the
+    /// lenses share a file. An X5 happens to write `DUAL_STREAM_TRACK_REVERSE`
+    /// as well, but an X4 writes no `stream_type` at all, and reading the order
+    /// from it handed each X4 lens the other's calibration: 0.62° apart.
+    ///
+    /// The vendor counts the asset's video tracks; this parser reads only the
+    /// trailer, so the trailer's own statement of a single-stream file (what a
+    /// low-resolution `.lrv` proxy writes) stands in for a count of one.
+    pub(crate) fn of(model: &str, stream_type: i32, multi_track_order: i32) -> Self {
+        use super::extra_info::extra_metadata::{PanoRecordMultiTrackOrder, StreamType};
+        let one_track = stream_type == StreamType::SingleStreamFile as i32;
+        if stream_type == StreamType::DualStreamFile as i32 {
+            Self::PerFile
+        } else if TRACK_ORDER_BODIES.contains(&model)
+            && !one_track
+            && multi_track_order == PanoRecordMultiTrackOrder::Track0Stream10 as i32
+        {
+            Self::TrackReversed
+        } else {
+            Self::TrackOrder
         }
     }
 }
@@ -658,7 +744,12 @@ pub(crate) fn sibling_hint(index: u32, total: u32, identify: &str) -> Option<Sib
 /// Build the rig from the `offset` strings the clip carries.
 ///
 /// `picture_dim` is the coded size of **one** video track, which is what the
-/// calibration space is mapped onto.
+/// calibration space is mapped onto once `window_crop` has resolved it.
+///
+/// The Nano S is the one body the vendor's resolver leaves unwindowed. It also
+/// converts a flagged ONE X through a stereo table instead; no clip here carries
+/// that flag, and an unflagged ONE X takes the ordinary window.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn camera_rig(
     model: &str,
     offsets: &Offsets,
@@ -667,14 +758,17 @@ pub(crate) fn camera_rig(
     picture_dim: (u32, u32),
     bullet_time: bool,
     readout: Option<Readout>,
+    window_crop: Option<WindowCrop>,
 ) -> Option<CameraRig> {
-    let chosen = offsets.best()?;
+    let window_crop = window_crop.filter(|_| model != "Insta360 Nano S");
+    let resolved = |o: &Offset| window_crop.map_or_else(|| o.clone(), |crop| o.windowed(crop));
+    let chosen = resolved(offsets.best()?);
     let num = chosen.lenses.len();
     // The oldest string is the only one that states an image radius, so it is
     // read for the circle even when a newer one supplies the model — but only
     // when the two describe the same calibration space, or the circle would be
     // a radius in somebody else's pixels.
-    let circles = offsets.v1.as_ref().filter(|v1| {
+    let circles = offsets.v1.as_ref().map(resolved).filter(|v1| {
         v1.lenses.len() == num && v1.lenses[0].width == chosen.lenses[0].width && v1.lenses[0].height == chosen.lenses[0].height
     });
 
@@ -689,7 +783,7 @@ pub(crate) fn camera_rig(
                 StreamLayout::TrackReversed => (num - 1 - i) as u32,
                 _ => i as u32,
             };
-            lens(chosen, i, input, circles.map(|v1| &v1.lenses[i]), picture_dim, readout)
+            lens(&chosen, i, input, circles.as_ref().map(|v1| &v1.lenses[i]), picture_dim, readout)
         })
         .collect::<Option<Vec<Lens>>>()?;
     super::rig_body_masks::automatic(model, &mut cameras,

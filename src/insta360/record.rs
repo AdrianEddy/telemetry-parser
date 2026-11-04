@@ -114,6 +114,7 @@ impl super::Insta360 {
                 // of every token, which cannot say which lens a number belongs
                 // to and is the shape the old single-lens reader mis-indexed.
                 self.stream_type = info.stream_type;
+                self.multi_track_order = info.pano_record_multi_track_order;
                 self.bullet_time = info.file_group_info.as_ref().is_some_and(|g| g.r#type == 1);
                 for text in [&info.offset, &info.offset_v2, &info.offset_v3, &info.offset_v6] {
                     if let Some(offset) = super::rig::parse(text) {
@@ -124,8 +125,7 @@ impl super::Insta360 {
                     .and_then(|g| super::rig::sibling_hint(g.index, g.total, &g.identify));
                 self.dimension = info.dimension.as_ref()
                     .and_then(|d| Some((u32::try_from(d.x).ok()?, u32::try_from(d.y).ok()?)));
-                self.window_crop = info.window_crop_info.as_ref()
-                    .map(|c| ((c.src_width, c.src_height), (c.dst_width, c.dst_height)));
+                self.window_crop = info.window_crop_info.as_ref().and_then(super::rig::WindowCrop::of);
                 let mut v = serde_json::to_value(&info).map_err(|_| Error::new(ErrorKind::Other, "Serialize error"));
                 if let Ok(vv) = &mut v {
                     if let Some(obj) = vv.as_object_mut() {

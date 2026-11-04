@@ -121,6 +121,13 @@ pub struct ExtraMetadata {
     #[prost(enumeration="extra_metadata::VideoPtsType", tag="64")] pub pts_type: i32,
     #[prost(message, optional, tag="65")] pub gyro_cfg_info: Option<extra_metadata::GyroConfigInfo>,
 
+    #[serde(serialize_with="PanoRecordType_serializer")]
+    #[prost(enumeration="extra_metadata::PanoRecordType", tag="79")] pub pano_record_type: i32,
+    /// Which of a two-track file's tracks holds which lens. The one statement
+    /// the vendor binds a track to a lens by; `stream_type` says nothing to it.
+    #[serde(serialize_with="PanoRecordMultiTrackOrder_serializer")]
+    #[prost(enumeration="extra_metadata::PanoRecordMultiTrackOrder", tag="80")] pub pano_record_multi_track_order: i32,
+
     #[prost(string, tag="111")] pub offset_v6: String,
     #[prost(string, tag="112")] pub original_offset_v6: String,
 
@@ -205,6 +212,8 @@ pub mod extra_metadata {
         #[prost(uint32, tag="2")] pub src_height: u32,
         #[prost(uint32, tag="3")] pub dst_width: u32,
         #[prost(uint32, tag="4")] pub dst_height: u32,
+        #[prost(int32, tag="5")] pub crop_offset_x: i32,
+        #[prost(int32, tag="6")] pub crop_offset_y: i32,
     }
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration, ::serde::Serialize)]
     #[repr(i32)]
@@ -366,6 +375,22 @@ pub mod extra_metadata {
         #[prost(uint32, tag="2")] pub gyro_range: u32,
     }
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration, ::serde::Serialize)]
+    #[repr(i32)]
+    pub enum PanoRecordType {
+        Unknown    = 0,
+        SplitFile  = 1,
+        MultiTrack = 2,
+    }
+    /// The vendor's own names: track 0 holds the camera's stream `10`, or its
+    /// stream `00`. Lens 0 is stream `00`, so the first is the reversed order.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration, ::serde::Serialize)]
+    #[repr(i32)]
+    pub enum PanoRecordMultiTrackOrder {
+        Unknown           = 0,
+        Track0Stream10    = 1,
+        Track0Stream00    = 2,
+    }
     /// Where the camera put each lens's pictures.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration, ::serde::Serialize)]
     #[repr(i32)]
@@ -436,6 +461,8 @@ enum_serializer!(VideoMediaDataRotateAngle, extra_metadata::VideoMediaDataRotate
 enum_serializer!(SensorDevice,              extra_metadata::SensorDevice);
 enum_serializer!(ExpectOutputType,          extra_metadata::ExpectOutputType);
 enum_serializer!(AudioModeType,             extra_metadata::AudioModeType);
+enum_serializer!(PanoRecordType,            extra_metadata::PanoRecordType);
+enum_serializer!(PanoRecordMultiTrackOrder, extra_metadata::PanoRecordMultiTrackOrder);
 enum_serializer!(SubMediaType,              extra_metadata::SubMediaType);
 enum_serializer!(LogoType,                  extra_metadata::extra_user_options::LogoType);
 enum_serializer!(vec OffsetConvertState,    extra_metadata::extra_user_options::OffsetConvertState);
