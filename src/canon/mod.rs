@@ -11,6 +11,7 @@ use memchr::memmem;
 mod clip_boxes;
 mod cndm_tags;
 mod crm_packs;
+mod lens_packet;
 mod mxf_packs;
 use cndm_tags::{ FRAME_METADATA, get_tag };
 
@@ -290,6 +291,7 @@ pub fn parse_tags(data: &[u8], options: &crate::InputOptions, map: &mut GroupedT
     let mut pos = 0;
     let mut stored = None; // E2.1E, ahead of the items it counts
     let mut tilt_roll = (None, None);
+    let mut lens_items = [None; lens_packet::ITEMS];
 
     while let Some(&datalen) = ends.last() {
         if pos >= datalen {
@@ -322,6 +324,10 @@ pub fn parse_tags(data: &[u8], options: &crate::InputOptions, map: &mut GroupedT
         let tag_data = &data[pos..(pos + len)];
         pos += len;
         let tag_data = match tag {
+            lens_packet::FIRST..=lens_packet::LAST => {
+                lens_items[(tag - lens_packet::FIRST) as usize] = Some(tag_data);
+                continue;
+            }
             0xe21e => { stored = Some(tag_data); tag_data }
             0xe21f => cndm_tags::imu_readings(tag_data, stored.and_then(|x| x.first().copied())),
             0xe220 => cndm_tags::imu_readings(tag_data, stored.and_then(|x| x.get(1).copied())),
@@ -351,6 +357,7 @@ pub fn parse_tags(data: &[u8], options: &crate::InputOptions, map: &mut GroupedT
 
         util::insert_tag(map, tag_info, options);
     }
+    lens_packet::insert_tags(lens_items, options, map);
     if let (Some(tilt), Some(roll)) = tilt_roll {
         util::insert_tag(map, tag!(parsed GroupId::CameraOrientation, TagId::TiltRoll, "Camera tilt and roll", f32x2, |v| format!("tilt {:.1}°, roll {:.1}°", v.0, v.1), (tilt, roll), Vec::new()), options);
     }
