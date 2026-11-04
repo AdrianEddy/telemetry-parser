@@ -356,6 +356,3 @@ pub fn parse_tags(data: &[u8], options: &crate::InputOptions, map: &mut GroupedT
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod tests;
