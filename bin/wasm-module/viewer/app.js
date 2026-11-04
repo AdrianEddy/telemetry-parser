@@ -983,6 +983,41 @@ function toast(text) {
     try { const h = localStorage.getItem('tv-timeline-h'); if (h) document.documentElement.style.setProperty('--timeline-h', h); } catch { }
 }
 
+// Side panel width: drag its left edge, double-click it for the default. The stylesheet keeps the wall at least 420px
+// wide, so a width saved in a wider window doesn't crowd it out
+{
+    const handle = $('#side-splitter');
+    const root = document.documentElement;
+    let start = null;
+    handle.addEventListener('pointerdown', e => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        handle.setPointerCapture(e.pointerId);
+        start = { x: e.clientX, w: $('#sidebar').getBoundingClientRect().width };
+        handle.classList.add('dragging');
+        root.classList.add('col-resizing');
+    });
+    handle.addEventListener('pointermove', e => {
+        if (!start) return;
+        const w = Math.max(260, Math.min(window.innerWidth - 420, start.w - (e.clientX - start.x)));
+        root.style.setProperty('--sidebar-w', Math.round(w) + 'px');
+    });
+    const end = () => {
+        if (!start) return;
+        start = null;
+        handle.classList.remove('dragging');
+        root.classList.remove('col-resizing');
+        try { localStorage.setItem('tv-sidebar-w', root.style.getPropertyValue('--sidebar-w')); } catch { }
+    };
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('lostpointercapture', end);
+    handle.addEventListener('dblclick', () => {
+        root.style.removeProperty('--sidebar-w');
+        try { localStorage.removeItem('tv-sidebar-w'); } catch { }
+    });
+    try { const w = localStorage.getItem('tv-sidebar-w'); if (w) root.style.setProperty('--sidebar-w', w); } catch { }
+}
+
 $('#error-back').addEventListener('click', () => { document.body.dataset.state = 'empty'; });
 document.body.dataset.state = 'empty';
 

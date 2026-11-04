@@ -5,7 +5,6 @@ pub mod dvtm_wm169;
 pub mod dvtm_eagle4_wa530;
 pub mod dvtm_oq101;
 pub(crate) mod rig;
-pub use rig::body_masks::DjiMaskProfile;
 
 use std::io::*;
 use std::sync::{ Arc, atomic::AtomicBool };

@@ -3,10 +3,13 @@
 
 //! Normalising DJI's `PanoDewarpParams` into a [`CameraRig`].
 //!
-//! Everything DJI-specific about the 360 bodies lives here: which schema a
-//! product's packets are written in, which of the 24 calibration slots is the
-//! default, which video track each lens was recorded to, and the shape of the
+//! Everything DJI-specific about how the 360 bodies' files are written lives
+//! here: which schema a product's packets are written in, what each of the 24
+//! calibration slots is calibrated for, which of them the clip's lens mode
+//! names, which video track each lens was recorded to, and the shape of the
 //! lens model itself. Downstream sees only the shared geometry descriptors.
+//! Which slot DJI's own software stitches with, its blend and its masks are
+//! that software's choices, not facts of the file, and are not made here.
 
 use video_types::{geometry::{
     Affine2, Blend, BlendMode, Intrinsics, Lens, LensModel, MAX_MASK_POINTS, MaskPolarity, MaskPoly, Picture,
@@ -14,43 +17,6 @@ use video_types::{geometry::{
 }};
 
 use crate::rig::{CameraRig, Housing, RigPicture, RigVariant, VariantKind};
-
-#[path = "rig_body_masks.rs"]
-pub(super) mod body_masks;
-
-/// How far past the equator each lens is used, as a fraction of a half turn —
-/// **the vendor's own number**, `seam_overlap_ratio` in its stitching bundle
-/// (`Stitcher-Mac.bundle/case_00/seam_overlap_ratio.json` = `0.038`; the
-/// player's `panorama.stitcher.seam_overlap_ratio` defaults to the same, and
-/// its `-[DualStitcher getSeamOverlap:]` doubles it for the strip height).
-///
-/// It is what the vendor's final view is cut by: its sphere shader takes
-/// lens 0 alone where the polar coordinate is below `0.5 − ratio`, lens 1
-/// alone above `0.5 + ratio`, and the stitched band between — so neither
-/// lens is ever read past `90° + 0.038·180°`, and the two are mixed over
-/// exactly twice that.
-const SEAM_OVERLAP_RATIO: f64 = 0.038;
-
-/// How far from its axis each lens is TRUSTED in the composite — the vendor's
-/// blend limit, `90° + `[`SEAM_OVERLAP_RATIO`]` · 180°` = **96.84°** — and,
-/// below, the width of its crossfade: twice the overlap, **13.68°**, centred on
-/// the equator of each lens's polar frame, which is the great circle between
-/// the two. Read straight off the vendor's own compositor:
-/// `sphereEisCpuMeshSamplingShader` takes lens 0 alone below `0.5 − ratio`,
-/// lens 1 alone above `0.5 + ratio`, and the stitched band between.
-///
-/// A BLEND limit, not the field of the lens: the picture runs on past it
-/// (see [`validity_rad`]) and the vendor keeps that picture, it simply never
-/// reads it. Nor is it the number in the bundled masks' names (`91_4`,
-/// `91_8`, `92_2`, `92_5`): those name the BODY arc each mask cuts in the
-/// downward wedge — the same thing the clip's own `occlusion_pt_*` states at
-/// 92.13° — while the rest of every mask is on to the edge of the picture. A
-/// lens clipped at 92° would throw away seven degrees of picture the vendor
-/// keeps.
-pub(crate) const BLEND_LIMIT_DEG: f64 = 90.0 + SEAM_OVERLAP_RATIO * 180.0;
-
-/// The width of the vendor's crossfade — see [`BLEND_LIMIT_DEG`].
-pub(crate) const BLEND_WIDTH_DEG: f64 = 2.0 * SEAM_OVERLAP_RATIO * 180.0;
 
 /// The step [`validity_rad`] walks the calibration's radius in: a hundredth of
 /// a degree, a fifth of a pixel at these focal lengths.
@@ -70,8 +36,7 @@ const VALIDITY_STEP_DEG: f64 = 0.01;
 /// Avata 360's, 98.96° / 99.00° on the Osmo 360 II's — or the angle the
 /// polynomial turns over at, if it does so first (no body here does). Both
 /// are read off the clip; nothing is a fitted constant. The frame's corners
-/// reach further and are cut by this; nothing is composited past the blend
-/// limit in any case.
+/// reach further and are cut by this.
 ///
 /// Radial only, each axis with its own focal: the tangential terms move a
 /// rim sample by a fraction of a pixel and cannot change which edge is
@@ -182,9 +147,9 @@ pub(crate) enum Family {
 
 impl Family {
     /// What this slot is, in terms nothing downstream has to know DJI to read.
-    /// Every family has one — which of them is the default is a choice made
-    /// per clip in [`default_families`], and whichever family that lands on is
-    /// the rig's own projection rather than a variant.
+    /// Every family has one: whichever family is the rig's own projection is
+    /// labelled by it there ([`CameraRig::projection_kind`]), every other by it
+    /// as a variant.
     fn variant_kind(self) -> VariantKind {
         match self {
             Self::NativeRefine => VariantKind::ConvergenceLadder { nearness: Some(0.0) },
@@ -198,30 +163,21 @@ impl Family {
     }
 }
 
-/// The default slot, in preference order, for the lens mode the clip states.
-///
-/// First choice is **rung 11 of the ladder** — what the vendor's own player
-/// stitches the Osmo 360 from, read out of the running application rather
-/// than guessed: hooked live, DJI Studio (Windows 1.0.0.28782) loaded
-/// `native_refine_far_11` for both lenses of the reference clip, bit-exact,
-/// and its rigid alignment then matches this crate's to the last bit
-/// (`docs/360/DJI-STUDIO-RE.md` §12). The refined-at-infinity pair leaves the
-/// far background 5.8 px short at the seam on that body; rung 11 registers it.
-///
-/// `extri_lens_mode` is a proto3 enum, so an absent field is the zero value.
-/// A body that does not ship the labelled rung falls through to the
-/// refined-at-infinity pair — the Osmo 360 II — and then to the unlabelled
-/// ladder pair, which is what makes the Avata 360 work: it ships only that
-/// one, so the fallback is that product's normal path rather than a corner
-/// case. The housing families come first in their own modes, as before.
-pub(crate) fn default_families(extri_lens_mode: i32) -> &'static [Family] {
-    const NATIVE: &[Family] = &[Family::RefineFarAt(11.0), Family::NativeRefine, Family::RefineFar];
-    const GUARDS: &[Family] = &[Family::LensGuards, Family::RefineFarAt(11.0), Family::NativeRefine, Family::RefineFar];
-    const UNDER: &[Family] = &[Family::UnderWater, Family::RefineFarAt(11.0), Family::NativeRefine, Family::RefineFar];
+/// The housing slot the clip's lens mode names: `1` is the lens guards, `2`
+/// the dive case under water. `extri_lens_mode` is a proto3 enum, so an absent
+/// field is the zero value — nothing on the lenses — and names none.
+fn housing_of_lens_mode(extri_lens_mode: i32) -> Option<Family> {
     match extri_lens_mode {
-        1 => GUARDS,
-        2 => UNDER,
-        _ => NATIVE,
+        1 => Some(Family::LensGuards),
+        2 => Some(Family::UnderWater),
+        _ => None,
+    }
+}
+
+impl Family {
+    /// A slot calibrated for something on or around the lenses.
+    fn is_housing(self) -> bool {
+        matches!(self, Self::LensGuards | Self::AboveWater | Self::UnderWater)
     }
 }
 
@@ -332,6 +288,12 @@ pub(crate) type Pair = (Family, Option<RawDewarp>, Option<RawDewarp>);
 /// `picture_dim` is the coded size of a video track; the calibration is
 /// expressed in its own space, which equals the track for every 360 body seen
 /// so far and is mapped onto the track when it does not.
+///
+/// The rig's own projection is the calibration the file states for the body
+/// as it was recorded: the housing slot the lens mode names when the file
+/// fills it readably, otherwise the first readable slot of the body with
+/// nothing on its lenses, in the file's own slot order. Every other readable
+/// slot is a variant, labelled.
 pub(crate) fn camera_rig(
     product_name: &str,
     pairs: &[Pair],
@@ -339,58 +301,34 @@ pub(crate) fn camera_rig(
     picture_dim: Option<(u32, u32)>,
     readout: Option<Readout>,
 ) -> Option<CameraRig> {
-    let complete = |f: Family| -> Option<(&RawDewarp, &RawDewarp)> {
-        pairs.iter().find(|(fam, _, _)| *fam == f).and_then(|(_, s, m)| Some((s.as_ref()?, m.as_ref()?)))
-    };
-
     let master_track = master_video_track(product_name);
     let slave_track = 1 - master_track;
-    let projection_for = |family, slave, master| {
-        let mut projection = rig_projection(slave, slave_track, master, master_track, picture_dim, readout)?;
-        if matches!(product_name, "Osmo 360" | "DJI Osmo360") {
-            use body_masks::DjiMaskProfile;
-            let profile = match family {
-                Family::LensGuards => DjiMaskProfile::LensProtector,
-                Family::AboveWater => DjiMaskProfile::AboveWater,
-                Family::UnderWater => DjiMaskProfile::UnderWater,
-                _ => DjiMaskProfile::Standard,
-            };
-            profile.apply(&mut projection);
-        }
-        Some(projection)
-    };
-
 
     // A slot the camera filled with something that is not a calibration is
-    // passed over exactly as an unfilled one is: the preference list is already
-    // a fallback chain — it is what makes the Avata 360 work, that body
-    // shipping only the nearer-stitch pair — and "populated but unreadable" is
-    // the same answer to the same question. What it does not do is fall through
-    // to a rig: when no family reads, there is none.
-    let readable = |f: Family| {
-        let (slave, master) = complete(f)?;
-        projection_for(f, slave, master)
-    };
-    let (default_family, projection) =
-        default_families(extri_lens_mode).iter().find_map(|f| Some((*f, readable(*f)?)))?;
-    // The family the same chain lands on with nothing on the lenses: the
-    // default itself on a clip recorded that way, a variant on one recorded in
-    // a housing.
-    let no_housing_family = default_families(0).iter().copied().find(|f| *f == default_family || readable(*f).is_some());
+    // passed over exactly as an unfilled one is: "populated but unreadable" is
+    // the same answer to "what does the file state for this slot" as "empty".
+    // When no slot reads, there is no rig.
+    let readable: Vec<(Family, Projection)> = pairs
+        .iter()
+        .filter_map(|(family, s, m)| {
+            let projection = rig_projection(s.as_ref()?, slave_track, m.as_ref()?, master_track, picture_dim, readout)?;
+            Some((*family, projection))
+        })
+        .collect();
+    let recorded = housing_of_lens_mode(extri_lens_mode)
+        .and_then(|housing| readable.iter().position(|(f, _)| *f == housing))
+        .or_else(|| readable.iter().position(|(f, _)| !f.is_housing()))?;
 
-    let mut variants = Vec::new();
-    for (family, s, m) in pairs {
-        if *family == default_family {
-            continue;
+    let mut projection = None;
+    let mut variants = Vec::with_capacity(readable.len().saturating_sub(1));
+    for (i, (family, p)) in readable.into_iter().enumerate() {
+        if i == recorded {
+            projection = Some((family, p));
+        } else {
+            variants.push(RigVariant { kind: family.variant_kind(), projection: p });
         }
-        let (Some(s), Some(m)) = (s.as_ref(), m.as_ref()) else {
-            continue;
-        };
-        let Some(projection) = projection_for(*family, s, m) else {
-            continue;
-        };
-        variants.push(RigVariant { kind: family.variant_kind(), projection });
     }
+    let (family, projection) = projection?;
 
     Some(CameraRig {
         brand: "DJI".into(),
@@ -400,10 +338,10 @@ pub(crate) fn camera_rig(
         // holds is `Lens::picture`, set by the product-keyed binding above.
         pictures: vec![RigPicture::VideoTrack(0), RigPicture::VideoTrack(1)],
         variants,
-        default_kind: Some(default_family.variant_kind()),
-        no_housing_kind: no_housing_family.map(Family::variant_kind),
+        projection_kind: Some(family.variant_kind()),
         audio_source: None,
         siblings: Vec::new(),
+        vendor: crate::rig::VendorFacts::None,
     })
 }
 
@@ -521,9 +459,9 @@ pub(crate) fn lens(
         // above is where the calibration's radius reaches it.
         image_circle: None,
         masks: occlusion_mask(d).into_iter().collect(),
-        // The vendor's blend, stated beside the validity and not derived from
-        // it: two numbers from two places.
-        blend: Blend { limit: BLEND_LIMIT_DEG.to_radians(), width: BLEND_WIDTH_DEG.to_radians() },
+        // The file states where the picture ends and nothing about where a
+        // stitch stops trusting it: a hard cut at the frame.
+        blend: Blend::hard(validity),
         photometric: None,
         // The body states ONE readout for the sensor and both lenses are read
         // by it, so the two cameras carry the same window.

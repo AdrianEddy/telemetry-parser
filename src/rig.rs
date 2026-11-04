@@ -7,10 +7,11 @@
 use serde::{Deserialize, Serialize};
 
 pub use video_types::geometry;
-pub use crate::dji::DjiMaskProfile;
-pub use crate::insta360::Insta360MaskProfile;
 
 use geometry::{BlendMode, Projection, ProjectionKind};
+
+pub use crate::insta360::extra_info::OffsetState;
+pub use crate::insta360::extra_info::extra_metadata::{CoolingShellAlgoDetectedState, CoolingShellSelectedState};
 
 /// A vendor's stated frame readout as the shared descriptor's [`geometry::Readout`].
 ///
@@ -35,36 +36,35 @@ pub fn readout(frame_readout_time_ms: Option<f64>) -> Option<geometry::Readout> 
     })
 }
 
-/// A camera body's cameras, their geometry, and the alternatives it ships.
+/// A camera body's cameras and their geometry, as the file states them.
+///
+/// Only what the file stores, read correctly: every calibration it carries,
+/// each lens's own field and the masks the file itself draws, and the facts a
+/// vendor's software reads to decide how to stitch ([`vendor`](Self::vendor)).
+/// What that software then decides — its blend, its masks, which calibration
+/// it stitches with, an accessory's conversion — is not a fact of the file and
+/// is not stated here: a lens's [`blend`](geometry::Lens::blend) is a hard cut
+/// at its own field ("no vendor blend known") and its masks are the file's.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CameraRig {
     pub brand: String,
     pub model: String,
-    /// The geometry to use unless a host picks a [`variant`](Self::variants) —
-    /// the same default the vendor's own software resolves to.
+    /// The calibration the file states for the body as it was recorded — what
+    /// it is calibrated for is [`projection_kind`](Self::projection_kind).
     /// `Picture.input` indexes [`pictures`](Self::pictures).
     pub projection: Projection,
     /// Which decoded picture each `Picture.input` names, in index order.
     pub pictures: Vec<RigPicture>,
-    /// Alternative geometries the camera ships, described generically. Empty
-    /// for most cameras.
+    /// Every other calibration the file ships, each labelled, in the file's
+    /// own order. Empty for most cameras.
     pub variants: Vec<RigVariant>,
-    /// What [`projection`](Self::projection) is calibrated for: the calibration
-    /// the vendor's own software picked for this clip, described as a
-    /// [`variant`](RigVariant::kind) would be. DJI picks by the lens mode the
-    /// clip states — rung 11 of the stitch-distance ladder with nothing on the
-    /// lenses, the lens guards' or the dive case's calibration in one — so a
-    /// clip shot in a housing says which. `None` for a body that ships one
-    /// calibration, or that does not say which it is.
+    /// What [`projection`](Self::projection) is calibrated for, labelled as a
+    /// [`variant`](RigVariant::kind) is. DJI: the housing slot the clip's lens
+    /// mode names (the lens guards', the dive case's), or with nothing on the
+    /// lenses the first refined slot the file fills. `None` for a body that
+    /// ships one calibration.
     #[serde(default)]
-    pub default_kind: Option<VariantKind>,
-    /// What the vendor's software picks for the body with nothing on its
-    /// lenses: [`default_kind`](Self::default_kind) itself on a clip recorded
-    /// that way, and on a clip recorded in a housing the kind of the
-    /// [`variant`](Self::variants) it would have used instead — what choosing
-    /// "no housing" binds. `None` where the housing is no choice.
-    #[serde(default)]
-    pub no_housing_kind: Option<VariantKind>,
+    pub projection_kind: Option<VariantKind>,
     /// How to find the other files of a multi-file rig. Hints only — resolving
     /// them touches the filesystem, which is the host's job, not a parser's.
     pub siblings: Vec<SiblingHint>,
@@ -72,6 +72,41 @@ pub struct CameraRig {
     /// This is a rig fact, independent of picture order and timeline ownership.
     #[serde(default)]
     pub audio_source: Option<SiblingRole>,
+    /// What the file states beyond the geometry that a vendor's software reads
+    /// to stitch it.
+    #[serde(default)]
+    pub vendor: VendorFacts,
+}
+
+/// The facts a vendor's own software stitches a clip by that are not geometry:
+/// which lens each calibration was made for, how the clip was recorded, what
+/// the lenses were wearing.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub enum VendorFacts {
+    /// Nothing beyond the geometry.
+    #[default]
+    None,
+    Insta360(Insta360Facts),
+}
+
+/// What an Insta360 clip states beside its calibration strings.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Insta360Facts {
+    /// Each camera's lens type, as the calibration string the rig is built from
+    /// states it, in camera order.
+    pub lens_types: Vec<i32>,
+    /// Recorded as Bullet Time (`file_group_info.type == 1`).
+    pub bullet_time: bool,
+    /// `ExtraMetadata.offset_states`: what the camera recorded its lenses as
+    /// wearing. `None` for a value the vendor's schema does not name.
+    pub offset_state: Option<OffsetState>,
+    /// `ExtraMetadata.cooling_shell_selected_state`: whether the cooling shell
+    /// (Thermo Grip Cover) was on, or left to the camera's detection. `None`
+    /// for a value the schema does not name.
+    pub cooling_shell_selected_state: Option<CoolingShellSelectedState>,
+    /// `ExtraMetadata.cooling_shell_algo_state`: what that detection found.
+    /// `None` for a value the schema does not name.
+    pub cooling_shell_algo_state: Option<CoolingShellAlgoDetectedState>,
 }
 
 /// A [`CameraRig`] with no cameras — the value a tag falls back to when its
@@ -89,10 +124,10 @@ impl Default for CameraRig {
             }),
             pictures: Vec::new(),
             variants: Vec::new(),
-            default_kind: None,
-            no_housing_kind: None,
+            projection_kind: None,
             siblings: Vec::new(),
             audio_source: None,
+            vendor: VendorFacts::None,
         }
     }
 }

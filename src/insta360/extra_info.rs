@@ -121,12 +121,25 @@ pub struct ExtraMetadata {
     #[prost(enumeration="extra_metadata::VideoPtsType", tag="64")] pub pts_type: i32,
     #[prost(message, optional, tag="65")] pub gyro_cfg_info: Option<extra_metadata::GyroConfigInfo>,
 
+    /// What the camera recorded its lenses as wearing: lens guards, an ND
+    /// filter, a dive case — or nothing (`Common`, also an absent field).
+    #[serde(serialize_with="OffsetState_serializer")]
+    #[prost(enumeration="OffsetState", tag="68")] pub offset_states: i32,
+
     #[serde(serialize_with="PanoRecordType_serializer")]
     #[prost(enumeration="extra_metadata::PanoRecordType", tag="79")] pub pano_record_type: i32,
     /// Which of a two-track file's tracks holds which lens. The one statement
     /// the vendor binds a track to a lens by; `stream_type` says nothing to it.
     #[serde(serialize_with="PanoRecordMultiTrackOrder_serializer")]
     #[prost(enumeration="extra_metadata::PanoRecordMultiTrackOrder", tag="80")] pub pano_record_multi_track_order: i32,
+
+    /// Whether the cooling shell (the Thermo Grip Cover) was on: set by the
+    /// user, or left to the camera's own detection.
+    #[serde(serialize_with="CoolingShellSelectedState_serializer")]
+    #[prost(enumeration="extra_metadata::CoolingShellSelectedState", tag="105")] pub cooling_shell_selected_state: i32,
+    /// What the camera's own detection of the cooling shell found.
+    #[serde(serialize_with="CoolingShellAlgoDetectedState_serializer")]
+    #[prost(enumeration="extra_metadata::CoolingShellAlgoDetectedState", tag="106")] pub cooling_shell_algo_state: i32,
 
     #[prost(string, tag="111")] pub offset_v6: String,
     #[prost(string, tag="112")] pub original_offset_v6: String,
@@ -144,8 +157,50 @@ pub struct ExtraMetadata {
 
 }
 
+/// What the camera recorded its lenses as wearing — `insta360.messages.OffsetState`,
+/// under the vendor's own names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration, ::serde::Serialize, ::serde::Deserialize)]
+#[repr(i32)]
+pub enum OffsetState {
+    Common         = 0,
+    SphereProtect  = 1,
+    DivingWater    = 2,
+    DivingWater23  = 3,
+    ProtectA       = 4,
+    ProtectS       = 5,
+    ProtectAuto    = 6,
+    FilterNd16     = 7,
+    FilterNd32     = 8,
+    FilterNd64     = 9,
+    DivingWaterPro = 10,
+    DivingAirPro   = 11,
+    FilterNd128    = 12,
+    FilterJoystick = 13,
+    G01Protect     = 14,
+}
+
 /// Nested message and enum types in `ExtraMetadata`.
 pub mod extra_metadata {
+    /// Whether the cooling shell was on (`CoolingShellSelectedState`): stated,
+    /// or left to the camera's detection (`Auto`).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration, ::serde::Serialize, ::serde::Deserialize)]
+    #[repr(i32)]
+    pub enum CoolingShellSelectedState {
+        Unknown = 0,
+        Auto    = 1,
+        On      = 2,
+        Off     = 3,
+    }
+    /// What the camera's detection of the cooling shell found
+    /// (`CoolingShellAlgoDetectedState`).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration, ::serde::Serialize, ::serde::Deserialize)]
+    #[repr(i32)]
+    pub enum CoolingShellAlgoDetectedState {
+        None = 0,
+        On   = 1,
+        Off  = 2,
+    }
+
     #[derive(Clone, PartialEq, ::prost::Message, ::serde::Serialize)]
     pub struct ExtraUserOptions {
         #[prost(string, tag="1")] pub filter: String,
@@ -467,6 +522,9 @@ enum_serializer!(SubMediaType,              extra_metadata::SubMediaType);
 enum_serializer!(LogoType,                  extra_metadata::extra_user_options::LogoType);
 enum_serializer!(vec OffsetConvertState,    extra_metadata::extra_user_options::OffsetConvertState);
 enum_serializer!(StreamType,                extra_metadata::StreamType);
+enum_serializer!(OffsetState,               OffsetState);
+enum_serializer!(CoolingShellSelectedState, extra_metadata::CoolingShellSelectedState);
+enum_serializer!(CoolingShellAlgoDetectedState, extra_metadata::CoolingShellAlgoDetectedState);
 enum_serializer!(OffsetVersion,             extra_metadata::OffsetVersion);
 
 fn bytes_serializer<S>(x: &[u8], s: S) -> Result<S::Ok, S::Error> where S: serde::Serializer {

@@ -115,7 +115,15 @@ impl super::Insta360 {
                 // to and is the shape the old single-lens reader mis-indexed.
                 self.stream_type = info.stream_type;
                 self.multi_track_order = info.pano_record_multi_track_order;
-                self.bullet_time = info.file_group_info.as_ref().is_some_and(|g| g.r#type == 1);
+                self.recorded = crate::rig::Insta360Facts {
+                    lens_types: Vec::new(),
+                    bullet_time: info.file_group_info.as_ref().is_some_and(|g| g.r#type == 1),
+                    offset_state: extra_info::OffsetState::try_from(info.offset_states).ok(),
+                    cooling_shell_selected_state:
+                        extra_info::extra_metadata::CoolingShellSelectedState::try_from(info.cooling_shell_selected_state).ok(),
+                    cooling_shell_algo_state:
+                        extra_info::extra_metadata::CoolingShellAlgoDetectedState::try_from(info.cooling_shell_algo_state).ok(),
+                };
                 for text in [&info.offset, &info.offset_v2, &info.offset_v3, &info.offset_v6] {
                     if let Some(offset) = super::rig::parse(text) {
                         self.offsets.set(offset);

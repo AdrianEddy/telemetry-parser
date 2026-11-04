@@ -217,7 +217,8 @@ body[data-state="ready"] #viewer { display: grid; }
 
 #viewer {
     flex: 1; min-height: 0;
-    grid-template-columns: minmax(0, 1fr) var(--sidebar-w);
+    /* The panel never leaves the wall less than 420px, whatever width was saved in a wider window */
+    grid-template-columns: minmax(0, 1fr) clamp(260px, var(--sidebar-w), calc(100vw - 420px));
     grid-template-rows: minmax(0, 1fr) auto auto var(--timeline-h);
     grid-template-areas: "stage side" "transport side" "split side" "timeline side";
 }
@@ -331,7 +332,13 @@ body[data-state="ready"] #viewer { display: grid; }
 .tl-ov-head { position: absolute; top: 0; bottom: 0; left: 0; border-left: 1.5px solid var(--playhead); pointer-events: none; }
 
 /* Sidebar */
-#sidebar { grid-area: side; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); background: var(--panel); padding-right: env(safe-area-inset-right, 0px); }
+#sidebar { grid-area: side; position: relative; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); background: var(--panel); padding-right: env(safe-area-inset-right, 0px); }
+/* Its width: drag its left edge. The handle lies on the border and inside the panel, clear of the charts' scrollbar */
+#side-splitter { position: absolute; z-index: 5; top: 0; bottom: 0; left: -1px; width: 6px; cursor: col-resize; touch-action: none; }
+#side-splitter::after { content: ""; position: absolute; top: 50%; left: 1px; width: 3px; height: 36px; margin-top: -18px; border-radius: 2px; background: var(--line-strong); }
+#side-splitter:hover, #side-splitter.dragging { background: linear-gradient(var(--accent), var(--accent)) 0 0 / 1px 100% no-repeat; }
+#side-splitter:hover::after, #side-splitter.dragging::after { background: var(--accent); }
+:root.col-resizing, :root.col-resizing * { cursor: col-resize !important; user-select: none; }
 .tabs { display: flex; gap: 2px; padding: 6px 10px 0; border-bottom: 1px solid var(--line); flex: none; }
 .tab {
     padding: 6px 12px 8px; border: 0; background: transparent; cursor: pointer; color: var(--muted); font-weight: 600;
@@ -475,7 +482,7 @@ dialog#json-dialog {
     #wall { min-height: 60vh; }
     #sidebar { border-left: 0; border-top: 1px solid var(--line); max-height: none; }
     #sidebar .panel { overflow: visible; }
-    #splitter { display: none; }
+    #splitter, #side-splitter { display: none; }
     .group > summary { position: static; }
     .empty-card { grid-template-columns: minmax(0, 1fr); gap: 28px; }
     .empty-side { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 20px; }

@@ -4,9 +4,7 @@
 pub mod extra_info;
 pub mod record;
 pub(crate) mod rig;
-mod rig_body_masks;
-mod rig_mask_coefficients;
-pub use rig_body_masks::Insta360MaskProfile;
+mod rig_v1_coefficients;
 
 use std::io::*;
 use std::sync::{ Arc, atomic::AtomicBool, atomic::Ordering::Relaxed };
@@ -53,7 +51,10 @@ pub struct Insta360 {
     stream_type: i32,
     /// `ExtraMetadata.pano_record_multi_track_order` — which track holds which lens.
     multi_track_order: i32,
-    bullet_time: bool,
+    /// How the clip was recorded, beside its calibration: what the rig's
+    /// [`VendorFacts`](crate::rig::VendorFacts) state with the lens types of
+    /// the string the rig is built from.
+    recorded: crate::rig::Insta360Facts,
     /// The other file of a two-file body, when the clip declares a pair.
     sibling: Option<crate::rig::SiblingHint>,
     /// The coded size of one video track.
@@ -264,7 +265,7 @@ impl Insta360 {
                 rig::StreamLayout::of(self.model.as_deref().unwrap_or_default(), self.stream_type, self.multi_track_order),
                 self.sibling.clone(),
                 dimension,
-                self.bullet_time,
+                &self.recorded,
                 crate::rig::readout(self.frame_readout_time),
                 self.window_crop,
             ) {

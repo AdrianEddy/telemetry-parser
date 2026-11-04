@@ -47,7 +47,7 @@ use video_types::{geometry::{
     Quat, Readout,
 }};
 
-use crate::rig::{CameraRig, RigPicture, SiblingDir, SiblingHint, SiblingRole};
+use crate::rig::{CameraRig, Insta360Facts, RigPicture, SiblingDir, SiblingHint, SiblingRole, VendorFacts};
 
 /// The generation of an `offset` string, taken from the **high half of its
 /// packed tail** and never from the token count.
@@ -293,13 +293,13 @@ pub(crate) fn parse(s: &str) -> Option<Offset> {
 /// for (its own 190° default).
 ///
 /// `GetFov` is a jump table over the lens type; the X5 bare, guard and dive
-/// entries are transcribed below, and 190° is the table's default for a type with no entry. It is the
-/// angle the V1/V2 image radius is stated at and the base both limits below
-/// are taken from — not itself a limit anything reads the picture to. The
-/// vendor's dewarp-map builder even builds its map wider (`× 1.05`, a 105°
-/// half-field, `createStaticDewarpMap` @ 0x17F54E4); what is READ from that
-/// map is decided by the mask and the blend, which are the two statements
-/// [`Lens`] carries.
+/// entries are transcribed below, and 190° is the table's default for a type
+/// with no entry. It is the angle the V1/V2 image radius is stated at, and the
+/// field a lens is stated to have ([`Lens::fov_limit`]): how much of it a
+/// stitch then reads — the vendor's mask disc, its blend — is the vendor
+/// software's choice and not the file's. The vendor's dewarp-map builder
+/// even builds its map wider (`× 1.05`, a 105° half-field,
+/// `createStaticDewarpMap` @ 0x17F54E4).
 fn class_half_field_deg(lens_type: i32) -> f64 {
     let full_deg = match lens_type {
         // Insta360Lens::GetFov (0x17f3d70), distinct from the mask library's
@@ -314,64 +314,6 @@ fn class_half_field_deg(lens_type: i32) -> f64 {
 /// [`class_half_field_deg`] in radians.
 fn class_half_field_rad(lens_type: i32) -> f64 {
     class_half_field_deg(lens_type).to_radians()
-}
-
-/// How far from its axis a lens's picture is READ — image validity: the
-/// vendor's own fisheye mask disc, `GetFov/2 − 2°` (98° for a 200° lens, 93°
-/// for the 190° default).
-///
-/// Studio 6.0.2 masks every fisheye with `TemplateBlenderImpl::calcFisheyeMaskv`
-/// (`libstudio_worker.dylib`, arm64, @ 0x2B4EBDC), whose default field is
-/// `GetFov × 0.5 − 2.0` (@ 0x2B4ED7C): a disc no read of the picture ever
-/// crosses, whatever the blend. An X5's picture is real to θ ≈ 101–102° at
-/// every azimuth (measured on both bodies in the corpus), but what is read is
-/// decided by the mask, and this is it. The per-body builders
-/// (`calcFisheyeMaskONEX5AndProtector` @ 0x2B54FC8 and its siblings) layer
-/// body-side polylines on the disc, including the plain X5. Recovered body outlines are
-/// applied below; unknown bodies retain their circular validity limit.
-fn mask_disc_rad(lens_type: i32) -> f64 {
-    // Subtracted in degrees and converted once, so that on the 190° class —
-    // where the disc and the blend's end are both 93° — the two convert to
-    // the same bits and the blend is not a rounding error past the validity.
-    (super::rig_mask_coefficients::full_fov(lens_type).unwrap_or(190.) / 2.0 - 2.0).to_radians()
-}
-
-/// The blend Studio applies to a two-lens body's video: a linear crossfade
-/// this many degrees wide, centred on the seam meridians, so each lens is read
-/// to `90° + 3°` and no further and the two cross at equal weight on the great
-/// circle between them.
-///
-/// The number is the default block of `StitchingService::setupDynamicStitching`
-/// @ 0xE0A7F0 (@ 0xE0BC9C): 6.0° for every body but four Studio special cases
-/// keyed on its own camera classes AND stitch modes (`InstaCameraPC` 20° in
-/// mode 10, `InstaCameraSphere` 4° in mode 21, `Akiko` / `OneRS` 1° in mode 22,
-/// 3° in modes 7 and 8, the user's `custom_blend_angle` in mode 99) — Studio
-/// settings, not facts about the clip, so the video default is what a clip
-/// states. The alpha is `SeamlessBlenderImpl::getSphereAlpha` @ 0x2AB24AC: a
-/// ramp of half the angle either side of the ±90° meridians.
-///
-/// `ExtraMetadata.blend_Angle` (proto field 128, `int32`) is deliberately NOT
-/// read. Its accessor `InstaMetaData::GetBlendAngle` @ 0xB1A504 has no code
-/// caller in the worker, and both paths into `RenderModelType::SetBlendAngleRad`
-/// @ 0x46F750 — `setupDynamicStitching` above and the command-map case 6 of
-/// `UpdateStitchTypeCommand::UpdateRenderModelType` @ 0xCD5434 — carry a
-/// Studio setting, never the clip's field. It is 0 on every clip in the corpus
-/// besides. The blender's rate is capped at `angle/16 ∈ [0, 1]` (@ 0x2A9D6E0),
-/// so 16° — ending exactly on the 98° mask disc — is the widest Studio ever
-/// blends; the default is well inside that.
-const BLEND_DEG: f64 = 6.0;
-
-/// One lens's blend. A two-lens body crossfades Studio's band about the seam.
-/// A body with one lens has no seam to fade at: its picture is read to the
-/// mask disc and cut there. (The multi-lens Pro bodies stitch through a
-/// pipeline this module does not read; a rig of more than two lenses states
-/// the same hard cut rather than a band centred where their seams are not.)
-fn blend_of(lens_type: i32, num_lenses: usize) -> Blend {
-    match num_lenses {
-        // `90° + 3°` in degrees, converted once — see `mask_disc_rad`.
-        2 => Blend { limit: (90.0 + BLEND_DEG / 2.0).to_radians(), width: BLEND_DEG.to_radians() },
-        _ => Blend::hard((class_half_field_deg(lens_type) - 2.).to_radians()),
-    }
 }
 
 /// `R = Ry(pitch + π/2)·Rz(yaw)·Rx(roll)`, degrees in, with the back-to-back
@@ -523,6 +465,7 @@ fn lens(
     // third of a picture pixel away on an X5, and the two lenses tilt apart by
     // 0.04° about the seam axis.
     let scale = f64::from(picture_dim.0) / (f64::from(calib_dim[0]) - 1.0);
+    let fov_limit = class_half_field_rad(raw.lens_type);
 
     Some(Lens {
         picture: Picture::whole(input),
@@ -545,18 +488,16 @@ fn lens(
         mirror: index == 0 && offset.lenses.len() == 2 && offset.x == MIRRORED_LENS_0,
         rotation: rotation(raw.ypr, index, offset.lenses.len()),
         translation: raw.translation,
-        fov_limit: Some(if offset.lenses.len() == 2 {
-            mask_disc_rad(raw.lens_type)
-        } else {
-            (class_half_field_deg(raw.lens_type) - 2.).to_radians()
-        }),
+        fov_limit: Some(fov_limit),
         image_circle: circle.and_then(|v1| {
             let centre = [v1.centre[0] - offset_x, v1.centre[1]];
             (v1.radius.is_finite() && v1.radius > 0.0 && centre.iter().all(|c| c.is_finite()))
                 .then_some(Circle { centre, radius: v1.radius })
         }),
+        // The file draws no mask, and states nothing about where a stitch
+        // stops trusting the lens: a hard cut at its own field.
         masks: Vec::new(),
-        blend: blend_of(raw.lens_type, offset.lenses.len()),
+        blend: Blend::hard(fov_limit),
         photometric: None,
         // One sensor readout, stated once for the body and shared by its lenses.
         readout,
@@ -580,7 +521,7 @@ fn lens_model(version: Version, raw: &OffsetLens) -> Option<LensModel> {
                 // The X2 guard's OPTICAL table differs from its MASK table.
                 [0., f64::from_bits(0x3f98ffd600528d4d), f64::from_bits(0xbf146c1519e1910d),
                  f64::from_bits(0x3ec253274af6d59f), f64::from_bits(0xbe5074b495b64050)]
-            } else { super::rig_mask_coefficients::polynomial(raw.lens_type)? };
+            } else { super::rig_v1_coefficients::polynomial(raw.lens_type)? };
             if c[0] != 0. || !(raw.radius.is_finite() && raw.radius > 0.) { return None; }
             let theta = class_half_field_deg(raw.lens_type);
             let denominator = c.into_iter().rev().fold(0., |acc, v| acc * theta + v);
@@ -745,6 +686,9 @@ pub(crate) fn sibling_hint(index: u32, total: u32, identify: &str) -> Option<Sib
 ///
 /// `picture_dim` is the coded size of **one** video track, which is what the
 /// calibration space is mapped onto once `window_crop` has resolved it.
+/// `recorded` is what the clip states about how it was recorded; the rig's
+/// [`VendorFacts`] are those facts with the lens types of the string the rig
+/// is built from.
 ///
 /// The Nano S is the one body the vendor's resolver leaves unwindowed. It also
 /// converts a flagged ONE X through a stereo table instead; no clip here carries
@@ -756,7 +700,7 @@ pub(crate) fn camera_rig(
     layout: StreamLayout,
     sibling: Option<SiblingHint>,
     picture_dim: (u32, u32),
-    bullet_time: bool,
+    recorded: &Insta360Facts,
     readout: Option<Readout>,
     window_crop: Option<WindowCrop>,
 ) -> Option<CameraRig> {
@@ -777,7 +721,7 @@ pub(crate) fn camera_rig(
     // group of two — so the sibling hint is gated on the layout and not on the
     // group.
     let two_files = layout == StreamLayout::PerFile;
-    let mut cameras: Vec<Lens> = (0..num)
+    let cameras: Vec<Lens> = (0..num)
         .map(|i| {
             let input = match layout {
                 StreamLayout::TrackReversed => (num - 1 - i) as u32,
@@ -786,8 +730,6 @@ pub(crate) fn camera_rig(
             lens(&chosen, i, input, circles.as_ref().map(|v1| &v1.lenses[i]), picture_dim, readout)
         })
         .collect::<Option<Vec<Lens>>>()?;
-    super::rig_body_masks::automatic(model, &mut cameras,
-        &chosen.lenses.iter().map(|l| l.lens_type).collect::<Vec<_>>(), bullet_time);
 
     let pictures = if two_files && num == 2 {
         vec![RigPicture::VideoTrack(0), RigPicture::Sibling { role: SiblingRole::Back, video_track: 0 }]
@@ -806,13 +748,17 @@ pub(crate) fn camera_rig(
         pictures,
         // The generations are the same body described four ways rather than
         // four geometries the camera ships, so none of them is an alternative
-        // to the others. The vendor's real alternatives are the housing
-        // conversions, which are baked into the string in place and announced
-        // by `offset_convert_states` — no clip in the corpus carries one.
+        // to the others. The vendor's real alternatives are its accessories,
+        // each a conversion of this calibration that its software applies;
+        // the file ships none of them, only what the camera recorded wearing
+        // (`vendor`).
         variants: Vec::new(),
-        default_kind: None,
-        no_housing_kind: None,
+        projection_kind: None,
         audio_source: None,
         siblings: sibling.filter(|_| two_files).into_iter().collect(),
+        vendor: VendorFacts::Insta360(Insta360Facts {
+            lens_types: chosen.lenses.iter().map(|l| l.lens_type).collect(),
+            ..recorded.clone()
+        }),
     })
 }

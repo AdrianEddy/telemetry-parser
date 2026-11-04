@@ -51,7 +51,7 @@
 //! (the house at 8 m, the sky) sat a constant 2.1° apart at the seams at every
 //! instant: not parallax but the map's 1.1 % of scale.
 
-use std::f64::consts::{FRAC_PI_2, PI};
+use std::f64::consts::PI;
 
 use video_types::{geometry::{
     Affine2, Blend, BlendMode, Circle, Intrinsics, Lens, LensModel, Picture, Projection, ProjectionKind, Quat,
@@ -159,8 +159,8 @@ pub(crate) fn camera_rig(model: &str, calib: &serde_json::Value, crops: [Crop; 2
         }),
         pictures: vec![RigPicture::VideoTrack(0), RigPicture::VideoTrack(1)],
         variants: Vec::new(),
-        default_kind: None,
-        no_housing_kind: None,
+        projection_kind: None,
+        vendor: crate::rig::VendorFacts::None,
         audio_source: None,
         siblings: Vec::new(),
     })
@@ -220,14 +220,9 @@ fn lens(cam: &serde_json::Value, input: u32, crop: Crop) -> Option<Lens> {
         fov_limit: Some(fov_limit),
         image_circle: Some(Circle { centre: [centre[0], centre[1]], radius: usable }),
         masks: Vec::new(),
-        // The vendor's stitcher has not been read for this body, so no vendor
-        // blend is known. What is stated is the whole overlap the picture
-        // allows — full weight to 90°, none at the field stop — which is what
-        // this parser composed before validity and blend were separate
-        // statements. Stated here, by this module, rather than left for
-        // anything downstream to derive from the rim; reading Vuze's own band
-        // is the open item.
-        blend: Blend { limit: fov_limit, width: (fov_limit - FRAC_PI_2).max(0.0) },
+        // The file states where the picture ends and nothing about where a
+        // stitch stops trusting it: a hard cut at the field stop.
+        blend: Blend::hard(fov_limit),
         photometric: None,
         readout: None,
         eye: None,

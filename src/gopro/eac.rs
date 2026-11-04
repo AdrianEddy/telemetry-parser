@@ -72,8 +72,8 @@ pub(crate) fn camera_rig(devices: &[Device], picture: (u32, u32)) -> Option<Came
         projection: Projection::new(ProjectionKind::Eac { faces, overlap, pre_scale, post_scale }),
         pictures: vec![RigPicture::VideoTrack(0), RigPicture::VideoTrack(1)],
         variants: Vec::new(),
-        default_kind: None,
-        no_housing_kind: None,
+        projection_kind: None,
+        vendor: crate::rig::VendorFacts::None,
         audio_source: None,
         siblings: Vec::new(),
     })

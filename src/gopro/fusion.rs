@@ -43,8 +43,7 @@
 //! both sits at `180 − 179.8909/2 = 90.0546°`. A quarter-degree equirect sweep
 //! finds the worst covered direction at **90.0540°** — straight up, at
 //! `[0.221, -0.975, -0.001]` — leaving 9.95° of margin under the 100°
-//! half-field, and 5.95° under the 96° the blend trusts each lens to
-//! ([`BLEND_LIMIT_DEG`]). Clipping `MFOV` to 89° fails the same sweep at
+//! half-field. Clipping `MFOV` to 89° fails the same sweep at
 //! `[0.000, -1.000, -0.004]`.
 //!
 //! The two measured rim radii are M6a's, from the source clips the fixtures
@@ -71,7 +70,6 @@
 //! zeroed either, and it is not. Running the sweep on a real front/back pair is
 //! the owner-gated item that would close it.
 
-use std::f64::consts::FRAC_PI_2;
 use std::path::Path;
 
 use video_types::{geometry::{
@@ -83,28 +81,6 @@ use crate::rig::{CameraRig, RigPicture, SiblingDir, SiblingHint, SiblingRole};
 use crate::tags_impl::TagMap;
 
 use super::udta::{self, Device};
-
-/// How far from its axis a Fusion lens is TRUSTED in the composite: 96°, the
-/// last angle at which both lenses' scene-free radial luminance is still
-/// within 5 % of the interior — front 95 %, back 93 %; the knee follows, 92 % /
-/// 86 % at 98° and 72 % / 66 % at 99.5° — measured on `GPFR4425` / `GPBK4425`
-/// as a per-pixel 3rd-max over 30 frames (`docs/360/GOPRO.md` §9). The
-/// vendor's own stitch reads no vignetted texel — a Fusion Studio export of the
-/// same body is flat to 0.1/255 across the −90° seam — so it stops blending
-/// inside 97°. `MFOV` is where the picture ENDS (the mechanical rim, 100°) and
-/// stays the validity; this is where the blend ends. Blended out to the rim
-/// instead, a direction 97° off the front axis carries that lens's darkened
-/// rim at three tenths of its weight: a visible ring.
-const BLEND_LIMIT_DEG: f64 = 96.0;
-
-/// Each lens's crossfade: centred on the seam, so both lenses cross at equal
-/// weight on the great circle between them (the axes are 179.89° apart, so
-/// that circle sits within 0.06° of 90° from each), and ending at
-/// [`BLEND_LIMIT_DEG`] — 12° wide, from 84° to 96°.
-fn blend() -> Blend {
-    let limit = BLEND_LIMIT_DEG.to_radians();
-    Blend::centred(FRAC_PI_2, 2.0 * (limit - FRAC_PI_2))
-}
 
 /// `r = Σ pᵢ·θ^(i+1)`, capture pixels.
 fn radius_at(p: &[f64; 5], theta: f64) -> f64 {
@@ -186,8 +162,8 @@ pub(crate) fn camera_rig(
             Role::Back => vec![other(SiblingRole::Front), this],
         },
         variants: Vec::new(),
-        default_kind: None,
-        no_housing_kind: None,
+        projection_kind: None,
+        vendor: crate::rig::VendorFacts::None,
         audio_source: match role { Role::Front => Some(SiblingRole::Back), Role::Back => None },
         siblings: vec![sibling],
     })
@@ -293,7 +269,8 @@ fn lens(
     }
 
     let centre = [f64::from(calib.0) / 2.0, f64::from(calib.1) / 2.0];
-    let rim = radius_at(&p, fov.to_radians());
+    let fov_limit = fov.to_radians();
+    let rim = radius_at(&p, fov_limit);
     if !(rim.is_finite() && rim > 0.0) {
         log::warn!("Dropping a Fusion lens: its polynomial puts the {fov}° rim at {rim} px, which is not a circle.");
         return None;
@@ -313,7 +290,7 @@ fn lens(
         mirror: false,
         rotation,
         translation,
-        fov_limit: Some(fov.to_radians()),
+        fov_limit: Some(fov_limit),
         // The rim as a circle too — exactly the θ = MFOV locus, the model being
         // purely radial — so the lens gets a validity tile and the atlas cuts
         // the calibration RECT as well as the circle: the recorded frame's top
@@ -321,7 +298,9 @@ fn lens(
         // a clamped edge row unless the rect is a boundary.
         image_circle: Some(Circle { centre, radius: rim }),
         masks: Vec::new(),
-        blend: blend(),
+        // The file states where the picture ends and nothing about where a
+        // stitch stops trusting it: a hard cut at the rim.
+        blend: Blend::hard(fov_limit),
         photometric: None,
         // Both halves of the body are read by the same sensor timing.
         readout,
