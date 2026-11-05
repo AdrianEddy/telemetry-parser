@@ -252,9 +252,7 @@ impl Insta360 {
         }
 
         if let Some(dimension) = self.dimension {
-            if let Some(crop) = self.window_crop {
-                self.insert_lens_profile(tag_map, dimension, crop, options);
-            }
+            let imu_turn_ypr = self.window_crop.and_then(|crop| self.insert_lens_profile(tag_map, dimension, crop, options));
             // The rig goes at its own tag and never at `Lens/Data`: that one is
             // the single-lens JSON profile above, tags are last-wins per (group,
             // id), and a rig-shaped object there would deserialise into an empty
@@ -265,7 +263,7 @@ impl Insta360 {
                 rig::StreamLayout::of(self.model.as_deref().unwrap_or_default(), self.stream_type, self.multi_track_order),
                 self.sibling.clone(),
                 dimension,
-                &self.recorded,
+                &crate::rig::Insta360Facts { imu_turn_ypr, ..self.recorded.clone() },
                 crate::rig::readout(self.frame_readout_time),
                 self.window_crop,
             ) {
@@ -317,11 +315,14 @@ impl Insta360 {
     /// **Not** from the newest string the clip carries: the profile names the
     /// `insta360` distortion model, which is the v3 Brown block, and a v6 or
     /// v2 coefficient list under that name is a different lens.
-    fn insert_lens_profile(&self, tag_map: &mut GroupedTagMap, size: (u32, u32), crop: rig::WindowCrop, options: &crate::InputOptions) {
+    ///
+    /// Also turns the IMU into lens 0's frame, and returns the `ypr` it turned
+    /// the IMU by, if it did.
+    fn insert_lens_profile(&self, tag_map: &mut GroupedTagMap, size: (u32, u32), crop: rig::WindowCrop, options: &crate::InputOptions) -> Option<[f64; 3]> {
         let model = self.model.clone().unwrap_or_default().replace("Insta360 ", "");
-        let Some(offset) = self.offsets.v3.as_ref().map(|o| o.windowed(crop)) else { return };
-        let Some(lens) = offset.lenses.first() else { return };
-        let (Some(&[k1, k2, k3]), Some(&[p1, p2])) = (lens.coeffs.get(..3), lens.coeffs.get(3..5)) else { return };
+        let offset = self.offsets.v3.as_ref()?.windowed(crop);
+        let lens = offset.lenses.first()?;
+        let (&[k1, k2, k3], &[p1, p2]) = (lens.coeffs.get(..3)?, lens.coeffs.get(3..5)?) else { return None };
         let (xi, [fx, fy], [cx, cy]) = (lens.xi, lens.focal, lens.centre);
 
         let ratio = (
@@ -367,7 +368,8 @@ impl Insta360 {
         // Rotate the IMU into lens 0's frame. The `has_offset_v3` IMU orientations
         // in `process_map` assume this rotation (about 90° on most bodies).
         let [yaw, pitch, roll] = lens.ypr;
-        if pitch.abs() > 0.0 || roll.abs() > 0.0 || yaw.abs() > 0.0 {
+        let turned = pitch.abs() > 0.0 || roll.abs() > 0.0 || yaw.abs() > 0.0;
+        if turned {
             const DEG2RAD: f64 = std::f64::consts::PI / 180.0;
             let yaw = yaw * DEG2RAD;
             let pitch = pitch * DEG2RAD;
@@ -404,6 +406,7 @@ impl Insta360 {
                 }
             }
         }
+        turned.then_some(lens.ypr)
     }
 
     fn get_output_size(width: u32, height: u32) -> (u32, u32) {

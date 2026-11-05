@@ -123,6 +123,7 @@ impl super::Insta360 {
                         extra_info::extra_metadata::CoolingShellSelectedState::try_from(info.cooling_shell_selected_state).ok(),
                     cooling_shell_algo_state:
                         extra_info::extra_metadata::CoolingShellAlgoDetectedState::try_from(info.cooling_shell_algo_state).ok(),
+                    imu_turn_ypr: None,
                 };
                 for text in [&info.offset, &info.offset_v2, &info.offset_v3, &info.offset_v6] {
                     if let Some(offset) = super::rig::parse(text) {

@@ -107,6 +107,14 @@ pub struct Insta360Facts {
     /// `ExtraMetadata.cooling_shell_algo_state`: what that detection found.
     /// `None` for a value the schema does not name.
     pub cooling_shell_algo_state: Option<CoolingShellAlgoDetectedState>,
+    /// The `[yaw, pitch, roll]` (degrees, as the calibration string stores
+    /// them) this parser turned the clip's gyroscope and accelerometer into
+    /// lens 0's frame by; `None` when the readings are as the body wrote them.
+    ///
+    /// A reader that wants the body's frame back undoes exactly these: they
+    /// can't be recovered from a lens rotation, which may come from a newer
+    /// calibration string and whose Euler angles have two solutions.
+    pub imu_turn_ypr: Option<[f64; 3]>,
 }
 
 /// A [`CameraRig`] with no cameras — the value a tag falls back to when its
