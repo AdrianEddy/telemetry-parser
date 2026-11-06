@@ -11,7 +11,7 @@ use wasm_bindgen::prelude::*;
 use js_sys::{ Array, Float32Array, Float64Array, Function, Object, Reflect, Uint32Array, Uint8Array };
 use serde::Serialize;
 use std::cell::{ Cell, RefCell };
-use std::collections::{ BTreeMap, HashMap };
+use std::collections::{ BTreeMap, HashMap, HashSet };
 use std::io::{ Error, ErrorKind, Read, Seek, SeekFrom };
 use std::sync::{ Arc, atomic::AtomicBool };
 
@@ -775,4 +775,93 @@ impl Parser {
 
         Ok(serde_wasm_bindgen::to_value(&imu_data).unwrap())
     }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Filtered telemetry as one flat buffer: `telemetry_flat`
+
+/// `"Lens"` (the whole group) or `"Lens/FocusRingPosition"` (one tag) as the parser's own filter (`TagFilter`)
+fn parse_filter(filter: &str) -> Result<TagFilter, JsValue> {
+    let err = |m: String| JsValue::from(js_sys::Error::new(&m));
+    let filter = filter.trim();
+    let (group, tag) = match filter.split_once('/') {
+        Some((g, t)) => (g.trim(), Some(t.trim())),
+        None => (filter, None),
+    };
+    if group.is_empty() || tag.is_some_and(str::is_empty) {
+        return Err(err(format!("Invalid filter \"{filter}\": use \"Group\" or \"Group/Tag\"")));
+    }
+    let group: GroupId = group.parse().map_err(|e| err(format!("Invalid group \"{group}\": {e}")))?;
+    Ok(match tag {
+        None => TagFilter::EntireGroup(group),
+        Some(t) => TagFilter::SpecificTag(group, t.parse::<TagId>().map_err(|e| err(format!("Invalid tag \"{t}\": {e}")))?),
+    })
+}
+
+fn filter_matches(filter: &TagFilter, group: &GroupId, tag: &TagId) -> bool {
+    match filter {
+        TagFilter::EntireGroup(g) => g == group,
+        TagFilter::EntireTag(t) => t == tag,
+        TagFilter::SpecificTag(g, t) => g == group && t == tag,
+    }
+}
+
+/// Parses a file that is all in memory, as `new Parser(data, filename)` does, but keeps only the tags matching `filter`,
+/// `"Group"` or `"Group/Tag"`, and returns them as one `Float64Array`, so that only one value crosses to JavaScript
+///
+/// The filter is given to the parsers (`InputOptions::tag_whitelist`), so the tags it excludes aren't kept, and the
+/// values are decoded lazily by the crate, so they're never decoded. The samples are filtered again after the parse,
+/// for the parsers that don't go through the whitelist (a sidecar file is read with the default options)
+///
+/// Layout, all `f64`:
+/// ```text
+/// [ frame_count,
+///   timestamp_ms, duration_ms, value_count, v0, v1, ...,     // frame 0
+///   timestamp_ms, duration_ms, value_count, v0, v1, ...,     // frame 1
+///   ... ]
+/// ```
+/// Only the frames that have a matching tag are in it. A frame's values are the numbers of its matching tags: in the
+/// order of the groups and tags (`Parser.tags()` and `Parser.sample()` list them in the same order), a tag's own
+/// numbers in the order of its channels (`Parser.tags()`'s `channels`, the fields of a struct, the items of a short
+/// array), and a list of readings (a gyroscope's samples) one reading after another. Text and bytes aren't numbers
+/// and aren't in it. Booleans are 0 and 1
+#[wasm_bindgen]
+pub fn telemetry_flat(data: &[u8], filename: &str, filter: &str) -> Result<Float64Array, JsValue> {
+    let filter = parse_filter(filter)?;
+    let options = InputOptions { tag_whitelist: HashSet::from([filter.clone()]), ..Default::default() };
+
+    let mut stream = std::io::Cursor::new(data);
+    let mut input = Input::from_stream_with_options(&mut stream, data.len() as u64, filename, |_| (), Arc::new(AtomicBool::new(false)), options).map_err(io_err)?;
+    let samples = input.samples.take().ok_or_else(|| JsValue::from(js_sys::Error::new("No metadata")))?;
+
+    let mut out: Vec<f64> = vec![0.0];
+    let mut frames = 0u64;
+    let mut buf = Vec::new();
+    for sample in samples {
+        let Some(map) = &sample.tag_map else { continue; };
+        let start = out.len();
+        out.extend([sample.timestamp_ms, sample.duration_ms, 0.0]);
+        for (group, tags) in map {
+            for (tag, desc) in tags {
+                if !filter_matches(&filter, group, tag) { continue; }
+                if matches!(desc.value, TagValue::Unknown(_)) { continue; }
+                let json = match serde_json::to_value(&desc.value) { Ok(v) => v, Err(_) => continue };
+                let (_, items) = readings(&desc.value, &json);
+                for item in items {
+                    buf.clear();
+                    leaves(item, &mut String::new(), &mut buf, 0);
+                    out.extend(buf.iter().map(|(_, v)| *v));
+                }
+            }
+        }
+        let count = out.len() - start - 3;
+        if count == 0 {
+            out.truncate(start);
+            continue;
+        }
+        out[start + 2] = count as f64;
+        frames += 1;
+    }
+    out[0] = frames as f64;
+    Ok(Float64Array::from(&out[..]))
 }
