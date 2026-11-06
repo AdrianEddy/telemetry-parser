@@ -22,6 +22,22 @@ const parser = Parser.from_reader(file.size, file.name,
     progress => console.log(progress));
 ```
 
+A file in memory, with only some of its tags, as one flat `Float64Array` (a single value for JavaScript, not one per
+number). `filter` is a group, `"Group"`, or one tag, `"Group/Tag"`:
+```js
+import init, { telemetry_flat } from './pkg/telemetry_parser.js';
+const flat = telemetry_flat(new Uint8Array(await file.arrayBuffer()), file.name, 'Group/Tag');
+// [ frame_count, then per frame: timestamp_ms, duration_ms, value_count, ...values ]
+let i = 1;
+for (let f = 0; f < flat[0]; f++) {
+    const [t, duration, n] = [flat[i], flat[i + 1], flat[i + 2]];
+    const values = flat.subarray(i + 3, i + 3 + n);
+    i += 3 + n;
+}
+```
+Only the frames that have a matching tag are in it, and only the numbers of its tags (not text or bytes). The tags are
+filtered by the parser while it reads the file, and the other tags' values are never decoded.
+
 Then:
 - `parser.info()`: camera, model, parser, sample count, time span, frame readout time
 - `parser.imu()`: the motion data as Gyroflow reads it, as typed arrays (`t` in ms; `gyro` °/s, `accl` m/s², `magn`, 3 per reading)
