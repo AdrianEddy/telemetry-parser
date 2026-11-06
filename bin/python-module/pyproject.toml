@@ -5,6 +5,7 @@ build-backend = "maturin"
 [project]
 name = "telemetry-parser"
 dynamic = ["version"]
+description = "Library to parse real-time metadata embedded in video files or telemetry from other sources."
 requires-python = ">=3.8"
 license = { text = "MIT OR Apache-2.0" }
 authors = [{ name = "Adrian", email = "adrian.eddy@gmail.com" }]
