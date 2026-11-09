@@ -220,8 +220,13 @@ impl Insta360 {
             (tag_map.get(&GroupId::Default)?.get_t(TagId::Metadata) as Option<&serde_json::Value>)?.as_object()?.get("offset_v3")?.as_array()?.len() >= 20
         }).unwrap_or_default();
         log::debug!("Has offset_v3: {has_offset_v3}");
+        // A body that writes `offset_v6` and no `offset_v3` (the X6) is of the
+        // v3 bodies' generation: its readings are turned into lens 0's frame as
+        // theirs are, by its one string, and their axes are named in the table
+        // that assumes that turn. The older bodies' table assumes none.
+        let v6_only = !has_offset_v3 && self.offsets.v6.is_some();
 
-        let imu_orientation = if has_offset_v3 {
+        let imu_orientation = if has_offset_v3 || v6_only {
             match self.model.as_deref() {
                 Some("Insta360 GO 2")  => "XYZ",
                 Some("Insta360 GO 3")  => "XYZ",
@@ -229,8 +234,12 @@ impl Insta360 {
                 Some("Insta360 GO Ultra") => "YxZ",
                 Some("Insta360 OneR")  => "Xyz",
                 Some("Insta360 OneRS") => "Xyz",
+                Some("Insta360 X1")    => "yzX",
+                Some("Insta360 X2")    => "yzX",
+                Some("Insta360 X3")    => "yzX",
                 Some("Insta360 X4")    => "yzX",
                 Some("Insta360 X5")    => "yzX",
+                Some("Insta360 X6")    => "yzX",
                 _                      => "Xyz"
             }
         } else {
@@ -251,8 +260,16 @@ impl Insta360 {
             x.insert(Orientation, tag!(parsed Accelerometer, Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.to_string(), Vec::new()));
         }
 
+        // The turn into lens 0's frame is by the string the lens profile is built
+        // from, v3's; a v6-only body gets no profile (the `insta360` model is
+        // v3's Brown block, and v6's thirteen coefficients are another lens), so
+        // its readings are turned by v6's lens 0.
+        let imu_turn_ypr = if v6_only {
+            self.offsets.v6.as_ref().and_then(|v6| v6.lenses.first()).and_then(|lens| turn_into_lens_0(tag_map, lens.ypr))
+        } else {
+            self.dimension.zip(self.window_crop).and_then(|(dimension, crop)| self.insert_lens_profile(tag_map, dimension, crop, options))
+        };
         if let Some(dimension) = self.dimension {
-            let imu_turn_ypr = self.window_crop.and_then(|crop| self.insert_lens_profile(tag_map, dimension, crop, options));
             // The rig goes at its own tag and never at `Lens/Data`: that one is
             // the single-lens JSON profile above, tags are last-wins per (group,
             // id), and a rig-shaped object there would deserialise into an empty
@@ -365,48 +382,7 @@ impl Insta360 {
 
         insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::Data, "Lens profile", Json, |v| serde_json::to_string(v).unwrap(), profile, vec![]), options);
 
-        // Rotate the IMU into lens 0's frame. The `has_offset_v3` IMU orientations
-        // in `process_map` assume this rotation (about 90° on most bodies).
-        let [yaw, pitch, roll] = lens.ypr;
-        let turned = pitch.abs() > 0.0 || roll.abs() > 0.0 || yaw.abs() > 0.0;
-        if turned {
-            const DEG2RAD: f64 = std::f64::consts::PI / 180.0;
-            let yaw = yaw * DEG2RAD;
-            let pitch = pitch * DEG2RAD;
-            let roll = roll * DEG2RAD;
-            let (sr, cr) = (yaw.sin(), yaw.cos());
-            let (sp, cp) = (pitch.sin(), pitch.cos());
-            let (sy, cy) = (roll.sin(), roll.cos());
-            let mat = [
-                [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
-                [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
-                [-sp,     cp * sr,                cp * cr],
-            ];
-            let rotate = |vec: &mut TimeVector3<f64>| {
-                let mut rotated = [0.0f64; 3];
-                for i in 0..3 {
-                    rotated[i] += mat[i][0] * vec.x;
-                    rotated[i] += mat[i][1] * vec.y;
-                    rotated[i] += mat[i][2] * vec.z;
-                }
-                vec.x = rotated[0];
-                vec.y = rotated[1];
-                vec.z = rotated[2];
-            };
-
-            for group in [GroupId::Gyroscope, GroupId::Accelerometer] {
-                if let Some(x) = tag_map.get_mut(&group) {
-                    if let Some(xx) = x.get_mut(&TagId::Data) {
-                        if let TagValue::Vec_TimeVector3_f64(arr) = &mut xx.value {
-                            for v in arr.get_mut().iter_mut() {
-                                rotate(v);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        turned.then_some(lens.ypr)
+        turn_into_lens_0(tag_map, lens.ypr)
     }
 
     fn get_output_size(width: u32, height: u32) -> (u32, u32) {
@@ -419,3 +395,49 @@ impl Insta360 {
     }
 }
 
+/// Rotate the gyroscope and accelerometer into lens 0's frame by its `ypr`
+/// (degrees, as the string stores them), and return that `ypr` if it turned
+/// them. The IMU orientations `process_map` names for the v3 bodies (and the
+/// v6-only ones) assume this rotation, about 90° on most bodies.
+fn turn_into_lens_0(tag_map: &mut GroupedTagMap, ypr: [f64; 3]) -> Option<[f64; 3]> {
+    let [yaw, pitch, roll] = ypr;
+    let turned = pitch.abs() > 0.0 || roll.abs() > 0.0 || yaw.abs() > 0.0;
+    if turned {
+        const DEG2RAD: f64 = std::f64::consts::PI / 180.0;
+        let yaw = yaw * DEG2RAD;
+        let pitch = pitch * DEG2RAD;
+        let roll = roll * DEG2RAD;
+        let (sr, cr) = (yaw.sin(), yaw.cos());
+        let (sp, cp) = (pitch.sin(), pitch.cos());
+        let (sy, cy) = (roll.sin(), roll.cos());
+        let mat = [
+            [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+            [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+            [-sp,     cp * sr,                cp * cr],
+        ];
+        let rotate = |vec: &mut TimeVector3<f64>| {
+            let mut rotated = [0.0f64; 3];
+            for i in 0..3 {
+                rotated[i] += mat[i][0] * vec.x;
+                rotated[i] += mat[i][1] * vec.y;
+                rotated[i] += mat[i][2] * vec.z;
+            }
+            vec.x = rotated[0];
+            vec.y = rotated[1];
+            vec.z = rotated[2];
+        };
+
+        for group in [GroupId::Gyroscope, GroupId::Accelerometer] {
+            if let Some(x) = tag_map.get_mut(&group) {
+                if let Some(xx) = x.get_mut(&TagId::Data) {
+                    if let TagValue::Vec_TimeVector3_f64(arr) = &mut xx.value {
+                        for v in arr.get_mut().iter_mut() {
+                            rotate(v);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    turned.then_some(ypr)
+}
