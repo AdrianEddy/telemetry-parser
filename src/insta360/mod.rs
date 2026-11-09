@@ -51,6 +51,12 @@ pub struct Insta360 {
     stream_type: i32,
     /// `ExtraMetadata.pano_record_multi_track_order` — which track holds which lens.
     multi_track_order: i32,
+    /// `ExtraMetadata.pano_record_type` — two files or two tracks.
+    pano_record_type: i32,
+    /// The name of the file this trailer closes. A two-file body older than
+    /// every layout field names its other file only by the convention its own
+    /// name follows.
+    file_name: Option<String>,
     /// How the clip was recorded, beside its calibration: what the rig's
     /// [`VendorFacts`](crate::rig::VendorFacts) state with the lens types of
     /// the string the rig is built from.
@@ -80,9 +86,10 @@ impl Insta360 {
         v
     }
 
-    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], _filepath: P, _options: &crate::InputOptions) -> Option<Self> {
+    pub fn detect<P: AsRef<std::path::Path>>(buffer: &[u8], filepath: P, _options: &crate::InputOptions) -> Option<Self> {
         if buffer.len() > MAGIC.len() && &buffer[buffer.len()-MAGIC.len()..] == MAGIC {
-            return Some(Insta360::default());
+            let file_name = filepath.as_ref().file_name().map(|n| n.to_string_lossy().into_owned());
+            return Some(Insta360 { file_name, ..Insta360::default() });
         }
         None
     }
@@ -225,6 +232,10 @@ impl Insta360 {
         // theirs are, by its one string, and their axes are named in the table
         // that assumes that turn. The older bodies' table assumes none.
         let v6_only = !has_offset_v3 && self.offsets.v6.is_some();
+        // A ONE RS is a core and a lens module, and every module states the
+        // same camera; the 360 modules (1-Inch 360 Edition, 360 lens) mount the
+        // core, and with it the IMU, otherwise than the one-lens modules.
+        let two_lenses = self.offsets.v3.as_ref().or(self.offsets.v6.as_ref()).is_some_and(|o| o.lenses.len() == 2);
 
         let imu_orientation = if has_offset_v3 || v6_only {
             match self.model.as_deref() {
@@ -233,6 +244,7 @@ impl Insta360 {
                 Some("Insta360 GO 3S") => "yXZ",
                 Some("Insta360 GO Ultra") => "YxZ",
                 Some("Insta360 OneR")  => "Xyz",
+                Some("Insta360 OneRS") if two_lenses => "yXZ",
                 Some("Insta360 OneRS") => "Xyz",
                 Some("Insta360 X1")    => "yzX",
                 Some("Insta360 X2")    => "yzX",
@@ -277,8 +289,14 @@ impl Insta360 {
             if let Some(camera_rig) = rig::camera_rig(
                 self.model.as_deref().unwrap_or_default(),
                 &self.offsets,
-                rig::StreamLayout::of(self.model.as_deref().unwrap_or_default(), self.stream_type, self.multi_track_order),
-                self.sibling.clone(),
+                rig::StreamLayout::of(
+                    self.model.as_deref().unwrap_or_default(),
+                    self.stream_type,
+                    self.multi_track_order,
+                    self.pano_record_type,
+                ),
+                // The pair the clip declares, else the one its own name implies.
+                self.sibling.clone().or_else(|| self.file_name.as_deref().and_then(rig::sibling_of_own_name)),
                 dimension,
                 &crate::rig::Insta360Facts { imu_turn_ypr, ..self.recorded.clone() },
                 crate::rig::readout(self.frame_readout_time),

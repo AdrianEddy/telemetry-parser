@@ -612,12 +612,12 @@ impl Offsets {
 /// How the camera spread its lenses over files and tracks.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum StreamLayout {
-    /// One video track per lens, in lens order. Also the answer for a body that
-    /// states nothing, which is every one before the X-series.
+    /// One video track per lens, in lens order.
     TrackOrder,
     /// One video track per lens, in the opposite order.
     TrackReversed,
-    /// One lens per file.
+    /// One lens per file. Also the answer for a body that states no layout at
+    /// all, which is every two-lens body before the X4 (ONE X2, ONE R/RS, X3).
     PerFile,
 }
 
@@ -638,10 +638,21 @@ impl StreamLayout {
     /// The vendor counts the asset's video tracks; this parser reads only the
     /// trailer, so the trailer's own statement of a single-stream file (what a
     /// low-resolution `.lrv` proxy writes) stands in for a count of one.
-    pub(crate) fn of(model: &str, stream_type: i32, multi_track_order: i32) -> Self {
-        use super::extra_info::extra_metadata::{PanoRecordMultiTrackOrder, StreamType};
+    ///
+    /// Two files is stated by `DUAL_STREAM_FILE` or `SPLIT_FILE`, or by stating
+    /// none of the three layout fields: every body that records both lenses into
+    /// one file writes `pano_record_type = MULTI_TRACK` (the X4, X5, X6 and A1
+    /// all do), and the bodies older than the fields (ONE X2, ONE RS, X3) record
+    /// one lens per file. A one-lens body states nothing either; its rig has no
+    /// second picture for the layout to place.
+    pub(crate) fn of(model: &str, stream_type: i32, multi_track_order: i32, pano_record_type: i32) -> Self {
+        use super::extra_info::extra_metadata::{PanoRecordMultiTrackOrder, PanoRecordType, StreamType};
         let one_track = stream_type == StreamType::SingleStreamFile as i32;
-        if stream_type == StreamType::DualStreamFile as i32 {
+        let states_none = stream_type == StreamType::Unknown as i32
+            && multi_track_order == PanoRecordMultiTrackOrder::Unknown as i32
+            && pano_record_type == PanoRecordType::Unknown as i32;
+        if stream_type == StreamType::DualStreamFile as i32 || pano_record_type == PanoRecordType::SplitFile as i32 || states_none
+        {
             Self::PerFile
         } else if TRACK_ORDER_BODIES.contains(&model)
             && !one_track
@@ -665,21 +676,38 @@ pub(crate) fn sibling_hint(index: u32, total: u32, identify: &str) -> Option<Sib
     if total != 2 || index > 1 {
         return None;
     }
-    let other = 1 - index;
-    let name = identify.rsplit(['/', '\\']).next()?;
-    let mut parts: Vec<String> = name.split('_').map(str::to_owned).collect();
-    // `<prefix>_<date>_<time>_<lens><lens>_<seq>.<ext>` — the lens field is the
-    // one before the sequence number, and it is two digits.
-    let lens_field = parts.len().checked_sub(2)?;
-    if parts[lens_field].len() != 2 || !parts[lens_field].bytes().all(|b| b.is_ascii_digit()) {
-        return None;
+    partner(identify.rsplit(['/', '\\']).next()?, 1 - index)
+}
+
+/// The other file of a two-file body, from the name of this one: `_00_` holds
+/// the first lens and `_10_` the second. The bodies older than every layout
+/// field declare no group, and their names are the only statement of the pair.
+pub(crate) fn sibling_of_own_name(name: &str) -> Option<SiblingHint> {
+    let (parts, lens_field) = name_parts(name)?;
+    match parts[lens_field].as_str() {
+        "00" => partner(name, 1),
+        "10" => partner(name, 0),
+        _ => None,
     }
+}
+
+/// `name` with its lens field set to lens `other`'s, as that member's hint.
+fn partner(name: &str, other: u32) -> Option<SiblingHint> {
+    let (mut parts, lens_field) = name_parts(name)?;
     parts[lens_field] = format!("{other}0");
     Some(SiblingHint {
         role: if other == 0 { SiblingRole::Front } else { SiblingRole::Back },
         directory: SiblingDir::Same,
         file_name: parts.join("_"),
     })
+}
+
+/// `<prefix>_<date>_<time>_<lens><lens>_<seq>.<ext>` split at `_`, and which
+/// part is the lens field: the one before the sequence number, two digits.
+fn name_parts(name: &str) -> Option<(Vec<String>, usize)> {
+    let parts: Vec<String> = name.split('_').map(str::to_owned).collect();
+    let lens_field = parts.len().checked_sub(2)?;
+    (parts[lens_field].len() == 2 && parts[lens_field].bytes().all(|b| b.is_ascii_digit())).then_some((parts, lens_field))
 }
 
 /// Build the rig from the `offset` strings the clip carries.
@@ -755,7 +783,7 @@ pub(crate) fn camera_rig(
         variants: Vec::new(),
         projection_kind: None,
         audio_source: None,
-        siblings: sibling.filter(|_| two_files).into_iter().collect(),
+        siblings: sibling.filter(|_| two_files && num == 2).into_iter().collect(),
         vendor: VendorFacts::Insta360(Insta360Facts {
             lens_types: chosen.lenses.iter().map(|l| l.lens_type).collect(),
             ..recorded.clone()

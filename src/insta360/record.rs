@@ -115,6 +115,7 @@ impl super::Insta360 {
                 // to and is the shape the old single-lens reader mis-indexed.
                 self.stream_type = info.stream_type;
                 self.multi_track_order = info.pano_record_multi_track_order;
+                self.pano_record_type = info.pano_record_type;
                 self.recorded = crate::rig::Insta360Facts {
                     lens_types: Vec::new(),
                     bullet_time: info.file_group_info.as_ref().is_some_and(|g| g.r#type == 1),
