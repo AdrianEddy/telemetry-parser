@@ -37,6 +37,12 @@ pub mod RecordType {
     pub const TimelapseQuat      : u8 = 24;
     pub const Quaternion         : u8 = 25;
     pub const OnlineQuaternion   : u8 = 51;
+    /// The exposures of the file's second, low-resolution stream (inferred from the name; no file has it yet).
+    pub const SubStreamExposure  : u8 = 52;
+    /// Per frame, a temperature the camera reads (inferred: the first one is `ExtraMetadata.sensor_module_temper`).
+    pub const SensorTemperature  : u8 = 53;
+    /// The exposures of the second stream's secondary sensor input (inferred from the name; no file has it yet).
+    pub const SubStreamExposureTimeVin1: u8 = 54;
     pub const TimeMap            : u8 = 128;
 }
 
@@ -131,6 +137,20 @@ impl super::Insta360 {
                         self.offsets.set(offset);
                     }
                 }
+                // A lens that focuses: its calibration follows the AF code, each frame's code is in the exposure
+                // record, and the clip may have been shot through an attachment
+                self.is_af_lens = info.is_af_lens;
+                self.offset_v8 = super::offset_v8::parse(&info.offset_v8).or_else(|| {
+                    info.offset_info.iter().filter(|o| o.offset_version == 8).find_map(|o| super::offset_v8::parse(&o.offset))
+                });
+                self.af_range = info.af_lens_info.as_ref().and_then(|r| super::offset_v8::af_range(r.range_near, r.range_far));
+                self.lens_optics = super::offset_v8::Optics::of(info.lens_accessory_type);
+                self.flowstate_online = info.is_flowstate_online;
+                if let Some(mode) = info.shooting_param_info.as_ref()
+                    .and_then(|s| extra_info::extra_metadata::shooting_param_info::FocusMode::try_from(s.focus_mode).ok())
+                    .filter(|m| *m != extra_info::extra_metadata::shooting_param_info::FocusMode::Unknown) {
+                    insert_tag(&mut map, tag!(parsed Autofocus, AutoFocusMode, "Autofocus mode", String, |v| v.to_string(), format!("{mode:?}"), vec![]), options);
+                }
                 self.sibling = info.file_group_info.as_ref()
                     .and_then(|g| super::rig::sibling_hint(g.index, g.total, &g.identify));
                 self.dimension = info.dimension.as_ref()
@@ -149,6 +169,8 @@ impl super::Insta360 {
                         if let Ok(x) = extra_info::parse_offset    (&info.original_offset_v3) { obj["original_offset_v3"] = x; }
                         if let Ok(x) = extra_info::parse_offset    (&info.offset_v6)          { obj["offset_v6"         ] = x; }
                         if let Ok(x) = extra_info::parse_offset    (&info.original_offset_v6) { obj["original_offset_v6"] = x; }
+                        if let Ok(x) = extra_info::parse_offset    (&info.offset_v8)          { obj["offset_v8"         ] = x; }
+                        if let Ok(x) = extra_info::parse_offset    (&info.lens_accessory_offset) { obj["lens_accessory_offset"] = x; }
 
                         self.gyro_timestamp = if info.is_has_gyro_timestamp { Some(info.gyro_timestamp) } else { None };
                         self.first_frame_timestamp = Some(info.first_frame_timestamp as f64);
@@ -216,6 +238,41 @@ impl super::Insta360 {
                 insert_tag(&mut map, tag!(parsed Gyroscope,     Data, "Gyroscope data",     Vec_TimeVector3_f64, |v| format!("{:?}", v), gyro_vec, vec![]), options);
 
                 insert_tag(&mut map, tag!(parsed Accelerometer, Unit, "Accelerometer unit", String, |v| v.to_string(), "g".into(),  Vec::new()), options);
+            },
+            RecordType::Exposure | RecordType::ExposureTimeVin1 if self.is_af_lens => {
+                // A lens that focuses states each frame's AF code after its exposure: 18-byte entries
+                const ENTRY: usize = 8 + 8 + 2;
+                let mut exp = Vec::with_capacity(data.len() / ENTRY);
+                let mut af = Vec::with_capacity(data.len() / ENTRY);
+                while d.position() + ENTRY as u64 <= len {
+                    let timestamp_us = d.read_u64::<LittleEndian>()?;
+                    let exposure = d.read_f64::<LittleEndian>()?;
+                    let code = d.read_u16::<LittleEndian>()?;
+                    let t = timestamp_us as f64 / 1000.0;
+                    // Entry `i` is video frame `i`, so a frame whose exposure is no number keeps its place, with the
+                    // exposure before it; its time and AF code still hold
+                    let exposure = if exposure.is_finite() { exposure } else { exp.last().map_or(0.0, |e: &TimeScalar<f64>| e.v) };
+                    exp.push(TimeScalar { t, v: exposure });
+                    af.push(TimeScalar { t, v: f64::from(code) });
+                    if id == RecordType::Exposure {
+                        self.af_codes.push((timestamp_us, code));
+                    }
+                }
+                insert_tag(&mut map, tag!(parsed Exposure,  Data, "Shutter speed", Vec_TimeScalar_f64, |v| format!("{:?}", v), exp, data.to_vec()), options);
+                insert_tag(&mut map, tag!(parsed Autofocus, Data, "AF code",       Vec_TimeScalar_f64, |v| format!("{:?}", v), af,  vec![]), options);
+            },
+            RecordType::SensorTemperature => {
+                insert_tag(&mut map, tag!(Imager, Temperature, "Sensor temperature (°C)", Vec_TimeScalar_f64, |v| format!("{:?}", v), |d| {
+                    let len = d.get_ref().len() as u64;
+                    let mut temp = Vec::with_capacity(len as usize / (8+4));
+                    while d.position() + 8+4 <= len {
+                        temp.push(TimeScalar {
+                            t: d.read_u64::<LittleEndian>()? as f64 / 1000.0, // timestamp
+                            v: d.read_f32::<LittleEndian>()? as f64 / 1000.0 // °C; the camera states thousandths of a degree (inferred: 29533 on a camera at room temperature)
+                        })
+                    }
+                    Ok(temp)
+                }, data), options);
             },
             RecordType::Exposure | RecordType::ExposureTimeVin1 => {
                 insert_tag(&mut map, tag!(Exposure, Data, "Shutter speed", Vec_TimeScalar_f64, |v| format!("{:?}", v), |d| {
@@ -345,6 +402,8 @@ impl super::Insta360 {
             RecordType::TimelapseQuat | // Unknown format
             RecordType::Quaternion | // Unknown format
             RecordType::OnlineQuaternion | // Unknown format
+            RecordType::SubStreamExposure | // Unknown format, no sample
+            RecordType::SubStreamExposureTimeVin1 | // Unknown format, no sample
             _ => {
                 log::warn!("Unknown Insta360 record: {}, size: {}, format: {}, {}", id, data.len(), format, pretty_hex::pretty_hex(&&data[0..data.len().min(256)]));
             }

@@ -5,6 +5,7 @@ pub mod extra_info;
 pub mod record;
 pub(crate) mod rig;
 mod rig_v1_coefficients;
+pub(crate) mod offset_v8;
 
 use std::io::*;
 use std::sync::{ Arc, atomic::AtomicBool, atomic::Ordering::Relaxed };
@@ -67,6 +68,20 @@ pub struct Insta360 {
     dimension: Option<(u32, u32)>,
     /// The part of the sensor window the pictures hold.
     window_crop: Option<rig::WindowCrop>,
+    /// `ExtraMetadata.is_af_lens`: the lens focuses, and the exposure record states each frame's AF code.
+    is_af_lens: bool,
+    /// `offset_v8`, the calibration of a lens that focuses.
+    offset_v8: Option<offset_v8::OffsetV8>,
+    /// The AF codes the clip can use (`af_lens_info`): `(range_far, range_near)`.
+    af_range: Option<(i32, i32)>,
+    /// What the attachment the clip was shot through does to the lens (`lens_accessory_type`).
+    lens_optics: offset_v8::Optics,
+    /// `ExtraMetadata.is_flowstate_online`: the camera stabilized the pictures itself (inferred from the name and
+    /// from the one clip that has it, whose pictures are no scaled copy of the calibrated window), so they are not
+    /// the lens's image.
+    flowstate_online: bool,
+    /// Each frame's AF code, by its time on the camera clock (µs).
+    af_codes: Vec<(u64, u16)>,
 }
 
 impl Insta360 {
@@ -96,8 +111,10 @@ impl Insta360 {
 
     pub fn parse<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: crate::InputOptions) -> Result<Vec<SampleInfo>> {
         let mut tag_map = self.parse_file(stream, size, progress_cb, cancel_flag, &options)?;
-        self.process_map(&mut tag_map, &options);
-        Ok(vec![SampleInfo { tag_map: Some(tag_map), ..std::default::Default::default() }])
+        let frames = self.process_map(&mut tag_map, &options);
+        let mut samples = vec![SampleInfo { tag_map: Some(tag_map), ..std::default::Default::default() }];
+        samples.extend(frames);
+        Ok(samples)
     }
 
     fn parse_file<T: Read + Seek, F: Fn(f64)>(&mut self, stream: &mut T, size: u64, progress_cb: F, cancel_flag: Arc<AtomicBool>, options: &crate::InputOptions) -> Result<GroupedTagMap> {
@@ -216,7 +233,8 @@ impl Insta360 {
         Err(ErrorKind::NotFound.into())
     }
 
-    fn process_map(&mut self, tag_map: &mut GroupedTagMap, options: &crate::InputOptions) {
+    /// The tags of the whole clip, and the samples of its frames' own lens tags, when the lens focuses.
+    fn process_map(&mut self, tag_map: &mut GroupedTagMap, options: &crate::InputOptions) -> Vec<SampleInfo> {
         if let Some(x) = tag_map.get(&GroupId::Default) {
             self.model = try_block!(String, {
                 (x.get_t(TagId::Metadata) as Option<&serde_json::Value>)?.as_object()?.get("camera_type")?.as_str()?.to_owned()
@@ -232,17 +250,21 @@ impl Insta360 {
         // theirs are, by its one string, and their axes are named in the table
         // that assumes that turn. The older bodies' table assumes none.
         let v6_only = !has_offset_v3 && self.offsets.v6.is_some();
+        // A body whose lens focuses writes `offset_v8` and no `offset_v3` or `offset_v6`. It is of
+        // the same generation: its readings are turned into lens 0's frame by that string's pose.
+        let v8_only = !has_offset_v3 && !v6_only && self.offset_v8.is_some();
         // A ONE RS is a core and a lens module, and every module states the
         // same camera; the 360 modules (1-Inch 360 Edition, 360 lens) mount the
         // core, and with it the IMU, otherwise than the one-lens modules.
         let two_lenses = self.offsets.v3.as_ref().or(self.offsets.v6.as_ref()).is_some_and(|o| o.lenses.len() == 2);
 
-        let imu_orientation = if has_offset_v3 || v6_only {
+        let imu_orientation = if has_offset_v3 || v6_only || v8_only {
             match self.model.as_deref() {
                 Some("Insta360 GO 2")  => "XYZ",
                 Some("Insta360 GO 3")  => "XYZ",
                 Some("Insta360 GO 3S") => "yXZ",
                 Some("Insta360 GO Ultra") => "YxZ",
+                Some("Insta360 Ace Pro 3") => "yXZ",
                 Some("Insta360 OneR")  => "Xyz",
                 Some("Insta360 OneRS") if two_lenses => "yXZ",
                 Some("Insta360 OneRS") => "Xyz",
@@ -272,11 +294,29 @@ impl Insta360 {
             x.insert(Orientation, tag!(parsed Accelerometer, Orientation, "IMU orientation", String, |v| v.to_string(), imu_orientation.to_string(), Vec::new()));
         }
 
-        // The turn into lens 0's frame is by the string the lens profile is built
-        // from, v3's; a v6-only body gets no profile (the `insta360` model is
-        // v3's Brown block, and v6's thirteen coefficients are another lens), so
-        // its readings are turned by v6's lens 0.
-        let imu_turn_ypr = if v6_only {
+        // The turn into lens 0's frame is by the string the lens profile is built from: `offset_v3` where the clip
+        // has it (the `insta360` model, its Brown block), else `offset_v6` or `offset_v8` (the `insta360_v6` model,
+        // the 13-term block, which `offset_v8` is at each AF code).
+        let mut frames = Vec::new();
+        let imu_turn_ypr = if v8_only {
+            let ypr = self.offset_v8.as_ref().and_then(|v8| v8.lenses.first()).map(|lens| lens.ypr);
+            if let Some(dimension) = self.dimension {
+                frames = self.insert_af_lens_profile(tag_map, dimension, options);
+            }
+            ypr.and_then(|ypr| turn_into_lens_0(tag_map, ypr))
+        } else if v6_only {
+            if let Some((dimension, v6)) = self.dimension.zip(self.offsets.v6.as_ref()) {
+                if !self.flowstate_online {
+                    // Without the window the pictures hold, they hold the whole calibration frame, as for `offset_v8`
+                    let offset = match self.window_crop {
+                        Some(crop) => v6.windowed(crop),
+                        None => v6.clone(),
+                    };
+                    if let Some(profile) = self.lens_profile(&offset, dimension, true) {
+                        insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::Data, "Lens profile", Json, |v| serde_json::to_string(v).unwrap(), profile, vec![]), options);
+                    }
+                }
+            }
             self.offsets.v6.as_ref().and_then(|v6| v6.lenses.first()).and_then(|lens| turn_into_lens_0(tag_map, lens.ypr))
         } else {
             self.dimension.zip(self.window_crop).and_then(|(dimension, crop)| self.insert_lens_profile(tag_map, dimension, crop, options))
@@ -309,9 +349,9 @@ impl Insta360 {
         {
             let fft = self.first_frame_timestamp.unwrap_or_default() / 1000.0;
             let gyro_timestamp = self.gyro_timestamp.unwrap_or_default() / 1000.0;
-            let mut update_timestamps = |group: &GroupId| {
+            let mut update_timestamps = |group: &GroupId, id: &TagId| {
                 if let Some(g) = tag_map.get_mut(group) {
-                    if let Some(g) = g.get_mut(&TagId::Data) {
+                    if let Some(g) = g.get_mut(id) {
                         match &mut g.value {
                             // Gyro/accel
                             TagValue::Vec_TimeVector3_f64(g) => {
@@ -338,36 +378,58 @@ impl Insta360 {
                     }
                 }
             };
-            update_timestamps(&GroupId::Gyroscope);
-            update_timestamps(&GroupId::Accelerometer);
-            update_timestamps(&GroupId::Exposure);
+            update_timestamps(&GroupId::Gyroscope,     &TagId::Data);
+            update_timestamps(&GroupId::Accelerometer, &TagId::Data);
+            update_timestamps(&GroupId::Exposure,      &TagId::Data);
+            update_timestamps(&GroupId::Autofocus,     &TagId::Data);
+            update_timestamps(&GroupId::Imager,        &TagId::Temperature);
         }
+        frames
     }
 
     /// The single-lens JSON profile a lens database deserialises, built from
     /// lens 0 of the `offset_v3` string.
     ///
-    /// **Not** from the newest string the clip carries: the profile names the
-    /// `insta360` distortion model, which is the v3 Brown block, and a v6 or
-    /// v2 coefficient list under that name is a different lens.
+    /// **Not** from the newest string the clip carries: the `offset_v3` lens is
+    /// the `insta360` model, the v3 Brown block, and a clip that has one keeps
+    /// it; only a body without one is described by its `offset_v6` or
+    /// `offset_v8` string (the `insta360_v6` model).
     ///
     /// Also turns the IMU into lens 0's frame, and returns the `ypr` it turned
     /// the IMU by, if it did.
     fn insert_lens_profile(&self, tag_map: &mut GroupedTagMap, size: (u32, u32), crop: rig::WindowCrop, options: &crate::InputOptions) -> Option<[f64; 3]> {
-        let model = self.model.clone().unwrap_or_default().replace("Insta360 ", "");
         let offset = self.offsets.v3.as_ref()?.windowed(crop);
         let lens = offset.lenses.first()?;
-        let (&[k1, k2, k3], &[p1, p2]) = (lens.coeffs.get(..3)?, lens.coeffs.get(3..5)?) else { return None };
-        let (xi, [fx, fy], [cx, cy]) = (lens.xi, lens.focal, lens.centre);
+        let profile = self.lens_profile(&offset, size, true)?;
 
-        let ratio = (
-            size.0 as f64 / (lens.width / offset.lenses.len() as f64),
-            size.1 as f64 / lens.height
-        );
+        insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::Data, "Lens profile", Json, |v| serde_json::to_string(v).unwrap(), profile, vec![]), options);
+
+        turn_into_lens_0(tag_map, lens.ypr)
+    }
+
+    /// The JSON profile of lens 0 of `offset`, a calibration already on the window the pictures hold, in pictures of
+    /// `size`: an `offset_v3` lens is the `insta360` model (`k1 k2 k3 p1 p2 ξ`), an `offset_v6` one the `insta360_v6`
+    /// model (`d0..d12 ξ`). Without `with_coefficients` it states no distortion, for frames that state their own.
+    fn lens_profile(&self, offset: &rig::Offset, size: (u32, u32), with_coefficients: bool) -> Option<serde_json::Value> {
+        let model = self.model.clone().unwrap_or_default().replace("Insta360 ", "");
+        let lens = offset.lenses.first()?;
+        let (distortion_model, coeffs) = match offset.version {
+            rig::Version::V3 => {
+                let (&[k1, k2, k3], &[p1, p2]) = (lens.coeffs.get(..3)?, lens.coeffs.get(3..5)?) else { return None };
+                ("insta360", vec![k1, k2, k3, p1, p2, lens.xi])
+            }
+            rig::Version::V6 => ("insta360_v6", Self::v6_coefficients(lens)?),
+            _ => return None,
+        };
+        let [fx, fy, cx, cy] = Self::in_picture(offset, lens, size);
+        // Numbers a calibration's polynomials or frame took out of range are no lens
+        if ![fx, fy, cx, cy].iter().chain(&coeffs).all(|v| v.is_finite()) || !(fx > 0.0 && fy > 0.0) {
+            return None;
+        }
 
         let output_size = Self::get_output_size(size.0, size.1);
 
-        let profile = serde_json::json!({
+        Some(serde_json::json!({
             "calibrated_by": "Insta360",
             "camera_brand": "Insta360",
             "camera_model": model,
@@ -379,13 +441,13 @@ impl Insta360 {
             "asymmetrical": true,
             "fisheye_params": {
               "camera_matrix": [
-                [ fx * ratio.0,     0.0,              cx * ratio.0 ],
-                [ 0.0,              fy * ratio.1,     cy * ratio.1 ],
-                [ 0.0,              0.0,              1.0 ]
+                [ fx,  0.0, cx ],
+                [ 0.0, fy,  cy ],
+                [ 0.0, 0.0, 1.0 ]
               ],
-              "distortion_coeffs": [k1, k2, k3, p1, p2, xi]
+              "distortion_coeffs": if with_coefficients { coeffs } else { Vec::new() }
             },
-            "distortion_model": "insta360",
+            "distortion_model": distortion_model,
             "sync_settings": {
               "initial_offset": 0,
               "initial_offset_inv": false,
@@ -396,11 +458,108 @@ impl Insta360 {
               "do_autosync": false
             },
             "calibrator_version": "---"
-        });
+        }))
+    }
 
+    /// The `insta360_v6` model's coefficients of an `offset_v6` lens: its 13 terms, then `ξ`.
+    fn v6_coefficients(lens: &rig::OffsetLens) -> Option<Vec<f64>> {
+        let mut d = lens.coeffs.get(..13)?.to_vec();
+        d.push(lens.xi);
+        Some(d)
+    }
+
+    /// `fx, fy, cx, cy` of `lens` in the pictures' pixels: one lens's calibration frame scaled onto `size`.
+    fn in_picture(offset: &rig::Offset, lens: &rig::OffsetLens, size: (u32, u32)) -> [f64; 4] {
+        let ratio = (size.0 as f64 / (lens.width / offset.lenses.len() as f64), size.1 as f64 / lens.height);
+        [lens.focal[0] * ratio.0, lens.focal[1] * ratio.1, lens.centre[0] * ratio.0, lens.centre[1] * ratio.1]
+    }
+
+    /// The lens of a body that focuses: `offset_v8`, with the attachment the clip was shot through, at each frame's
+    /// AF code (`offset_v8::frame_code`).
+    ///
+    /// The profile has the first frame's focal and principal point and no distortion: every frame states its own lens
+    /// (`PixelFocalLength`, `PrincipalPoint`, `DistortionCoefficients`) in the samples this returns, one per frame of
+    /// the exposure record, at the frame's time. A clip whose frames state no AF code is the lens at its range's far
+    /// end, in the profile itself.
+    ///
+    /// Nothing for an attachment that changes the lens in a way no calibration here describes (`offset_v8::Optics`):
+    /// the body's own lens would be confidently wrong there. Nothing either for an attachment when the clip states no
+    /// AF range, which its focus scale can't be restated in, nor for pictures the camera stabilized itself, which are
+    /// not the lens's image. The bare lens needs no range: without one, each frame is the lens at its own code.
+    fn insert_af_lens_profile(&self, tag_map: &mut GroupedTagMap, size: (u32, u32), options: &crate::InputOptions) -> Vec<SampleInfo> {
+        let Some(v8) = self.offset_v8.as_ref() else { return Vec::new() };
+        if self.flowstate_online {
+            return Vec::new();
+        }
+        let lens = match (self.lens_optics, self.af_range) {
+            (offset_v8::Optics::Body, _) => v8.clone(),
+            (offset_v8::Optics::Composed(accessory), Some((far, near))) => {
+                let Some(lens) = v8.with_accessory(&accessory.calibration(), far, near) else { return Vec::new() };
+                lens
+            }
+            _ => return Vec::new(),
+        };
+        let range = self.af_range;
+        let at = |code: i32| -> rig::Offset {
+            let offset = lens.at(f64::from(code));
+            match self.window_crop {
+                Some(crop) => offset.windowed(crop),
+                None => offset,
+            }
+        };
+
+        let per_frame = !self.af_codes.is_empty();
+        // The profile's lens: the first frame's, or without a range the first that states a code
+        let first = match range {
+            Some(_) => offset_v8::frame_code(self.af_codes.first().map(|(_, code)| *code), range),
+            None => self.af_codes.iter().find_map(|(_, code)| offset_v8::frame_code(Some(*code), None)),
+        };
+        let Some(first) = first else { return Vec::new() };
+        let Some(profile) = self.lens_profile(&at(first), size, !per_frame) else { return Vec::new() };
         insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::Data, "Lens profile", Json, |v| serde_json::to_string(v).unwrap(), profile, vec![]), options);
+        if !per_frame {
+            return Vec::new();
+        }
 
-        turn_into_lens_0(tag_map, lens.ypr)
+        // The frames' times are on the video's timeline, which starts at the first frame
+        let first_frame_us = self.first_frame_timestamp.unwrap_or_default();
+        let time_ms = |timestamp_us: u64| (timestamp_us as f64 - first_frame_us) / 1000.0;
+        let mut lenses = BTreeMap::<i32, Option<((f32, f32), (f32, f32), Vec<f64>)>>::new();
+        let mut samples = Vec::with_capacity(self.af_codes.len());
+        for (i, &(timestamp_us, code)) in self.af_codes.iter().enumerate() {
+            // A frame without a code of its own and no range to fall back on states no lens; its neighbours' hold
+            let Some(code) = offset_v8::frame_code(Some(code), range) else { continue };
+            let Some((focal, centre, coeffs)) = lenses.entry(code).or_insert_with(|| {
+                let offset = at(code);
+                let lens = offset.lenses.first()?;
+                let [fx, fy, cx, cy] = Self::in_picture(&offset, lens, size);
+                let coeffs = Self::v6_coefficients(lens)?;
+                // Numbers a polynomial took out of range (of `f32` too, which the tags hold) are no lens
+                let intrinsics = [fx as f32, fy as f32, cx as f32, cy as f32];
+                if !(intrinsics.iter().all(|v| v.is_finite()) && coeffs.iter().all(|v| v.is_finite()) && fx > 0.0 && fy > 0.0) {
+                    return None;
+                }
+                Some(((intrinsics[0], intrinsics[1]), (intrinsics[2], intrinsics[3]), coeffs))
+            }).clone() else { continue };
+
+            let t = time_ms(timestamp_us);
+            let mut map = GroupedTagMap::new();
+            insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::PixelFocalLength, "Pixel focal length", f32x2, |v| format!("({:.2}, {:.2}) px", v.0, v.1), focal, vec![]), options);
+            insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::PrincipalPoint, "Principal point", f32x2, |v| format!("({:.2}, {:.2}) px", v.0, v.1), centre, vec![]), options);
+            insert_tag(&mut map, tag!(parsed GroupId::Lens, TagId::DistortionCoefficients, "Distortion coefficients", Vec_f64, |v| format!("{:?}", v), coeffs, vec![]), options);
+            // The pixels the values above are in: the pictures', which a video of another size shows scaled
+            insert_tag(&mut map, tag!(parsed GroupId::Imager, TagId::Custom("FrameSize".into()), "Frame size", u32x2, |v| format!("{}x{}", v.0, v.1), size, vec![]), options);
+            samples.push(SampleInfo {
+                // After the clip's own sample 0. The lens these samples state is keyed by their time, not by this
+                // number: it counts the exposure record's entries, which run on past the video's last frame
+                sample_index: (i + 1) as u64,
+                timestamp_ms: t,
+                duration_ms: self.af_codes.get(i + 1).map(|next| time_ms(next.0) - t).unwrap_or_default(),
+                tag_map: Some(map),
+                ..std::default::Default::default()
+            });
+        }
+        samples
     }
 
     fn get_output_size(width: u32, height: u32) -> (u32, u32) {

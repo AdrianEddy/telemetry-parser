@@ -33,7 +33,7 @@
 //! **It does not pin a default `R`, and this module goes on stating
 //! `convergence_m: None`.** The zero crossing is the CLIP's content, not the
 //! camera's: 23 m pooled on this clip, the distant field outweighing the one
-//! near view. The stitching distance is a host's slider, and the vendor states
+//! near view. The stitching distance is a host's slider, and the file states
 //! none.
 //!
 //! This table read +13.12 px at `∞` and a crossing at 0.79 m until the rig was
@@ -54,13 +54,14 @@ use crate::rig::{CameraRig, Insta360Facts, RigPicture, SiblingDir, SiblingHint, 
 ///
 /// The tail is `(version << 16) | (X << 8)`, with the lens type in the low byte
 /// for the oldest form. The token count corroborates — `27n + 2`, `19n + 2`,
-/// `16n + 2` and `6n + 4` — but the vendor's own parser dispatches on the tail,
-/// and only the tail distinguishes two generations that happen to agree on
-/// length for some `n`.
+/// `16n + 2` and `6n + 4` — but the tail is what states the generation, and
+/// only the tail distinguishes two generations that happen to agree on length
+/// for some `n`.
 ///
-/// There is no `V4`, `V5` or `V7` string: the numbering skips, and the `v8`
-/// field that exists in the vendor's schema is written by nothing and read by
-/// nothing.
+/// There is no `V4` or `V5` string: the numbering skips. A `v7` string exists
+/// only inside the factory refinements of `ExtraMetadata.offset_calib`, and the
+/// `v8` one (`offset_v8`, a lens that focuses) is a polynomial in the AF code
+/// that is a `V6` calibration at each code: `offset_v8::OffsetV8::at`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Version {
     /// `radius cx cy yaw pitch roll` per lens, with the frame and the lens type
@@ -74,7 +75,7 @@ pub(crate) enum Version {
     /// block.
     V3,
     /// Unified sphere with the 13-term extended radial/decentering/thin-prism
-    /// block. The vendor's own first choice.
+    /// block. The first of [`PREFERENCE`].
     V6,
 }
 
@@ -142,15 +143,15 @@ impl Offset {
     }
 
     /// The same calibration stated against the window the pictures hold, which
-    /// is what the vendor resolves before anything renders:
-    /// `ins::OffsetConvert::convertOffset(src, dst, dst, -crop_offset)`.
+    /// is the calibration the pictures are rendered with: the window's size and
+    /// the crop's offset into it (`window_crop_info`).
     ///
     /// The window is scaled from the calibration frame by one factor, about
     /// pixel centres, which the focal and the image circle follow; the crop then
     /// only moves the principal point, and everything else optical stays as
     /// measured. The factor is 1 on every body that writes a window today. A
     /// window whose aspect is not the calibration frame's is no window of it,
-    /// and the vendor hands such a string back unconverted.
+    /// and such a string is used as it stands (inferred).
     pub(crate) fn windowed(&self, crop: WindowCrop) -> Offset {
         let [frame_w, frame_h] = self.lens_frame();
         let [src_w, src_h, dst_w, dst_h] =
@@ -288,22 +289,19 @@ pub(crate) fn parse(s: &str) -> Option<Offset> {
     Some(Offset { version, x, lenses })
 }
 
-/// Half the field the vendor's lens-type table states — the lens CLASS: 100°
-/// for type 113 (the X5's 200° lens), 95° for a type the table has no entry
-/// for (its own 190° default).
+/// Half the field of a lens type — the lens CLASS: 100° for type 113 (the X5's
+/// 200° lens), 95° for a type with no entry below (a 190° default).
 ///
-/// `GetFov` is a jump table over the lens type; the X5 bare, guard and dive
-/// entries are transcribed below, and 190° is the table's default for a type
-/// with no entry. It is the angle the V1/V2 image radius is stated at, and the
-/// field a lens is stated to have ([`Lens::fov_limit`]): how much of it a
-/// stitch then reads — the vendor's mask disc, its blend — is the vendor
-/// software's choice and not the file's. The vendor's dewarp-map builder
-/// even builds its map wider (`× 1.05`, a 105° half-field,
-/// `createStaticDewarpMap` @ 0x17F54E4).
+/// The table is per lens type; the X5 bare, guard and dive types are among
+/// the 200° ones, and 190° is the field of a type with no entry. It is the
+/// angle the V1/V2 image radius is stated at, and the field a lens is stated
+/// to have ([`Lens::fov_limit`]): how much of it a stitch then reads — a mask
+/// disc, a blend — is the stitcher's choice and not the file's. A dewarp map
+/// may well be built wider than it (a 105° half-field is common).
 fn class_half_field_deg(lens_type: i32) -> f64 {
     let full_deg = match lens_type {
-        // Insta360Lens::GetFov (0x17f3d70), distinct from the mask library's
-        // Lens::getFov. In particular 115/118/120 use the class default here.
+        // The optical field, which is not the field a lens's mask is cut to:
+        // 115/118/120 in particular take the default here.
         19 | 33 | 38 | 40 | 41 | 44 | 70 | 71 | 85 | 113 | 131 | 142 | 149 | 150 | 193 => 200.0,
         140 | 141 | 156 => 195.0,
         _ => 190.0,
@@ -317,16 +315,16 @@ fn class_half_field_rad(lens_type: i32) -> f64 {
 }
 
 /// `R = Ry(pitch + π/2)·Rz(yaw)·Rx(roll)`, degrees in, with the back-to-back
-/// half turn the string does not contain. **The vendor's own frame**: `R` maps
+/// half turn the string does not contain. **The string's own frame**: `R` maps
 /// a world vector into the camera.
 ///
 /// The `+90°` is on **pitch**, about `Y` — not on roll, even though roll is the
 /// field carrying ~90 in the data. And the 180° that separates the two lenses
 /// is nowhere in the string: both lenses carry very nearly the same rotation
 /// (about a degree apart), most of which is a fixed image→world permutation,
-/// and the vendor's own map builder right-multiplies **lens 0** by a half turn
-/// about `Z` when the body has two lenses. Without it the two optical axes come
-/// out 1° apart instead of 180°.
+/// and **lens 0** is turned by a half turn about `Z` (right-multiplied) when
+/// the body has two lenses. Without it the two optical axes come out 1° apart
+/// instead of 180°.
 fn vendor_rotation(ypr_deg: [f64; 3], lens_index: usize, num_lenses: usize) -> Quat {
     let [yaw, pitch, roll] = ypr_deg.map(f64::to_radians);
     let mut r =
@@ -339,21 +337,21 @@ fn vendor_rotation(ypr_deg: [f64; 3], lens_index: usize, num_lenses: usize) -> Q
     r.normalized().expect("a finite euler triple composes to a rotation")
 }
 
-/// `q_rig_from_cam` — the vendor's rotation carried into the frame the shared
+/// `q_rig_from_cam` — the string's rotation carried into the frame the shared
 /// descriptors define (`+x` right, `+y` down, `+z` forward).
 ///
 /// Two changes, and the second is what makes the first mean anything:
 ///
 /// * The stored matrix maps world **into** the camera, so the rig-from-camera
 ///   rotation is its inverse.
-/// * The vendor's world frame is not this one. Nearly all of every stored
+/// * The string's world frame is not this one. Nearly all of every stored
 ///   rotation is a fixed image→world permutation — the real calibration content
 ///   is a residual under 0.8° — and under it the lenses come out looking along
 ///   `±x`, which is a body whose forward axis points sideways. So the frame is
 ///   pinned by the string's OWN identity pose: the rotation a lens with
 ///   `yaw = pitch = 0, roll = 90` would have is taken as the rig's forward
 ///   direction, which sends the first lens along `+z` with its picture upright
-///   and leaves every measured residual exactly where the vendor put it.
+///   and leaves every measured residual exactly where the calibration put it.
 ///   Stitching is invariant to this — it is a global rotation of both lenses —
 ///   but a default view is not.
 fn rotation(ypr_deg: [f64; 3], lens_index: usize, num_lenses: usize) -> Quat {
@@ -459,9 +457,8 @@ fn lens(
     // the masks, the mirror — is evaluated before it.
     //
     // Over `width − 1`, because a calibration counts pixel centres from zero:
-    // the vendor rescales it by `(w′ − 1)/(w − 1)` and normalises by `w′ − 1`
-    // (`resetResolution`, `createStaticDewarpMap`), so a calibration pixel lands
-    // at `x/(w − 1)` of the texture. Over `width` the principal point sits a
+    // another resolution rescales it by `(w′ − 1)/(w − 1)` and normalises by
+    // `w′ − 1`, so a calibration pixel lands at `x/(w − 1)` of the texture. Over `width` the principal point sits a
     // third of a picture pixel away on an X5, and the two lenses tilt apart by
     // 0.04° about the seam axis.
     let scale = f64::from(picture_dim.0) / (f64::from(calib_dim[0]) - 1.0);
@@ -481,10 +478,10 @@ fn lens(
             thermal: None,
         },
         calib_to_picture: Affine2::scale(scale, scale),
-        // An explicit calibration-space fact and never a negative `fx`: the
-        // vendor gates it on lens 0 of a two-lens body with the tail's `X` byte
-        // at 5, and applies it about the principal point before the map onto
-        // the picture.
+        // An explicit calibration-space fact and never a negative `fx`: it
+        // holds for lens 0 of a two-lens body with the tail's `X` byte at 5,
+        // and applies about the principal point before the map onto the
+        // picture.
         mirror: index == 0 && offset.lenses.len() == 2 && offset.x == MIRRORED_LENS_0,
         rotation: rotation(raw.ypr, index, offset.lenses.len()),
         translation: raw.translation,
@@ -507,13 +504,14 @@ fn lens(
 
 /// The lens model one block describes, or `None` when it describes none.
 ///
-/// V1 carries no coefficients. The verified legacy types use Studio's built-in
-/// degree polynomial; other V1 types remain unrenderable. V2+ carries calibration.
+/// V1 carries no coefficients. The verified legacy types use their lens type's
+/// degree polynomial (`rig_v1_coefficients`); other V1 types remain
+/// unrenderable. V2+ carries calibration.
 fn lens_model(version: Version, raw: &OffsetLens) -> Option<LensModel> {
     match version {
         Version::V1 => {
-            // Verified against both GetDegreeCoeffs (0x2e368b0) and getCoeff
-            // (0x4c5e48). Modern types have divergent tables and remain V2+.
+            // The types whose optical and mask polynomials agree. Modern types
+            // have divergent tables and remain V2+.
             if !matches!(raw.lens_type, 19 | 27 | 33 | 38..=43 | 51 | 70 | 71 | 83) {
                 return None;
             }
@@ -533,8 +531,8 @@ fn lens_model(version: Version, raw: &OffsetLens) -> Option<LensModel> {
         },
         Version::V2 => {
             // `r = θ·(c₀ + c₁θ + c₂θ² + c₃θ³)` normalised, `u = cx + fx·r·cos φ`,
-            // with `fx = fy = radius / r(θ_max)` — the vendor derives the focal
-            // from the stated image radius rather than storing one. Folding the
+            // with `fx = fy = radius / r(θ_max)` — the focal follows from the
+            // stated image radius; the string stores none. Folding the
             // focal into the coefficients turns the pair into the `p₀θ + p₁θ² +
             // …` polynomial in calibration pixels that the shared descriptors
             // already carry, which is the same map with nothing left over.
@@ -567,12 +565,12 @@ fn v2_focal(raw: &OffsetLens) -> Option<f64> {
     (p[0].is_finite() && p[0] > 0.0).then_some(p[0])
 }
 
-/// The vendor's own preference order over the generations it ships.
+/// The preference order over the generations a clip may carry.
 ///
-/// v6 first, then v3, v2 and v1 — the hard-coded `{6, 3, 2, 1}` the vendor's
-/// player resolves with. The clip's own `capture_offset_version` is advisory
-/// and is deliberately not consulted: it is an enum ordinal rather than a
-/// version number, and the player ignores it too.
+/// v6 first, then v3, v2 and v1: the newest generation describes the lens
+/// best. The clip's own `capture_offset_version` is advisory and is
+/// deliberately not consulted: it is an enum ordinal rather than a version
+/// number.
 pub(crate) const PREFERENCE: [Version; 4] = [Version::V6, Version::V3, Version::V2, Version::V1];
 
 /// Every `offset` string a clip carries, in the order [`PREFERENCE`] wants them.
@@ -602,7 +600,7 @@ impl Offsets {
             Version::V6 => &mut self.v6,
         } = Some(offset);
     }
-    /// The string a rig is built from: the first the vendor prefers that
+    /// The string a rig is built from: the first of [`PREFERENCE`] that
     /// describes a lens and not merely a circle.
     fn best(&self) -> Option<&Offset> {
         PREFERENCE.iter().filter_map(|v| self.get(*v)).find(|o| o.lenses.iter().all(|l| lens_model(o.version, l).is_some()))
@@ -621,21 +619,20 @@ pub(crate) enum StreamLayout {
     PerFile,
 }
 
-/// The bodies whose two-track files the vendor binds by
-/// `pano_record_multi_track_order` (`InstaCameraX4`, `X5`, `X4Air`, `C9`, `DE`,
-/// `DM`); every other body's tracks are in lens order.
+/// The bodies whose two-track files are ordered by
+/// `pano_record_multi_track_order` (the X4, X5, X4 Air, X6, A1 and DM); every
+/// other body's tracks are in lens order.
 const TRACK_ORDER_BODIES: [&str; 6] =
     ["Insta360 X4", "Insta360 X5", "Insta360 X4 Air", "Insta360 X6", "Antigravity A1", "Insta360 DM"];
 
 impl StreamLayout {
-    /// Studio's own rule (`CreateMediaClips`, `SetReverseVideoTrackOrder`): a
-    /// listed body with more than one video track is reversed exactly when the
-    /// clip states `TRACK0_STREAM10`. `stream_type` only says whether the
+    /// A listed body with more than one video track is reversed exactly when
+    /// the clip states `TRACK0_STREAM10`. `stream_type` only says whether the
     /// lenses share a file. An X5 happens to write `DUAL_STREAM_TRACK_REVERSE`
     /// as well, but an X4 writes no `stream_type` at all, and reading the order
     /// from it handed each X4 lens the other's calibration: 0.62° apart.
     ///
-    /// The vendor counts the asset's video tracks; this parser reads only the
+    /// The count is of the file's video tracks; this parser reads only the
     /// trailer, so the trailer's own statement of a single-stream file (what a
     /// low-resolution `.lrv` proxy writes) stands in for a count of one.
     ///
@@ -669,9 +666,9 @@ impl StreamLayout {
 ///
 /// The camera writes `…_00_<seq>` for the first member and `…_10_<seq>` for the
 /// second, and `file_group_info.identify` carries this file's own camera path.
-/// Only a group of exactly two is described: that is the only shape the vendor's
-/// two-file mode produces, and it is the only one whose member names follow from
-/// the convention rather than from a guess.
+/// Only a group of exactly two is described: that is the only shape the
+/// camera's two-file mode produces, and it is the only one whose member names
+/// follow from the convention rather than from a guess.
 pub(crate) fn sibling_hint(index: u32, total: u32, identify: &str) -> Option<SiblingHint> {
     if total != 2 || index > 1 {
         return None;
@@ -718,9 +715,9 @@ fn name_parts(name: &str) -> Option<(Vec<String>, usize)> {
 /// [`VendorFacts`] are those facts with the lens types of the string the rig
 /// is built from.
 ///
-/// The Nano S is the one body the vendor's resolver leaves unwindowed. It also
-/// converts a flagged ONE X through a stereo table instead; no clip here carries
-/// that flag, and an unflagged ONE X takes the ordinary window.
+/// The Nano S is the one body whose calibration is not resolved onto a window.
+/// A flagged ONE X goes through a stereo table instead (inferred); no clip here
+/// carries that flag, and an unflagged ONE X takes the ordinary window.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn camera_rig(
     model: &str,
@@ -776,10 +773,10 @@ pub(crate) fn camera_rig(
         pictures,
         // The generations are the same body described four ways rather than
         // four geometries the camera ships, so none of them is an alternative
-        // to the others. The vendor's real alternatives are its accessories,
-        // each a conversion of this calibration that its software applies;
-        // the file ships none of them, only what the camera recorded wearing
-        // (`vendor`).
+        // to the others. The real alternatives are the body's attachments, each
+        // a conversion of this calibration (`offset_v8::OffsetV8::with_accessory`
+        // for the two known ones); the file ships none of them, only what the
+        // camera recorded wearing (`vendor`).
         variants: Vec::new(),
         projection_kind: None,
         audio_source: None,

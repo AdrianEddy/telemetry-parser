@@ -993,13 +993,10 @@ impl GyroflowProtobuf {
                 if f_x > 0.0 && f_y > 0.0 {
                     insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::PixelFocalLength, "Pixel focal length", f32x2, |v| format!("({:.2}, {:.2}) px", v.0, v.1), (f_x, f_y), vec![]), options);
                 }
-                // Only emit the principal point when it carries information
-                // (i.e. it's not the trivial centered default). The decoder
-                // falls back to the LensProfile baseline when this tag is
-                // absent, which is the correct behavior for centered optics.
-                let centered_cx = frame_w as f32 / 2.0;
-                let centered_cy = frame_h as f32 / 2.0;
-                if (c_x - centered_cx).abs() > 0.5 || (c_y - centered_cy).abs() > 0.5 {
+                // The principal point too, centred or not: a frame's values are
+                // carried on to the next frames that state none, so a centred
+                // one left out would keep the previous off-centre one in force
+                if c_x.is_finite() && c_y.is_finite() {
                     insert_tag(tag_map, tag!(parsed GroupId::Lens, TagId::PrincipalPoint, "Principal point", f32x2, |v| format!("({:.2}, {:.2}) px", v.0, v.1), (c_x, c_y), vec![]), options);
                 }
             } else if let Some(fl_mm) = lens.focal_length_mm {
