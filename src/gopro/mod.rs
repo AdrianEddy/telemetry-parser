@@ -5,6 +5,7 @@ pub mod klv;
 
 mod eac;
 mod fusion;
+mod legacy;
 mod lens_profile;
 mod udta;
 
@@ -28,6 +29,8 @@ pub struct GoPro {
     /// The clip's own path. A Fusion half says which lens it holds in its NAME
     /// and nowhere in its bytes, so the detector has to keep it.
     path: Option<std::path::PathBuf>,
+    /// The `udta` boxes of a camera from before GPMF (HERO3, HERO3+, HERO4).
+    legacy: Option<legacy::Atoms>,
     frame_readout_time: Option<f64>,
     has_cori: bool,
     is_raw_gpmf: bool,
@@ -121,6 +124,20 @@ impl GoPro {
                     } else {
                         ret = Some(Self { model: Some(model), ..Default::default() });
                     }
+                }
+            }
+        }
+        // The cameras from before GPMF: the firmware version in `udta` names the model, and is all there is to tell a
+        // HERO3's file by. A file with GPMF says more about itself there, so it isn't looked at
+        if ret.as_ref().is_none_or(|obj| obj.extra_gpmf.is_none() && obj.udta_gpmf.is_none()) {
+            if let Some(atoms) = legacy::find(buffer) {
+                let model = legacy::model(&atoms.firmware);
+                if model.is_some() || ret.is_some() {
+                    let obj = ret.get_or_insert_with(Self::default);
+                    if obj.model.is_none() {
+                        obj.model = model.map(str::to_owned);
+                    }
+                    obj.legacy = Some(atoms);
                 }
             }
         }
@@ -223,6 +240,19 @@ impl GoPro {
                             stream.seek(SeekFrom::Start(org_pos + size - header_size as u64))?;
                         }
                     }
+                }
+            }
+        }
+
+        // A camera from before GPMF: what its `udta` boxes say, at the keys the later cameras write it at in GPMF
+        if let Some(atoms) = &self.legacy {
+            if samples.is_empty() {
+                samples.push(SampleInfo { tag_map: Some(GroupedTagMap::default()), ..Default::default() });
+            }
+            if let Some(map) = samples[0].tag_map.as_mut() {
+                util::insert_tag(map, tag!(parsed GroupId::Default, TagId::Unknown(0x464d5752), "FMWR", String, |v| v.clone(), atoms.firmware.clone(), vec![]), &options);
+                if let Some(fov) = legacy::field_of_view(atoms) {
+                    util::insert_tag(map, tag!(parsed GroupId::Default, TagId::Unknown(0x56464f56), "VFOV", String, |v| v.clone(), fov.into(), vec![]), &options);
                 }
             }
         }
@@ -563,6 +593,57 @@ mod tests {
             util::insert_tag(&mut map, tag!(parsed GroupId::Gyroscope, TagId::TimestampUs, "STMP", u64, |v| v.to_string(), index * 1_000_000 + 37, vec![]), &options);
         }
         SampleInfo { sample_index: index, timestamp_ms: index as f64 * 1000.0, duration_ms: 1000.0, tag_map: Some(map), ..Default::default() }
+    }
+
+    /// A file as the cameras from before GPMF write it, less its tracks: `moov` with the camera's `udta`, at the end
+    /// of the file (HERO4, whose `mdat` starts with the `GPRO` block that names the model) or at its start (HERO3)
+    fn legacy_file(udta: &[u8], gpro_model: Option<&str>) -> Vec<u8> {
+        let atom = |name: &[u8; 4], payload: &[u8]| [&((payload.len() + 8) as u32).to_be_bytes()[..], name, payload].concat();
+        let mut mvhd = vec![0u8; 100];
+        mvhd[12..16].copy_from_slice(&1000u32.to_be_bytes()); // Timescale
+        let moov = atom(b"moov", &[atom(b"mvhd", &mvhd), udta.to_vec()].concat());
+        let ftyp = atom(b"ftyp", b"avc1\0\0\0\0avc1isom");
+        match gpro_model {
+            Some(model) => {
+                let mut gpro = b"GPRO\x08\x01\0\0HD4.02.03.00.00LAT0000000000000".to_vec();
+                gpro.resize(gpro.len() + 48, 0);
+                gpro.extend_from_slice(model.as_bytes());
+                gpro.resize(512, 0);
+                [ftyp, atom(b"mdat", &gpro), moov].concat()
+            }
+            None => [ftyp, moov, atom(b"mdat", &[0; 512])].concat(),
+        }
+    }
+
+    /// The camera model and the `VFOV` and `FMWR` of the file's first sample, as Gyroflow reads them for its lens
+    /// profile identifier
+    fn identified(file: Vec<u8>) -> Option<(Option<String>, Option<String>, Option<String>)> {
+        let size = file.len() as u64;
+        let options = crate::InputOptions { dont_look_for_sidecar_files: true, ..Default::default() };
+        let input = Input::from_stream_with_options(&mut Cursor::new(file), size, "GOPR0001.MP4", |_| (), Default::default(), options).ok()?;
+        assert_eq!(input.camera_type(), "GoPro");
+        let map = input.samples.as_ref()?.first()?.tag_map.as_ref()?.get(&GroupId::Default)?;
+        let text = |key: &[u8; 4]| (map.get_t(TagId::Unknown(u32::from_be_bytes(*key))) as Option<&String>).cloned();
+        Some((input.camera_model().cloned(), text(b"VFOV"), text(b"FMWR")))
+    }
+
+    #[test]
+    fn cameras_before_gpmf_are_named_and_a_hero4_says_its_field_of_view() {
+        use legacy::tests::{hero3_udta, hero4_udta};
+        let some = |v: &str| Some(v.to_owned());
+        let hero4 = |settings| identified(legacy_file(&hero4_udta("HD4.02.03.00.00", settings), Some("HERO4 Black"))).unwrap();
+        let firmware = some("HD4.02.03.00.00");
+        assert_eq!(hero4("400000000000458000000000"), (some("HERO4 Black"), some("W"), firmware.clone()));
+        assert_eq!(hero4("400000000000458200000000"), (some("HERO4 Black"), some("M"), firmware.clone()));
+        // A field of view that isn't known is not named
+        assert_eq!(hero4("400000000000458400000000"), (some("HERO4 Black"), None, firmware));
+        // Without the GPRO block the model is the firmware line's
+        assert_eq!(identified(legacy_file(&hero4_udta("HD4.01.05.00.00", "400000000000458200000000"), None)).unwrap(),
+            (some("HERO4 Silver"), some("M"), some("HD4.01.05.00.00")));
+        // A HERO3's file was not read at all before
+        assert_eq!(identified(legacy_file(&hero3_udta("03e00220"), None)).unwrap(), (some("HERO3 White"), None, some("HD3.01.03.00")));
+        // A firmware line that isn't known is not a GoPro's file by that alone
+        assert_eq!(identified(legacy_file(&hero4_udta("HD9.01.01.00.00", "400000000000458200000000"), None)), None);
     }
 
     #[test]
