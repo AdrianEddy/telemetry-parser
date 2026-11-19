@@ -208,10 +208,11 @@ class LensView extends View {
         const isProfile = profile && (profile.channels || []).some(c => c.startsWith('calib_dimension') || c.startsWith('fisheye_params'));
         return isProfile || has(tags, 'LensDistortion', 'Data') || LensView.tagGroups(tags).length > 0;
     }
-    /// Groups that state a distortion model with its coefficients (Gyroflow's protobuf, MotionCam's calibration)
+    /// Groups that state a lens's coefficients: with their distortion model (Gyroflow's protobuf, MotionCam's
+    /// calibration), or in the model of the profile beside them (an Insta360 that focuses: each frame's lens in `Lens`,
+    /// the profile's own coefficients empty)
     static tagGroups(tags) {
-        const groups = new Set(tags.filter(t => t.tag === 'DistortionModel').map(t => t.group));
-        return [...groups].filter(g => has(tags, g, 'DistortionCoefficients'));
+        return [...new Set(tags.filter(t => t.tag === 'DistortionCoefficients').map(t => t.group))];
     }
     constructor(app) {
         super(app, { id: 'lens', label: 'Lens' });
@@ -219,7 +220,7 @@ class LensView extends View {
         this.key = null;
     }
     get wanted() {
-        const w = [['Lens', 'Data'], ['LensDistortion', 'Data'], ['Imager', 'SensorSizePixels'], ['Imager', 'PixelPitch'], ['Imager', 'CaptureAreaOrigin'], ['Imager', 'CaptureAreaSize']];
+        const w = [['Lens', 'Data'], ['LensDistortion', 'Data'], ['Imager', 'SensorSizePixels'], ['Imager', 'PixelPitch'], ['Imager', 'CaptureAreaOrigin'], ['Imager', 'CaptureAreaSize'], ['Imager', 'FrameSize']];
         for (const g of this.groups) w.push([g, 'DistortionModel'], [g, 'DistortionCoefficients'], [g, 'PixelFocalLength'], [g, 'PrincipalPoint']);
         return w;
     }
@@ -233,14 +234,16 @@ class LensView extends View {
     }
     buildLens() {
         const profile = this.value(0);
-        // A frame's own lens tags first (Gyroflow protobuf, MotionCam): they change with the zoom, and the profile next
-        // to them can be a placeholder. The frame they're calibrated on comes from the profile, or is the video's
+        // A frame's own lens tags first (Gyroflow protobuf, MotionCam, an Insta360 that focuses): they change with the
+        // zoom or the focus, and the profile next to them can be a placeholder, or state no coefficients. The pixels
+        // they're in are the frame size the frames state (`Imager / FrameSize`), else the profile's, else the video's
+        const frame = this.value(6);
         for (let gi = 0; gi < this.groups.length; gi++) {
-            const b = 6 + gi * 4;
-            const model = this.value(b), coeffs = this.value(b + 1), focal = this.value(b + 2);
+            const b = 7 + gi * 4;
+            const model = this.value(b) || profile?.distortion_model, coeffs = this.value(b + 1), focal = this.value(b + 2);
             let center = this.value(b + 3);
             const md = this.app.videoMeta, dim = profile?.calib_dimension;
-            const size = dim?.w > 0 ? [dim.w, dim.h] : md ? [md.width, md.height] : null;
+            const size = Array.isArray(frame) && frame[0] > 0 ? [frame[0], frame[1]] : dim?.w > 0 ? [dim.w, dim.h] : md ? [md.width, md.height] : null;
             const cm = profile?.fisheye_params?.camera_matrix;
             if (!Array.isArray(center) && Array.isArray(cm) && cm[0]?.[2] > 0) center = [cm[0][2], cm[1][2]];
             const l = lensFromTags({ model, coeffs, focal, center, size });
@@ -249,7 +252,10 @@ class LensView extends View {
                 return l;
             }
         }
-        if (profile && profile.fisheye_params) {
+        // A profile without coefficients beside frames that state theirs leaves the lens to the frames: on its own it
+        // would be drawn as no distortion at all
+        const deferred = this.groups.length > 0 && !profile?.fisheye_params?.distortion_coeffs?.length;
+        if (profile && profile.fisheye_params && !deferred) {
             const l = lensFromProfile(profile);
             if (l) return l;
         }

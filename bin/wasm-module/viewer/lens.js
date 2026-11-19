@@ -134,6 +134,35 @@ const models = {
             maxAngle: foldAngle(radial, Math.PI * 0.999),
         };
     },
+    /// Insta360's `offset_v6` lens, and `offset_v8`'s at each AF code (distortion_models/insta360_v6.rs): the unified
+    /// sphere of `insta360` with a 13-term block, k = [d0..d12, ξ]. Radial d0..d4; a decentering pair (d5, d6) that
+    /// grows with r² (d7, d8), in the opposite order to `insta360`'s p1 p2; a thin prism d9..d12
+    insta360_v6(k) {
+        const d = Array.from({ length: 13 }, (_, i) => Number(k[i]) || 0);
+        const xi = Number(k[13]) || 0;
+        const rad = r2 => 1 + r2 * (d[0] + r2 * (d[1] + r2 * (d[2] + r2 * (d[3] + r2 * d[4]))));
+        const radial = t => {
+            const den = Math.cos(t) + xi;
+            if (!(den > 1e-9)) return NaN;
+            const m = Math.sin(t) / den;
+            return m * rad(m * m);
+        };
+        return {
+            project(x, y, z) {
+                const len = Math.hypot(x, y, z);
+                const den = z / len + xi;
+                if (!(den > 1e-9)) return null;
+                const u = x / len / den, v = y / len / den;
+                const r2 = u * u + v * v, c = rad(r2);
+                const px = d[5] + d[7] * r2, py = d[6] + d[8] * r2;
+                return [
+                    u * c + (r2 + 2 * u * u) * px + 2 * u * v * py + d[9] * r2 + d[11] * r2 * r2,
+                    v * c + (r2 + 2 * v * v) * py + 2 * u * v * px + d[10] * r2 + d[12] * r2 * r2,
+                ];
+            },
+            maxAngle: foldAngle(radial, Math.PI * 0.999),
+        };
+    },
     poly3(k) {
         const [k1 = 0] = k;
         return radialPlane(r => r * (1 + k1 * r * r));
@@ -232,7 +261,8 @@ function foldAngle(radiusOf, tMax) {
 }
 
 export const MODEL_NAMES = {
-    opencv_fisheye: 'OpenCV fisheye', opencv_standard: 'OpenCV standard', insta360: 'Insta360', poly3: 'Poly3',
+    opencv_fisheye: 'OpenCV fisheye', opencv_standard: 'OpenCV standard', insta360: 'Insta360',
+    insta360_v6: 'Insta360 (13-term)', poly3: 'Poly3',
     poly5: 'Poly5', ptlens: 'PTLens', gopro: 'GoPro POLY', sony: 'Sony lens curve', pinhole: 'Pinhole',
     generic_polynomial: 'Generic polynomial',
 };
