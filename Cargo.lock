@@ -223,6 +223,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
 
 [[package]]
+name = "flightlog-core"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37d829d4b0e9c978a6ec7a209eb16ce68372db55893e10d174be4ba10abccb13"
+dependencies = [
+ "mavlink-tlog",
+]
+
+[[package]]
 name = "foldhash"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -420,6 +429,12 @@ name = "log"
 version = "0.4.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
+
+[[package]]
+name = "mavlink-tlog"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da742b92f6820a5de512a96a83911a29b4621b61370a2cec0baff8651a48a07b"
 
 [[package]]
 name = "memchr"
@@ -735,6 +750,7 @@ dependencies = [
  "crc32fast",
  "csv",
  "fc-blackbox-patched",
+ "flightlog-core",
  "half",
  "hex-literal",
  "jni",

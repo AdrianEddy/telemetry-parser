@@ -27,6 +27,7 @@ csv = "1.4"
 crc32fast = "1.5"
 log = "0.4"
 video-types = { version = "0.1", default-features = false, features = ["serde"] }
+flightlog-core = { version = "0.1.2", default-features = false }
 
 quick-xml = { version = "0.42", optional = true }
 
