@@ -750,6 +750,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "video-types",
+ "vidfix-detect",
 ]
 
 [[package]]
@@ -800,6 +801,12 @@ dependencies = [
  "smallvec",
  "thiserror",
 ]
+
+[[package]]
+name = "vidfix-detect"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa7f8e19274938a9acef37c17149c409b7e9e7f29dd1723f77af1fbc48d627ec"
 
 [[package]]
 name = "walkdir"
