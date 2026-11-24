@@ -121,6 +121,12 @@ macro_rules! impl_formats {
                                     log::warn!("{}: the segment table isn't valid for the file, ignored: {e}", filepath.as_ref().display());
                                 }
                             }
+                            // No telemetry from a detected video: tell the interrupted recording apart from a parser problem
+                            if input.samples.as_ref().map_or(true, |s| s.is_empty()) {
+                                if let Some(msg) = diagnose_interrupted(stream, size) {
+                                    log::warn!("{}: {msg}", filepath.as_ref().display());
+                                }
+                            }
                             return Ok(input);
                         }
                     }
@@ -152,6 +158,10 @@ macro_rules! impl_formats {
                             }
                         }
                     }
+                }
+                // An MP4/MOV whose recording was interrupted (no moov) isn't an unsupported format: say what happened
+                if let Some(msg) = interrupted_recording(&buf, read_mb * 1024 * 1024, size) {
+                    return Err(Error::new(ErrorKind::InvalidData, msg));
                 }
                 return Err(Error::new(ErrorKind::Other, "Unsupported file format"));
             }
@@ -262,4 +272,38 @@ impl_formats! {
     SenseFlow => senseflow::SenseFlow,
     Freefly   => freefly::Freefly,
     Zcam      => zcam::Zcam,
+}
+
+/// When `buf` (the file's first and last `read_size` bytes, as read by `util::read_beginning_and_end`) is an MP4/MOV
+/// whose recording was interrupted before its index (moov) was written, or whose mdat header is damaged, a sentence
+/// that says so. Players report these as "moov atom not found"; the media data is still in the file.
+fn interrupted_recording(buf: &[u8], read_size: usize, size: u64) -> Option<String> {
+    let head = &buf[..buf.len().min(read_size)];
+    let tail = &buf[buf.len().saturating_sub(read_size)..];
+    let d = vidfix_detect::diagnose(head, tail, size);
+    if d.repairable() { Some(d.message()) } else { None }
+}
+
+/// Checks a video for an interrupted recording (no moov, or a damaged mdat header). Useful when a file was detected
+/// but no telemetry came out of it: the samples can't be read because the container's index was never written.
+pub fn diagnose_interrupted<T: Read + Seek>(stream: &mut T, size: u64) -> Option<String> {
+    let read_size = (vidfix_detect::WINDOW as usize).min(size as usize);
+    let buf = util::read_beginning_and_end(stream, size, read_size).ok()?;
+    interrupted_recording(&buf, read_size, size)
+}
+
+#[cfg(test)]
+mod interrupted_recording_tests {
+    #[test]
+    fn mp4_without_moov_is_reported_as_interrupted() {
+        let mut f = vec![0, 0, 0, 20];
+        f.extend_from_slice(b"ftypisom\0\0\0\0isom");
+        f.extend_from_slice(&1_000_000u32.to_be_bytes()); // mdat claims more than the file holds, no moov after it
+        f.extend_from_slice(b"mdat");
+        f.extend(std::iter::repeat(7u8).take(5000));
+        let size = f.len() as u64;
+        let msg = super::diagnose_interrupted(&mut std::io::Cursor::new(f), size).unwrap();
+        assert!(msg.contains("interrupted"), "{msg}");
+        assert!(super::diagnose_interrupted(&mut std::io::Cursor::new(b"not a video".to_vec()), 11).is_none());
+    }
 }

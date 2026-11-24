@@ -21,6 +21,7 @@ serde_yaml = "0.9"
 argh = "0.1"
 hex-literal = "1"
 half = "2.7"
+vidfix-detect = "0.1"
 memchr = "2.8"
 fc-blackbox = { package = "fc-blackbox-patched", version = "0.2.1" }
 csv = "1.4"
